@@ -22,25 +22,25 @@ const defaultTemplates: MessageTemplate[] = [
   {
     id: 'parcel_created',
     name: 'Parcel Created',
-    message: 'Dear {name}, your parcel ({waybill}) has been registered for delivery to {destination}. You will receive updates on its progress. Thank you for choosing NID Logistics Ltd.',
+    message: 'Dear {name}, your parcel ({waybill}) has been registered for delivery to {destination}. You will receive updates on its progress. Thank you for choosing Ficma Home Logistics.',
     variables: ['name', 'waybill', 'destination']
   },
   {
     id: 'parcel_dispatched',
     name: 'Parcel Dispatched',
-    message: 'Dear {name}, your parcel ({waybill}) has been dispatched and is on its way to {destination}. Track your parcel for updates. Thank you for choosing NID Logistics Ltd.',
+    message: 'Dear {name}, your parcel ({waybill}) has been dispatched and is on its way to {destination}. Track your parcel for updates. Thank you for choosing Ficma Home Logistics.',
     variables: ['name', 'waybill', 'destination']
   },
   {
     id: 'parcel_delivered',
     name: 'Parcel Delivered',
-    message: 'Dear {name}, your parcel ({waybill}) has been successfully delivered to {destination}. Thank you for choosing NID Logistics Ltd.',
+    message: 'Dear {name}, your parcel ({waybill}) has been successfully delivered to {destination}. Thank you for choosing Ficma Home Logistics.',
     variables: ['name', 'waybill', 'destination']
   },
   {
     id: 'ready_for_pickup',
     name: 'Ready for Pickup',
-    message: 'Dear {name}, your parcel ({waybill}) has arrived at {destination} and is ready for pickup. Please collect it at your earliest convenience. Thank you for choosing NID Logistics Ltd.',
+    message: 'Dear {name}, your parcel ({waybill}) has arrived at {destination} and is ready for pickup. Please collect it at your earliest convenience. Thank you for choosing Ficma Home Logistics.',
     variables: ['name', 'waybill', 'destination']
   },
   {

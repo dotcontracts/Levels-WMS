@@ -32,24 +32,24 @@ namespace wms_android.shared.Services
                     return $"Dear {parcel.Receiver}, your parcel {parcel.WaybillNumber} from {parcel.Sender} ({hashedSenderPhone}) " +
                            $"containing {parcel.Quantity} parcel(s) has been picked up for delivery to {parcel.Destination}. " +
                            $"Amount to pay on delivery Ksh {parcel.TotalAmount}. " +
-                           $"Thank you for choosing NID Logistics.";
+                           $"Thank you for choosing Ficma Home Logistics.";
                     
                 case "PAID":
                     return $"Dear {parcel.Receiver}, your parcel {parcel.WaybillNumber} from {parcel.Sender} ({hashedSenderPhone}) " +
                            $"containing {parcel.Quantity} parcel(s) has been picked up for delivery to {parcel.Destination}. " +
                            $"The parcel has been fully paid for. " +
-                           $"Thank you for choosing NID Logistics.";
+                           $"Thank you for choosing Ficma Home Logistics.";
                     
                 case "CONTRACT":
                     return $"Dear {parcel.Receiver}, your parcel {parcel.WaybillNumber} from {parcel.Sender} ({hashedSenderPhone}) " +
                            $"containing {parcel.Quantity} parcel(s) has been picked up for delivery to {parcel.Destination}. " +
-                           $"Thank you for choosing NID Logistics.";
+                           $"Thank you for choosing Ficma Home Logistics.";
                     
                 default:
                     // Default to a generic message if payment method not recognized
                     return $"Dear {parcel.Receiver}, your parcel {parcel.WaybillNumber} from {parcel.Sender} ({hashedSenderPhone}) " +
                            $"containing {parcel.Quantity} parcel(s) has been picked up for delivery to {parcel.Destination}. " +
-                           $"Thank you for choosing NID Logistics.";
+                           $"Thank you for choosing Ficma Home Logistics.";
             }
         }
         

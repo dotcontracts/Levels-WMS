@@ -247,10 +247,10 @@ const AppSidebar: React.FC = () => {
               </div>
               <div className="flex flex-col">
                 <span className="text-xl font-bold text-gray-900 dark:text-white">
-                  NID Logistics
+                  Ficma Home Logistics
                 </span>
                 <span className="text-xs text-gray-500 dark:text-gray-400">
-                  Dispatch System
+                  Service beyond customer's expectation
                 </span>
               </div>
             </>

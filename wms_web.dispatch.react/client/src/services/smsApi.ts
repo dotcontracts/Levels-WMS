@@ -43,9 +43,9 @@ class SMSApiService {
   constructor() {
     this.config = {
       SERVER: process.env.REACT_APP_SMS_SERVER || 'https://smsportal.hostpinnacle.co.ke/SMSApi',
-      USER_ID: process.env.REACT_APP_SMS_USER_ID || 'nidlogistics1',
+      USER_ID: process.env.REACT_APP_SMS_USER_ID || 'ficmahomelogistics',
       PASSWORD: process.env.REACT_APP_SMS_PASSWORD || 'hqvu69ND',
-      SENDER_NAME: process.env.REACT_APP_SMS_SENDER_NAME || 'NID_LOG_LTD'
+      SENDER_NAME: process.env.REACT_APP_SMS_SENDER_NAME || 'FICMA_HOME'
     };
   }
 
@@ -175,7 +175,7 @@ class SMSApiService {
     recipientName: string
   ): string {
     const greeting = `Dear ${recipientName},`;
-    const closing = `Thank you for choosing NID Logistics Ltd.`;
+    const closing = `Thank you for choosing Ficma Home Logistics.`;
     
     let mainMessage = '';
     
@@ -211,7 +211,7 @@ class SMSApiService {
     additionalInfo?: string
   ): string {
     const greeting = `Dear ${recipientName},`;
-    const closing = `Thank you for choosing NID Logistics Ltd.`;
+    const closing = `Thank you for choosing Ficma Home Logistics.`;
     
     let mainMessage = '';
     

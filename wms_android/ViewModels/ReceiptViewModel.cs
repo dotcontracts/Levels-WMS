@@ -376,9 +376,9 @@ namespace wms_android.ViewModels
             var username = Preferences.Get("CurrentUsername", "Staff");
             
             var content = $@"
-        NID Logistics Ltd
-           0116000004
-  info@nidlogistics.co.ke
+    FICMA HOME LOGISTICS
+        0707136852
+ficmahomelogistics19@gmail.com
        WAYBILL RECEIPT
 
 Waybill Number: {WaybillNumber}
@@ -428,9 +428,9 @@ NB:
             var username = Preferences.Get("CurrentUsername", "Staff");
             
             var content = $@"
-        NID Logistics Ltd
-           0116000004
-  info@nidlogistics.co.ke
+    FICMA HOME LOGISTICS
+        0707136852
+ficmahomelogistics19@gmail.com
        WAYBILL RECEIPT
 
 Waybill Number: {WaybillNumber}

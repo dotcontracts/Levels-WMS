@@ -107,10 +107,10 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice }) =
       <div className="print-header">
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="print-company-name">NID LOGISTICS LTD</h1>
-            <p className="text-gray-600">Efficiency in Motion</p>
+            <h1 className="print-company-name">FICMA HOME LOGISTICS</h1>
+            <p className="text-gray-600">Service beyond customer's expectation</p>
             <p className="text-sm text-gray-500 mt-2">
-              Phone: 0116000004 | Email: info@nidlogistics.co.ke<br/>
+              Phone: 0707136852 | Email: ficmahomelogistics19@gmail.com<br/>
               P.O. BOX 42606-00100, Nairobi<br/>
               Address: SMK Business Park, Off Enterprise Road, 1st Floor, Room A13
             </p>
@@ -236,12 +236,11 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice }) =
         <h3 className="font-bold text-lg mb-3">Payment Information</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
           <div>
-            <h4 className="font-semibold mb-2">M-PESA Payment Details:</h4>
+            <h4 className="font-semibold mb-2">Mobile Money Payment Details:</h4>
             <div className="space-y-1">
-              <div><strong>Paybill:</strong> 522533</div>
-              <div><strong>Account Number:</strong> 1329713648</div>
-              <div><strong>Till Number:</strong> 4214115 (Direct-pay clients only)</div>
-              <div><strong>Account Name:</strong> NID LOGISTICS</div>
+              <div><strong>Equity Mobile App:</strong> Dial *247#, Business No: 889404, Account: {invoice.invoiceNumber}</div>
+              <div><strong>M-PESA/Airtel Money:</strong> Paybill 247247, Account: 889404</div>
+              <div><strong>Account Name:</strong> FICMA HOME LOGISTICS</div>
             </div>
           </div>
           
@@ -249,8 +248,8 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice }) =
             <h4 className="font-semibold mb-2">Payment Instructions:</h4>
             <div className="space-y-1">
               <div>• Payment is due within {invoice.customer?.paymentTerms || 'Net 30'}</div>
-              <div>• Paybill: 522533, Account: 1329713648</div>
-              <div>• Mpesa Till: 4214115</div>
+              <div>• Equity App: Dial *247#, Business: 889404, Account: {invoice.invoiceNumber}</div>
+              <div>• M-PESA/Airtel: Paybill 247247, Account: 889404</div>
             </div>
           </div>
         </div>
@@ -260,7 +259,7 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice }) =
       <div className="print-footer">
         <div className="text-center border-t pt-4">
           <p>Thank you for your business!</p>
-          <p>NID LOGISTICS LTD - Efficiency in Motion</p>
+          <p>FICMA HOME LOGISTICS - Service beyond customer's expectation</p>
           <p>Generated on {new Date().toLocaleDateString('en-KE')} | Invoice #{invoice.invoiceNumber}</p>
         </div>
       </div>
@@ -426,9 +425,9 @@ const generateInvoiceHTML = (invoice: Invoice) => {
   return `
     <div class="header">
       <div class="company-info">
-        <h1>NID LOGISTICS LTD</h1>
-        <p>Efficiency in Motion</p>
-        <p style="margin-top: 5px; color: #666;">Phone: 0116000004 | Email: info@nidlogistics.co.ke<br/>P.O. BOX 42606-00100, Nairobi<br/>Address: SMK Business Park, Off Enterprise Road, 1st Floor, Room A13</p>
+        <h1>FICMA HOME LOGISTICS</h1>
+        <p>Service beyond customer's expectation</p>
+        <p style="margin-top: 5px; color: #666;">Phone: 0707136852 | Email: ficmahomelogistics19@gmail.com<br/>P.O. BOX 42606-00100, Nairobi<br/>Address: SMK Business Park, Off Enterprise Road, 1st Floor, Room A13</p>
       </div>
       <div class="invoice-info">
         <h2>INVOICE</h2>
@@ -539,12 +538,11 @@ const generateInvoiceHTML = (invoice: Invoice) => {
         <h3 style="margin-bottom: 15px;">Payment Information</h3>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
           <div>
-            <h4 style="margin-bottom: 10px; font-weight: 600;">M-PESA Payment Details:</h4>
+            <h4 style="margin-bottom: 10px; font-weight: 600;">Mobile Money Payment Details:</h4>
             <div style="line-height: 1.6; font-size: 14px;">
-              <div><strong>Paybill:</strong> 522533</div>
-              <div><strong>Account Number:</strong> 1329713648</div>
-              <div><strong>Till Number:</strong> 4214115 (Direct-pay clients only)</div>
-              <div><strong>Account Name:</strong> NID LOGISTICS</div>
+              <div><strong>Equity Mobile App:</strong> Dial *247#, Business No: 889404, Account: {invoice.invoiceNumber}</div>
+              <div><strong>M-PESA/Airtel Money:</strong> Paybill 247247, Account: 889404</div>
+              <div><strong>Account Name:</strong> FICMA HOME LOGISTICS</div>
             </div>
           </div>
           
@@ -552,8 +550,8 @@ const generateInvoiceHTML = (invoice: Invoice) => {
             <h4 style="margin-bottom: 10px; font-weight: 600;">Payment Instructions:</h4>
             <div style="line-height: 1.6; font-size: 14px;">
               <div>• Payment is due within ${invoice.customer?.paymentTerms || 'Net 30'}</div>
-              <div>• Paybill: 522533, Account: 1329713648</div>
-              <div>• Mpesa Till: 4214115</div>
+              <div>• Equity App: Dial *247#, Business: 889404, Account: {invoice.invoiceNumber}</div>
+              <div>• M-PESA/Airtel: Paybill 247247, Account: 889404</div>
             </div>
           </div>
         </div>
@@ -561,7 +559,7 @@ const generateInvoiceHTML = (invoice: Invoice) => {
 
       <div style="text-align: center; margin-top: 50px; border-top: 1px solid #ddd; padding-top: 20px; color: #666; font-size: 12px;">
         <p>Thank you for your business!</p>
-        <p>NID LOGISTICS LTD - Efficiency in Motion</p>
+        <p>FICMA HOME LOGISTICS - Service beyond customer's expectation</p>
         <p>Generated on ${new Date().toLocaleDateString('en-KE')} | Invoice #${invoice.invoiceNumber}</p>
       </div>
     </div>

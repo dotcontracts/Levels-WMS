@@ -146,7 +146,7 @@ namespace wms_android.ViewModels
                               $"Version: {AppVersion}\n" +
                               $"Device: {DeviceModel}\n" +
                               $"OS: {OsVersion}\n\n" +
-                              $"© 2025 Chronos Technologies\n" +
+                              $"© {DateTime.Now.Year} Chronos Technologies\n" +
                               $"All rights reserved.";
 
             await _dialogService.ShowAlertAsync("About", aboutMessage);

@@ -976,9 +976,9 @@ NB:
    company not liable.
 
 PAYMENT INFO:
-Paybill: 522533
-Account: 1329713648
-Mpesa Till: 4214115
+Equity App: Dial *247#, Business: 889404
+Account: {waybillNumber}
+M-PESA/Airtel: Paybill 247247, Account: 889404
 
 ";
         }
@@ -1103,9 +1103,9 @@ NB:
    company not liable.
 
 PAYMENT INFO:
-Paybill: 522533
-Account: 1329713648
-Mpesa Till: 4214115
+Equity App: Dial *247#, Business: 889404
+Account: {waybillNumber}
+M-PESA/Airtel: Paybill 247247, Account: 889404
 
 ";
             return content;
@@ -1214,9 +1214,9 @@ NB:
    company not liable.
 
 PAYMENT INFO:
-Paybill: 522533
-Account: 1329713648
-Mpesa Till: 4214115
+Equity App: Dial *247#, Business: 889404
+Account: {waybillNumber}
+M-PESA/Airtel: Paybill 247247, Account: 889404
 
 ";
         }
