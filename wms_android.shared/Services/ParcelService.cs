@@ -22,7 +22,7 @@ namespace wms_android.shared.Services
         public ParcelService(HttpClient httpClient, IConfiguration configuration)
         {
             _httpClient = httpClient;
-            _baseUrl = configuration["ApiSettings:BaseUrl"] ?? "https://plankton-app-d86df.ondigitalocean.app/";
+            _baseUrl = configuration["ApiSettings:BaseUrl"] ?? "https://wmsandroidapi-w74du.ondigitalocean.app/";
             
             // Configure HttpClient
             _httpClient.BaseAddress = new Uri(_baseUrl);

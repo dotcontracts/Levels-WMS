@@ -72,8 +72,8 @@ namespace wms_android
             builder.Services.AddTransient<HttpClient>(sp => {
                 var client = new HttpClient();
                 // Hardcoded for debugging/production fix
-                var baseUrl = "https://plankton-app-d86df.ondigitalocean.app/";
-                // var baseUrl = configuration["ApiSettings:BaseUrl"] ?? "https://plankton-app-d86df.ondigitalocean.app/";
+                var baseUrl = "https://wmsandroidapi-w74du.ondigitalocean.app/";
+                // var baseUrl = configuration["ApiSettings:BaseUrl"] ?? "https://wmsandroidapi-w74du.ondigitalocean.app/";
                 
                 // Ensure baseUrl doesn't include "/api"
                 if (baseUrl.EndsWith("/api/")) {
@@ -87,7 +87,7 @@ namespace wms_android
                     System.Diagnostics.Debug.WriteLine($"Configured HttpClient with BaseAddress: {baseUrl}");
                 } catch (Exception ex) {
                     System.Diagnostics.Debug.WriteLine($"Error setting BaseAddress: {ex.Message}");
-                    client.BaseAddress = new Uri("https://plankton-app-d86df.ondigitalocean.app/");
+                    client.BaseAddress = new Uri("https://wmsandroidapi-w74du.ondigitalocean.app/");
                 }
                 return client;
             });

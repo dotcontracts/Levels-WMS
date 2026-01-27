@@ -48,6 +48,16 @@ Desktop.ini
 # Ignore build artifacts and binaries
 */bin/
 */obj/
+
+# Security: Environment and configuration files with sensitive data
+appsettings.Production.json
+appsettings.Development.json
+appsettings.Deployment.json
+*.env
+*.env.local
+*.env.production
+*.env.development
+!*.env.example
 *.dll
 *.pdb
 *.apk

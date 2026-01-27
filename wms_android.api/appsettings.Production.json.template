@@ -1,9 +1,9 @@
 {
   "ConnectionStrings": {
-    "DefaultConnection": "Host=165.232.177.50;Port=5432;Database=NID_WMS;Username=nid_user;Password=2025@_1Nid;SSL Mode=Prefer;Trust Server Certificate=true"
+    "DefaultConnection": "${DATABASE_CONNECTION_STRING}"
   },
   "JwtConfig": {
-    "Secret": "8d8c4028e2fed0a96694bb30929c3053",
+    "Secret": "${JWT_SECRET}",
     "Issuer": "wms_android.api",
     "Audience": "wms_android.client",
     "ExpiryInDays": 7,
@@ -20,11 +20,10 @@
   "AllowedHosts": "*",
   "Cors": {
     "AllowedOrigins": [
-      "https://www.system.ficma.co.ke",
+      "${FRONTEND_URL}",
       "${API_BASE_URL}",
       "http://localhost:3000",
-      "https://localhost:3001",
-      "https://nid-wms-app-4vha9.ondigitalocean.app"
+      "https://localhost:3001"
     ]
   },
   "ApiSettings": {
