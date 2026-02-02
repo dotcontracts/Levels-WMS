@@ -47,7 +47,7 @@ cp wms_android.api/appsettings.Production.json.template wms_android.api/appsetti
 DATABASE_CONNECTION_STRING="Host=YOUR_HOST;Port=5432;Database=YOUR_DB;Username=YOUR_USER;Password=YOUR_PASSWORD;SSL Mode=Prefer;Trust Server Certificate=true"
 JWT_SECRET="your-secure-jwt-secret-key-here"
 API_BASE_URL="https://wmsandroidapi-w74du.ondigitalocean.app"
-FRONTEND_URL="https://your-frontend-domain.com"
+FRONTEND_URL="https://wms-ficma-dispatch-l5z4y.ondigitalocean.app"
 ```
 
 ### 2. React Configuration
@@ -89,7 +89,18 @@ For Digital Ocean, set environment variables in the App Platform dashboard:
    - `API_BASE_URL`
    - `FRONTEND_URL`
 
-### 5. Generate New Secrets
+### 5. CORS Configuration
+
+The API automatically configures CORS based on environment variables if no configuration file is present:
+
+- `FRONTEND_URL`: Your frontend domain (e.g., `https://wms-ficma-dispatch-l5z4y.ondigitalocean.app`)
+- `API_BASE_URL`: Your API domain (e.g., `https://wmsandroidapi-w74du.ondigitalocean.app`)
+
+**Common CORS Errors:**
+- `No 'Access-Control-Allow-Origin' header`: FRONTEND_URL not set correctly
+- `CORS preflight request failed`: API not deployed with updated CORS settings
+
+### 6. Generate New Secrets
 
 **JWT Secret Generation:**
 ```bash

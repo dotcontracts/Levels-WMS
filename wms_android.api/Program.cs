@@ -110,8 +110,29 @@ public class Program
                 };
             });
 
-        // Configure CORS
-        var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? new[] { "*" };
+        // Configure CORS - support environment variables fallback
+        var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+        
+        // If no config file CORS settings, use environment variables
+        if (corsOrigins == null || corsOrigins.Length == 0)
+        {
+            var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://wms-ficma-dispatch-l5z4y.ondigitalocean.app";
+            var apiBaseUrl = Environment.GetEnvironmentVariable("API_BASE_URL") ?? "https://wmsandroidapi-w74du.ondigitalocean.app";
+            
+            corsOrigins = new[]
+            {
+                frontendUrl,
+                apiBaseUrl,
+                "http://localhost:3000",
+                "https://localhost:3001"
+            };
+            
+            Console.WriteLine($"✓ Using CORS origins from environment variables: {string.Join(", ", corsOrigins)}");
+        }
+        else
+        {
+            Console.WriteLine($"✓ Using CORS origins from configuration: {string.Join(", ", corsOrigins)}");
+        }
         builder.Services.AddCors(options =>
         {
             options.AddPolicy("AllowWebApp",
@@ -119,7 +140,8 @@ public class Program
                 {
                     policy.WithOrigins(corsOrigins)
                         .AllowAnyMethod()
-                        .AllowAnyHeader();
+                        .AllowAnyHeader()
+                        .AllowCredentials();
                 });
         });
 
