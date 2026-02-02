@@ -152,8 +152,8 @@ const Parcels: React.FC = () => {
         <div class="container">
           <!-- Header -->
           <div class="header">
-            <div class="company-name">NID LOGISTICS LTD</div>
-            <div class="company-tagline">Efficiency in Motion</div>
+            <div class="company-name">FICMA HOME LOGISTICS</div>
+            <div class="company-tagline">Service beyond customer's expectation</div>
             <div class="document-title">OFFICIAL CONSIGNMENT NOTE</div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
               <div>
@@ -280,7 +280,7 @@ const Parcels: React.FC = () => {
           <!-- Footer -->
           <div class="footer">
             <div style="text-align: center; border: 1px solid #000; padding: 10px; margin-top: 20px;">
-              <strong>NID LOGISTICS LTD - Efficiency in Motion</strong><br>
+              <strong>FICMA HOME LOGISTICS - Service beyond customer's expectation</strong><br>
               This is an official computer-generated document.<br>
               For inquiries, contact your nearest branch office.<br>
               <strong>Document Generated: ${currentDate}</strong>
@@ -373,8 +373,8 @@ const Parcels: React.FC = () => {
       <body>
         <div class="receipt">
           <!-- Header -->
-          <div class="center bold large">NID LOGISTICS LTD</div>
-          <div class="center small">Efficiency in Motion</div>
+          <div class="center bold large">FICMA HOME LOGISTICS</div>
+          <div class="center small">Service beyond customer's expectation</div>
           <div class="divider"></div>
           
           <div class="center bold medium">CONSIGNMENT NOTE</div>

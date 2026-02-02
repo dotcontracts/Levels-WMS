@@ -453,8 +453,9 @@ const DispatchList: React.FC = () => {
             </head>
             <body>
               <div class="header">
-                <h1>NID LOGISTICS DISPATCH NOTE</h1>
+                <h1>FICMA HOME LOGISTICS DISPATCH NOTE</h1>
                 <h2>DISPATCH MANAGEMENT SYSTEM</h2>
+                <p style="margin: 5px 0; font-size: 10px;">Service beyond customer's expectation</p>
               </div>
               
               <div class="info-grid">

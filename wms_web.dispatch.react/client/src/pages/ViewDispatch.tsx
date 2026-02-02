@@ -474,9 +474,9 @@ const ViewDispatch: React.FC = () => {
               </head>
               <body>
                 <div class="header">
-                  <h1>NID LOGISTICS LTD DISPATCH NOTE</h1>
+                  <h1>FICMA HOME LOGISTICS DISPATCH NOTE</h1>
                   <h2>DISPATCH MANAGEMENT SYSTEM</h2>
-                  <p style="margin: 5px 0; font-size: 10px;">Efficiency in Motion</p>
+                  <p style="margin: 5px 0; font-size: 10px;">Service beyond customer's expectation</p>
                 </div>
                 
                 <div class="info-grid">
@@ -616,16 +616,15 @@ const ViewDispatch: React.FC = () => {
                   <h3 style="text-align: center; margin: 0 0 10px 0; font-size: 14px;">PAYMENT INFORMATION</h3>
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 10px;">
                     <div>
-                      <h4 style="margin: 0 0 5px 0; font-size: 11px;">M-PESA Payment Details:</h4>
-                      <div><strong>Paybill:</strong> 522533</div>
-                      <div><strong>Account Number:</strong> 1329713648</div>
-                      <div><strong>Till Number:</strong> 4214115 (Direct-pay only)</div>
-                      <div><strong>Account Name:</strong> NID LOGISTICS LTD</div>
+                      <h4 style="margin: 0 0 5px 0; font-size: 11px;">Mobile Money Payment Details:</h4>
+                      <div><strong>Equity Mobile App:</strong> Dial *247#, Business No: 889404</div>
+                      <div><strong>M-PESA/Airtel Money:</strong> Paybill 247247, Account: 889404</div>
+                      <div><strong>Account Name:</strong> FICMA HOME LOGISTICS</div>
                     </div>
                     <div>
                       <h4 style="margin: 0 0 5px 0; font-size: 11px;">Payment Instructions:</h4>
-                      <div>• Use Paybill 522533 for payments</div>
-                      <div>• Include dispatch code as reference</div>
+                      <div>• Equity App: Dial *247#, Business: 889404</div>
+                      <div>• M-PESA/Airtel: Paybill 247247, Account: 889404</div>
                       <div>• COD payments collected on delivery</div>
                       <div>• Contact office for payment queries</div>
                     </div>
@@ -633,7 +632,7 @@ const ViewDispatch: React.FC = () => {
                 </div>
                 
                 <div style="text-align: center; margin-top: 20px; font-size: 9px; color: #666;">
-                  <p style="margin: 0;">Thank you for choosing NID LOGISTICS LTD - Efficiency in Motion</p>
+                  <p style="margin: 0;">Thank you for choosing FICMA HOME LOGISTICS - Service beyond customer's expectation</p>
                   <p style="margin: 5px 0 0 0;">Generated: ${new Date().toLocaleDateString('en-KE')} | Dispatch: ${dispatch.dispatchCode}</p>
                 </div>
               </body>
