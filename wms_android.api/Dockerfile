@@ -15,11 +15,11 @@ RUN echo "=== Starting build process ===" && \
     echo "Listing build context root:" && \
     ls -la / || echo "Could not list root"
 
-# Copy project files - build context is already at wms_android.api level
-COPY wms_android.api.csproj ./
-COPY ../wms_android.shared/wms_android.shared.csproj wms_android.shared/
+# Copy project files - build context is now at root level
+COPY wms_android.api/wms_android.api.csproj ./
+COPY wms_android.shared/wms_android.shared.csproj wms_android.shared/
 RUN echo "=== Project files copied ===" && \
-    ls -la /src/wms_android.api/ && \
+    ls -la /src/ && \
     ls -la /src/wms_android.shared/
 
 # Set working directory and restore with optimizations
@@ -28,7 +28,7 @@ WORKDIR /src
 # Optimize restore process - reduce memory usage
 RUN echo "=== Restoring NuGet packages ===" && \
     dotnet nuget locals all --clear && \
-    dotnet restore "wms_android.api.csproj" \
+    dotnet restore \
     --verbosity minimal \
     --no-cache \
     --disable-parallel || (echo "ERROR: Restore failed!" && exit 1)
@@ -36,8 +36,8 @@ RUN echo "=== Restoring NuGet packages ===" && \
 # Copy source code
 RUN echo "=== Copying source files ===" && \
     echo "Files before copy:" && ls -la /src || echo "Source directory listing failed"
-COPY . ./
-COPY ../wms_android.shared/ wms_android.shared/
+COPY wms_android.api/ ./
+COPY wms_android.shared/ wms_android.shared/
 RUN echo "=== Files after copy ===" && \
     ls -la /src && \
     echo "=== API project files ===" && \
@@ -48,7 +48,7 @@ RUN echo "=== Files after copy ===" && \
 # Build and publish in one step to avoid file missing issues
 WORKDIR /src
 RUN echo "Building and publishing application..." && \
-    dotnet publish "wms_android.api.csproj" \
+    dotnet publish \
     -c Release \
     -o /app/publish \
     --verbosity minimal \
