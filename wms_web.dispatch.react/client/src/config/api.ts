@@ -16,11 +16,11 @@ const getApiBaseUrl = (): string => {
   
   // Fallback: use localhost in development, production URL otherwise
   if (process.env.NODE_ENV === 'development') {
-    return 'http://localhost:5053/api';  // Local .NET API
+    return 'http://localhost:5053';  // Local .NET API
   }
 
-  // Important: production API is under /api path
-  return 'https://wmsandroidapi-w74du.ondigitalocean.app/api';  // Production URL
+  // Production API already has /api as path base
+  return 'https://levelsapi-82i8a.ondigitalocean.app';  // Production URL
 };
 
 /**

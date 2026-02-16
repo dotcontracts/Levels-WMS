@@ -25,7 +25,7 @@ Used when running `npm run build` (production mode).
 
 **Default Configuration:**
 ```env
-REACT_APP_API_BASE_URL=https://wmsandroidapi-w74du.ondigitalocean.app
+REACT_APP_API_BASE_URL=https://levelsapi-82i8a.ondigitalocean.app
 REACT_APP_API_TIMEOUT=30000
 ```
 
@@ -35,7 +35,7 @@ REACT_APP_API_TIMEOUT=30000
 The base URL for all API requests.
 
 - **Development**: `/api` (uses proxy)
-- **Production**: `https://wmsandroidapi-w74du.ondigitalocean.app`
+- **Production**: `https://levelsapi-82i8a.ondigitalocean.app`
 - **Type**: String
 - **Required**: No (has sensible defaults)
 
@@ -66,7 +66,7 @@ const getApiBaseUrl = (): string => {
     return '/api';
   }
   
-  return 'https://wmsandroidapi-w74du.ondigitalocean.app';
+  return 'https://levelsapi-82i8a.ondigitalocean.app';
 };
 ```
 
@@ -89,7 +89,7 @@ For development, the proxy forwards `/api` requests to the backend:
 
 ```json
 {
-  "proxy": "https://wmsandroidapi-w74du.ondigitalocean.app"
+  "proxy": "https://levelsapi-82i8a.ondigitalocean.app"
 }
 ```
 
@@ -113,7 +113,7 @@ For development, the proxy forwards `/api` requests to the backend:
    ```bash
    # Edit .env.development
    # Change to direct URL
-   REACT_APP_API_BASE_URL=https://wmsandroidapi-w74du.ondigitalocean.app
+   REACT_APP_API_BASE_URL=https://levelsapi-82i8a.ondigitalocean.app
    
    # Or use local backend
    REACT_APP_API_BASE_URL=http://localhost:5000
@@ -129,7 +129,7 @@ For development, the proxy forwards `/api` requests to the backend:
    # Ensure .env.production is configured
    cat .env.production
    # Should contain:
-   # REACT_APP_API_BASE_URL=https://wmsandroidapi-w74du.ondigitalocean.app
+   # REACT_APP_API_BASE_URL=https://levelsapi-82i8a.ondigitalocean.app
    # REACT_APP_API_TIMEOUT=30000
    
    # Build the application
@@ -169,7 +169,7 @@ REACT_APP_API_TIMEOUT=60000  # 60 seconds
 
 2. **Verify API is running**
    ```bash
-   curl https://wmsandroidapi-w74du.ondigitalocean.app/health
+   curl https://levelsapi-82i8a.ondigitalocean.app/health
    ```
 
 3. **Check browser console**
@@ -232,10 +232,10 @@ All API requests are automatically prefixed with the base URL:
 
 | Endpoint | Full URL (Production) |
 |----------|----------------------|
-| `/Auth/login` | `https://wmsandroidapi-w74du.ondigitalocean.app/Auth/login` |
-| `/Parcels` | `https://wmsandroidapi-w74du.ondigitalocean.app/Parcels` |
-| `/Dispatches` | `https://wmsandroidapi-w74du.ondigitalocean.app/Dispatches` |
-| `/Users` | `https://wmsandroidapi-w74du.ondigitalocean.app/Users` |
+| `/Auth/login` | `https://levelsapi-82i8a.ondigitalocean.app/Auth/login` |
+| `/Parcels` | `https://levelsapi-82i8a.ondigitalocean.app/Parcels` |
+| `/Dispatches` | `https://levelsapi-82i8a.ondigitalocean.app/Dispatches` |
+| `/Users` | `https://levelsapi-82i8a.ondigitalocean.app/Users` |
 
 ## Security Notes
 

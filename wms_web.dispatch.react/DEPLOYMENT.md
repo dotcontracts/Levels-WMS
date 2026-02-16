@@ -16,7 +16,7 @@
    # Verify production configuration
    cat .env.production
    # Should show:
-   # REACT_APP_API_BASE_URL=https://wmsandroidapi-w74du.ondigitalocean.app
+   # REACT_APP_API_BASE_URL=https://levelsapi-82i8a.ondigitalocean.app
    # REACT_APP_API_TIMEOUT=30000
    ```
 
@@ -95,7 +95,7 @@ vercel --prod
    - Output Directory: `build`
    - Environment Variables:
      ```
-     REACT_APP_API_BASE_URL=https://wmsandroidapi-w74du.ondigitalocean.app
+     REACT_APP_API_BASE_URL=https://levelsapi-82i8a.ondigitalocean.app
      REACT_APP_API_TIMEOUT=30000
      ```
 
@@ -141,7 +141,7 @@ REACT_APP_API_TIMEOUT=15000
 
 ### Production
 ```env
-REACT_APP_API_BASE_URL=https://wmsandroidapi-w74du.ondigitalocean.app
+REACT_APP_API_BASE_URL=https://levelsapi-82i8a.ondigitalocean.app
 REACT_APP_API_TIMEOUT=30000
 ```
 

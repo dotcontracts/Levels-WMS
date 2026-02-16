@@ -29,7 +29,7 @@ const getApiBaseUrl = (): string => {
   
   // Smart defaults
   if (process.env.NODE_ENV === 'development') return '/api';
-  return 'https://wmsandroidapi-w74du.ondigitalocean.app';
+  return 'https://levelsapi-82i8a.ondigitalocean.app';
 };
 
 // Unified auth headers from multiple storage locations
@@ -64,7 +64,7 @@ signal: AbortSignal.timeout(API_CONFIG.TIMEOUT), // Centralized
 
 #### `.env.example` (Template)
 ```env
-REACT_APP_API_BASE_URL=https://wmsandroidapi-w74du.ondigitalocean.app
+REACT_APP_API_BASE_URL=https://levelsapi-82i8a.ondigitalocean.app
 REACT_APP_API_TIMEOUT=15000
 ```
 
@@ -76,7 +76,7 @@ REACT_APP_API_TIMEOUT=15000
 
 #### `.env.production` (Production)
 ```env
-REACT_APP_API_BASE_URL=https://wmsandroidapi-w74du.ondigitalocean.app
+REACT_APP_API_BASE_URL=https://levelsapi-82i8a.ondigitalocean.app
 REACT_APP_API_TIMEOUT=30000  # Longer timeout for production
 ```
 
@@ -204,7 +204,7 @@ cd client
 npm start
 ```
 - Uses `/api` proxy
-- Connects to `https://wmsandroidapi-w74du.ondigitalocean.app`
+- Connects to `https://levelsapi-82i8a.ondigitalocean.app`
 - Debug logs in console
 
 ### Production Build

@@ -7,13 +7,13 @@
 # The project is already configured!
 npm start
 ```
-Your app will use `/api` proxy to connect to: `https://wmsandroidapi-w74du.ondigitalocean.app`
+Your app will use `/api` proxy to connect to: `https://levelsapi-82i8a.ondigitalocean.app`
 
 ### For Production Build
 ```bash
 npm run build
 ```
-The build will use: `https://wmsandroidapi-w74du.ondigitalocean.app`
+The build will use: `https://levelsapi-82i8a.ondigitalocean.app`
 
 ## 📁 Configuration Files
 
@@ -65,7 +65,7 @@ See [API_CONFIGURATION.md](./API_CONFIGURATION.md) for complete documentation.
 
 | Variable | Development | Production |
 |----------|-------------|------------|
-| `REACT_APP_API_BASE_URL` | `/api` | `https://wmsandroidapi-w74du.ondigitalocean.app` |
+| `REACT_APP_API_BASE_URL` | `/api` | `https://levelsapi-82i8a.ondigitalocean.app` |
 | `REACT_APP_API_TIMEOUT` | `15000` | `30000` |
 
 ## 🔐 How Authentication Works
