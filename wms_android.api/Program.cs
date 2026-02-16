@@ -87,12 +87,35 @@ public class Program
                     errorCodesToAdd: null);
             }));
 
-        // Add Health Checks with the explicit connection string
-        builder.Services.AddHealthChecks()
-            .AddDbContextCheck<AppDbContext>();
+        // Add Health Checks with error handling
+        try
+        {
+            builder.Services.AddHealthChecks()
+                .AddDbContextCheck<AppDbContext>();
+            Console.WriteLine("✓ Health checks configured successfully");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠ WARNING: Health check configuration failed: {ex.Message}");
+            // Add basic health checks without DbContext
+            builder.Services.AddHealthChecks();
+        }
 
-        // Configure JWT
+        // Configure JWT with null checking
         var jwtConfig = builder.Configuration.GetSection("JwtConfig").Get<JwtConfig>();
+        if (jwtConfig == null || string.IsNullOrEmpty(jwtConfig.Secret))
+        {
+            Console.WriteLine("⚠ WARNING: JWT configuration is missing or invalid. Using fallback configuration.");
+            jwtConfig = new JwtConfig
+            {
+                Secret = "8d8c4028e2fed0a96694bb30929c3053",
+                Issuer = "wms_android.api",
+                Audience = "wms_android.client",
+                ExpiryInDays = 7,
+                ExpirationInMinutes = 60
+            };
+        }
+        Console.WriteLine($"✓ JWT Config loaded - Issuer: {jwtConfig.Issuer}, Audience: {jwtConfig.Audience}");
         builder.Services.AddSingleton(Options.Create(jwtConfig));
 
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -260,7 +283,23 @@ public class Program
             });
         });
 
-        app.Run();
+        try
+        {
+            Console.WriteLine("✓ Starting application...");
+            app.Run();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ CRITICAL ERROR during application startup:");
+            Console.WriteLine($"   Exception Type: {ex.GetType().Name}");
+            Console.WriteLine($"   Message: {ex.Message}");
+            Console.WriteLine($"   Stack Trace: {ex.StackTrace}");
+            if (ex.InnerException != null)
+            {
+                Console.WriteLine($"   Inner Exception: {ex.InnerException.Message}");
+            }
+            throw;
+        }
     }
 }
 // var builder = WebApplication.CreateBuilder(args);
