@@ -19,8 +19,8 @@ const getApiBaseUrl = (): string => {
     return 'http://localhost:5053';  // Local .NET API
   }
 
-  // Production API already has /api as path base
-  return 'https://levelsapi-82i8a.ondigitalocean.app';  // Production URL
+  // Production API - includes /api path base
+  return 'https://levelsapi-82i8a.ondigitalocean.app/api';  // Production URL
 };
 
 /**
