@@ -49,6 +49,14 @@
                 </StackLayout>
             </Grid>
 
+            <!-- Search Bar -->
+            <StackLayout>
+                <Label Text="Search" FontSize="12" TextColor="{StaticResource PrimaryDark}"/>
+                <SearchBar Placeholder="Search waybill, sender, receiver..."
+                           Text="{Binding SearchText}"
+                           SearchCommand="{Binding SearchParcelsCommand}" />
+            </StackLayout>
+
             <!-- Filter Buttons -->
             <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                 <Button Grid.Column="0" 
@@ -64,11 +72,20 @@
             </Grid>
         </StackLayout>
 
-        <!-- Parcels List -->
-        <CollectionView Grid.Row="1" 
-                        ItemsSource="{Binding FilteredParcels}"
-                        IsVisible="{Binding IsLoading, Converter={StaticResource InvertedBoolConverter}}"
-                        BackgroundColor="{StaticResource Background}">
+        <!-- Status and Parcels List -->
+        <StackLayout Grid.Row="1" IsVisible="{Binding IsLoading, Converter={StaticResource InvertedBoolConverter}}">
+            <!-- Status Text -->
+            <Label Text="{Binding StatusText}" 
+                   FontSize="12" 
+                   TextColor="{StaticResource PrimaryDark}"
+                   HorizontalOptions="Center"
+                   Padding="10,5"
+                   IsVisible="{Binding StatusText, Converter={StaticResource StringToBoolConverter}}" />
+            
+            <CollectionView ItemsSource="{Binding Parcels}"
+                            BackgroundColor="{StaticResource Background}"
+                            RemainingItemsThreshold="10"
+                            RemainingItemsThresholdReachedCommand="{Binding LoadNextPageCommand}">
             <CollectionView.EmptyView>
                 <StackLayout HorizontalOptions="Center" VerticalOptions="Center">
                     <Label Text="No parcels found" 
@@ -157,6 +174,13 @@
                     </Grid>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
-        </CollectionView>
+            </CollectionView>
+            
+            <!-- Loading More Indicator -->
+            <ActivityIndicator IsRunning="{Binding IsLoadingMore}"
+                               IsVisible="{Binding IsLoadingMore}"
+                               HorizontalOptions="Center"
+                               Margin="10" />
+        </StackLayout>
     </Grid>
 </ContentPage>

@@ -2,5 +2,9 @@
 <network-security-config>
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">smsportal.hostpinnacle.co.ke</domain>
+        <domain includeSubdomains="true">192.168.1.69</domain>
+        <domain includeSubdomains="true">192.168.0.0</domain>
+        <domain includeSubdomains="true">192.168.1.0</domain>
+        <domain includeSubdomains="true">10.0.0.0</domain>
     </domain-config>
 </network-security-config> 

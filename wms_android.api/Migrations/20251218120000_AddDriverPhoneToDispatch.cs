@@ -10,19 +10,37 @@ namespace wms_android.api.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AddColumn<string>(
-                name: "DriverPhone",
-                table: "Dispatches",
-                type: "text",
-                nullable: true);
+            // Check if column exists before adding it
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = 'Dispatches' 
+                        AND column_name = 'DriverPhone'
+                    ) THEN
+                        ALTER TABLE ""Dispatches"" ADD COLUMN ""DriverPhone"" text;
+                    END IF;
+                END $$;
+            ");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "DriverPhone",
-                table: "Dispatches");
+            // Check if column exists before dropping it
+            migrationBuilder.Sql(@"
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = 'Dispatches' 
+                        AND column_name = 'DriverPhone'
+                    ) THEN
+                        ALTER TABLE ""Dispatches"" DROP COLUMN ""DriverPhone"";
+                    END IF;
+                END $$;
+            ");
         }
     }
 }

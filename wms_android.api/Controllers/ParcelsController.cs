@@ -43,6 +43,287 @@ namespace wms_android.api.Controllers
             }
         }
 
+        /// <summary>
+        /// Enhanced paginated endpoint with efficient database-level filtering
+        /// </summary>
+        [HttpGet("paged")]
+        public async Task<IActionResult> GetParcelsPaged(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 50,
+            [FromQuery] string? destination = null,
+            [FromQuery] ParcelStatus? status = null,
+            [FromQuery] string? statuses = null,
+            [FromQuery] DateTime? fromDate = null,
+            [FromQuery] DateTime? toDate = null,
+            [FromQuery] string? createdByUsername = null,
+            [FromQuery] string? search = null)
+        {
+            try
+            {
+                // Validate pagination parameters
+                page = Math.Max(1, page);
+                pageSize = Math.Clamp(pageSize, 1, 500); // Max 500 items per page
+
+                var query = _context.Parcels
+                    .Include(p => p.CreatedBy)
+                    .AsQueryable();
+
+                // Apply filters at database level for optimal performance
+                if (!string.IsNullOrEmpty(destination))
+                {
+                    query = query.Where(p => p.Destination == destination);
+                }
+
+                // Handle multiple statuses efficiently
+                if (!string.IsNullOrEmpty(statuses))
+                {
+                    var statusList = statuses.Split(',')
+                        .Where(s => Enum.TryParse<ParcelStatus>(s.Trim(), out _))
+                        .Select(s => Enum.Parse<ParcelStatus>(s.Trim()))
+                        .ToList();
+                    
+                    if (statusList.Any())
+                    {
+                        query = query.Where(p => statusList.Contains(p.Status));
+                    }
+                }
+                else if (status.HasValue)
+                {
+                    query = query.Where(p => p.Status == status.Value);
+                }
+
+                // Efficient date filtering using indexes
+                if (fromDate.HasValue)
+                {
+                    query = query.Where(p => p.CreatedAt >= fromDate.Value.Date);
+                }
+                if (toDate.HasValue)
+                {
+                    var endDate = toDate.Value.Date.AddDays(1); // Include entire day
+                    query = query.Where(p => p.CreatedAt < endDate);
+                }
+
+                // Username filtering with join
+                if (!string.IsNullOrEmpty(createdByUsername))
+                {
+                    query = query.Where(p => p.CreatedBy != null && p.CreatedBy.Username == createdByUsername);
+                }
+
+                // Search functionality across multiple fields
+                if (!string.IsNullOrEmpty(search))
+                {
+                    var searchLower = search.ToLower();
+                    query = query.Where(p => 
+                        p.WaybillNumber.ToLower().Contains(searchLower) ||
+                        p.Sender.ToLower().Contains(searchLower) ||
+                        p.Receiver.ToLower().Contains(searchLower) ||
+                        p.Destination.ToLower().Contains(searchLower) ||
+                        p.ReceiverTelephone.Contains(search) ||
+                        p.SenderTelephone.Contains(search));
+                }
+
+                // Get total count before pagination
+                var totalCount = await query.CountAsync();
+                var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+                // Apply pagination and ordering
+                var parcels = await query
+                    .OrderByDescending(p => p.CreatedAt)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToListAsync();
+
+                var result = new
+                {
+                    Data = parcels,
+                    Page = page,
+                    PageSize = pageSize,
+                    TotalCount = totalCount,
+                    TotalPages = totalPages,
+                    HasNextPage = page < totalPages,
+                    HasPreviousPage = page > 1
+                };
+
+                System.Diagnostics.Debug.WriteLine($"Retrieved page {page} with {parcels.Count} parcels out of {totalCount} total");
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in GetParcelsPaged: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// User-specific paginated endpoint for better performance in AllParcelsView
+        /// </summary>
+        [HttpGet("user/{userId}/paged")]
+        public async Task<IActionResult> GetParcelsPagedByUser(
+            int userId,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 50,
+            [FromQuery] string? destination = null,
+            [FromQuery] ParcelStatus? status = null,
+            [FromQuery] string? statuses = null,
+            [FromQuery] DateTime? fromDate = null,
+            [FromQuery] DateTime? toDate = null,
+            [FromQuery] string? search = null)
+        {
+            try
+            {
+                // Validate pagination parameters
+                page = Math.Max(1, page);
+                pageSize = Math.Clamp(pageSize, 1, 500);
+
+                var query = _context.Parcels
+                    .Include(p => p.CreatedBy)
+                    .Where(p => p.CreatedById == userId)
+                    .AsQueryable();
+
+                // Apply filters efficiently at database level
+                if (!string.IsNullOrEmpty(destination))
+                {
+                    query = query.Where(p => p.Destination == destination);
+                }
+
+                if (!string.IsNullOrEmpty(statuses))
+                {
+                    var statusList = statuses.Split(',')
+                        .Where(s => Enum.TryParse<ParcelStatus>(s.Trim(), out _))
+                        .Select(s => Enum.Parse<ParcelStatus>(s.Trim()))
+                        .ToList();
+                    
+                    if (statusList.Any())
+                    {
+                        query = query.Where(p => statusList.Contains(p.Status));
+                    }
+                }
+                else if (status.HasValue)
+                {
+                    query = query.Where(p => p.Status == status.Value);
+                }
+
+                if (fromDate.HasValue)
+                {
+                    query = query.Where(p => p.CreatedAt >= fromDate.Value.Date);
+                }
+                if (toDate.HasValue)
+                {
+                    var endDate = toDate.Value.Date.AddDays(1);
+                    query = query.Where(p => p.CreatedAt < endDate);
+                }
+
+                if (!string.IsNullOrEmpty(search))
+                {
+                    var searchLower = search.ToLower();
+                    query = query.Where(p => 
+                        p.WaybillNumber.ToLower().Contains(searchLower) ||
+                        p.Sender.ToLower().Contains(searchLower) ||
+                        p.Receiver.ToLower().Contains(searchLower) ||
+                        p.Destination.ToLower().Contains(searchLower) ||
+                        p.ReceiverTelephone.Contains(search) ||
+                        p.SenderTelephone.Contains(search));
+                }
+
+                var totalCount = await query.CountAsync();
+                var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+                var parcels = await query
+                    .OrderByDescending(p => p.CreatedAt)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToListAsync();
+
+                var result = new
+                {
+                    Data = parcels,
+                    Page = page,
+                    PageSize = pageSize,
+                    TotalCount = totalCount,
+                    TotalPages = totalPages,
+                    HasNextPage = page < totalPages,
+                    HasPreviousPage = page > 1
+                };
+
+                System.Diagnostics.Debug.WriteLine($"Retrieved page {page} for user {userId} with {parcels.Count} parcels out of {totalCount} total");
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in GetParcelsPagedByUser: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Optimized destinations endpoint with caching headers
+        /// </summary>
+        [HttpGet("destinations")]
+        public async Task<ActionResult<IEnumerable<string>>> GetDestinations([FromQuery] ParcelStatus? status = null)
+        {
+            try
+            {
+                // Add cache headers for better performance
+                Response.Headers.Add("Cache-Control", "public, max-age=300"); // 5 minutes cache
+                
+                var query = _context.Parcels.AsQueryable();
+
+                if (status.HasValue)
+                {
+                    query = query.Where(p => p.Status == status.Value);
+                }
+
+                var destinations = await query
+                    .Where(p => !string.IsNullOrEmpty(p.Destination))
+                    .Select(p => p.Destination)
+                    .Distinct()
+                    .OrderBy(d => d)
+                    .ToListAsync();
+
+                return Ok(destinations);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error getting destinations: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// User-specific destinations for better filtering
+        /// </summary>
+        [HttpGet("user/{userId}/destinations")]
+        public async Task<ActionResult<IEnumerable<string>>> GetDestinationsByUser(int userId, [FromQuery] ParcelStatus? status = null)
+        {
+            try
+            {
+                Response.Headers.Add("Cache-Control", "public, max-age=300");
+                
+                var query = _context.Parcels
+                    .Where(p => p.CreatedById == userId)
+                    .AsQueryable();
+
+                if (status.HasValue)
+                {
+                    query = query.Where(p => p.Status == status.Value);
+                }
+
+                var destinations = await query
+                    .Where(p => !string.IsNullOrEmpty(p.Destination))
+                    .Select(p => p.Destination)
+                    .Distinct()
+                    .OrderBy(d => d)
+                    .ToListAsync();
+
+                return Ok(destinations);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error getting destinations for user: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
         [HttpGet("waybill/generate")]
         public async Task<ActionResult<string>> GenerateWaybill()
         {
@@ -410,39 +691,13 @@ namespace wms_android.api.Controllers
             }
         }
 
-        [HttpGet("destinations")]
-        public async Task<ActionResult<IEnumerable<string>>> GetDestinations([FromQuery] ParcelStatus? status = null)
-        {
-            try
-            {
-                var query = _context.Parcels.AsQueryable();
-
-                if (status.HasValue)
-                {
-                    query = query.Where(p => p.Status == status.Value);
-                }
-
-                var destinations = await query
-                    .Where(p => !string.IsNullOrEmpty(p.Destination))
-                    .Select(p => p.Destination)
-                    .Distinct()
-                    .OrderBy(d => d)
-                    .ToListAsync();
-
-                return Ok(destinations);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error getting destinations: {ex.Message}");
-                return StatusCode(500, new { error = ex.Message });
-            }
-        }
-
         [HttpGet("clerks")]
         public async Task<ActionResult<IEnumerable<string>>> GetClerks([FromQuery] string? destination = null, [FromQuery] ParcelStatus? status = null)
         {
             try
             {
+                Response.Headers.Add("Cache-Control", "public, max-age=300"); // 5 minutes cache
+                
                 var query = _context.Parcels
                     .Include(p => p.CreatedBy)
                     .Where(p => p.CreatedBy != null)

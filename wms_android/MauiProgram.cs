@@ -71,9 +71,16 @@ namespace wms_android
             // Create HttpClient for API access
             builder.Services.AddTransient<HttpClient>(sp => {
                 var client = new HttpClient();
-                // Hardcoded for debugging/production fix
-                var baseUrl = "https://wmsandroidapi-w74du.ondigitalocean.app/";
-                // var baseUrl = configuration["ApiSettings:BaseUrl"] ?? "https://wmsandroidapi-w74du.ondigitalocean.app/";
+
+                #if DEBUG
+                    // Get IP from your local machine - you may need to update this IP
+                    var localIP = "192.168.1.69"; // Change this to your actual machine IP
+                    var baseUrl = $"http://{localIP}:8081/";
+                    // For debugging - add more detailed logging
+                    System.Diagnostics.Debug.WriteLine($"API Base URL configured as: {baseUrl}");
+                #else
+                    var baseUrl = "https://wmsandroidapi-w74du.ondigitalocean.app/";
+                #endif
                 
                 // Ensure baseUrl doesn't include "/api"
                 if (baseUrl.EndsWith("/api/")) {
@@ -109,6 +116,9 @@ namespace wms_android
                 return new wms_android.shared.Services.SmsService(parcelService);
             });
             builder.Services.AddTransient<wms_android.shared.Interfaces.IAuthService, wms_android.shared.Services.AuthService>();
+            
+            // Register caching service
+            builder.Services.AddSingleton<wms_android.Services.ParcelCacheService>();
             
             // Register device-specific services
             builder.Services.AddSingleton<wms_android.Interfaces.IDeviceDetectionService, wms_android.Services.DeviceDetectionService>();

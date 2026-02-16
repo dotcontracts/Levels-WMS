@@ -11,6 +11,35 @@ namespace wms_android.shared.Models
         public int TotalPages { get; set; }
         public bool HasNextPage { get; set; }
         public bool HasPreviousPage { get; set; }
+
+        /// <summary>
+        /// Default constructor
+        /// </summary>
+        public PaginatedResponse()
+        {
+        }
+
+        /// <summary>
+        /// Constructor with data
+        /// </summary>
+        public PaginatedResponse(IEnumerable<T> data, int page, int pageSize, int totalCount)
+        {
+            Data = data;
+            Page = page;
+            PageSize = pageSize;
+            TotalCount = totalCount;
+            TotalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+            HasNextPage = page < TotalPages;
+            HasPreviousPage = page > 1;
+        }
+
+        /// <summary>
+        /// Creates an empty paginated response
+        /// </summary>
+        public static PaginatedResponse<T> Empty(int page = 1, int pageSize = 50)
+        {
+            return new PaginatedResponse<T>(new List<T>(), page, pageSize, 0);
+        }
     }
 
     public class ParcelQueryParams
@@ -24,5 +53,22 @@ namespace wms_android.shared.Models
         public DateTime? ToDate { get; set; }
         public string? CreatedByUsername { get; set; }
         public string? SearchTerm { get; set; }
+
+        /// <summary>
+        /// Validates the pagination parameters
+        /// </summary>
+        public void Validate()
+        {
+            Page = Math.Max(1, Page);
+            PageSize = Math.Clamp(PageSize, 1, 500);
+
+            if (FromDate.HasValue && ToDate.HasValue && FromDate > ToDate)
+            {
+                // Swap dates if FromDate is after ToDate
+                var temp = FromDate;
+                FromDate = ToDate;
+                ToDate = temp;
+            }
+        }
     }
 }

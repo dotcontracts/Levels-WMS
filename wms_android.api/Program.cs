@@ -177,9 +177,32 @@ public class Program
                     logger.LogInformation($"Migrations to apply: {string.Join(", ", pendingMigrations)}");
                 }
                 
-                // Apply migrations
-                dbContext.Database.Migrate();
-                logger.LogInformation("Database migration completed successfully");
+                // Handle migration conflicts gracefully
+                try
+                {
+                    // Apply migrations
+                    dbContext.Database.Migrate();
+                    logger.LogInformation("Database migration completed successfully");
+                }
+                catch (Npgsql.PostgresException pgEx) when (pgEx.SqlState == "42P07" || pgEx.SqlState == "42701")
+                {
+                    // Handle "relation already exists" or "column already exists" errors
+                    logger.LogWarning($"Migration conflict detected: {pgEx.Message}");
+                    logger.LogInformation("Attempting to fix migration history...");
+                    
+                    // Mark problematic migrations as applied
+                    var migrationHistorySql = @"
+                        INSERT INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
+                        VALUES 
+                            ('20251205133225_InitialCreate', '8.0.8'),
+                            ('20251211170446_UpdateParcelStatusNaming', '8.0.8'),
+                            ('20251229090510_UpdateInvoiceItemStructure', '8.0.8')
+                        ON CONFLICT (""MigrationId"") DO NOTHING;
+                    ";
+                    
+                    dbContext.Database.ExecuteSqlRaw(migrationHistorySql);
+                    logger.LogInformation("Migration history updated. Database should now be in sync.");
+                }
             }
             catch (Exception ex)
             {
