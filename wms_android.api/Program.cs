@@ -164,7 +164,8 @@ public class Program
                     policy.WithOrigins(corsOrigins)
                         .AllowAnyMethod()
                         .AllowAnyHeader()
-                        .AllowCredentials();
+                        .AllowCredentials()
+                        .SetIsOriginAllowedToAllowWildcardSubdomains();
                 });
         });
 
@@ -264,7 +265,10 @@ public class Program
 
         // Middleware pipeline
         app.UseHttpsRedirection();
+        
+        // Add CORS before path base to ensure it works for all requests
         app.UseCors("AllowWebApp");
+        
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
