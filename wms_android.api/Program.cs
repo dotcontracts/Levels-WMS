@@ -139,12 +139,13 @@ public class Program
         if (corsOrigins == null || corsOrigins.Length == 0)
         {
             var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://wms-ficma-dispatch-l5z4y.ondigitalocean.app";
-            var apiBaseUrl = Environment.GetEnvironmentVariable("API_BASE_URL") ?? "https://wmsandroidapi-w74du.ondigitalocean.app";
+            var apiBaseUrl = Environment.GetEnvironmentVariable("API_BASE_URL") ?? "https://levelsapi-82i8a.ondigitalocean.app";
             
             corsOrigins = new[]
             {
                 frontendUrl,
                 apiBaseUrl,
+                "https://wms-ficma-dispatch-l5z4y.ondigitalocean.app", // React app URL
                 "http://localhost:3000",
                 "https://localhost:3001"
             };
