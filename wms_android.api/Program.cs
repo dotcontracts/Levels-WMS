@@ -111,8 +111,7 @@ public class Program
                 Secret = "8d8c4028e2fed0a96694bb30929c3053",
                 Issuer = "wms_android.api",
                 Audience = "wms_android.client",
-                ExpiryInDays = 7,
-                ExpirationInMinutes = 60
+                ExpiryInDays = 7
             };
         }
         Console.WriteLine($"✓ JWT Config loaded - Issuer: {jwtConfig.Issuer}, Audience: {jwtConfig.Audience}");
