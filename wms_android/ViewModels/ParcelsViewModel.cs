@@ -977,7 +977,7 @@ NB:
 
 PAYMENT INFO:
 Equity App: Dial *247#, Business: 889404
-Account: {waybillNumber}
+Account: {parcel.WaybillNumber ?? "N/A"}
 M-PESA/Airtel: Paybill 247247, Account: 889404
 
 ";
@@ -1215,7 +1215,7 @@ NB:
 
 PAYMENT INFO:
 Equity App: Dial *247#, Business: 889404
-Account: {waybillNumber}
+Account: {parcel.WaybillNumber ?? "N/A"}
 M-PESA/Airtel: Paybill 247247, Account: 889404
 
 ";

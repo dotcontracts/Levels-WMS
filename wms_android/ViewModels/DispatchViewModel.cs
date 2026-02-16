@@ -8,6 +8,7 @@ using System.Linq;
 using wms_android.shared.Interfaces;
 using wms_android.shared.Models;
 using wms_android.Models;
+using wms_android.Services;
 
 namespace wms_android.ViewModels
 {
@@ -15,6 +16,7 @@ namespace wms_android.ViewModels
     {
         private readonly IParcelService _parcelService;
         private readonly ILogger<DispatchViewModel> _logger;
+        private readonly ParcelCacheService _cacheService;
 
         [ObservableProperty]
         private bool _isLoading;
@@ -75,10 +77,11 @@ namespace wms_android.ViewModels
         public ObservableCollection<string> DestinationOptions { get; } = new();
         public ObservableCollection<string> ClerkOptions { get; } = new() { "All" };
 
-        public DispatchViewModel(IParcelService parcelService, ILogger<DispatchViewModel> logger)
+        public DispatchViewModel(IParcelService parcelService, ILogger<DispatchViewModel> logger, ParcelCacheService cacheService)
         {
             _parcelService = parcelService;
             _logger = logger;
+            _cacheService = cacheService;
             
             // Subscribe to property changes to update CanCreateDispatch
             PropertyChanged += OnPropertyChanged;
