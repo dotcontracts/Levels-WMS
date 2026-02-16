@@ -23,7 +23,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\wms_android.shared\wms_android.shared.csproj" />
+    <ProjectReference Include="wms_android.shared\wms_android.shared.csproj" />
   </ItemGroup>
 
   <ItemGroup>
