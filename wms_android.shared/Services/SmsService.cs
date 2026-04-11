@@ -31,11 +31,11 @@ namespace wms_android.shared.Services
             
             // Load the SMS API credentials from app settings
             _server = "https://smsportal.hostpinnacle.co.ke/SMSApi/send";
-            _userId = "nidlogistics1";  // NID Logistics credentials
-            _password = "hqvu69ND";
-            _senderName = "NID_LOG_LTD";  // NID Logistics sender ID
-            
-            Debug.WriteLine("SMS Service initialized with NID_LOG_LTD sender ID");
+            _userId = "ficmahome";
+            _password = "QjfNg17q";
+            _senderName = "FICMA_HOME";
+
+            Debug.WriteLine("SMS Service initialized with FICMA_HOME sender ID");
         }
 
         /// <summary>

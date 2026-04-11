@@ -43,8 +43,8 @@ class SMSApiService {
   constructor() {
     this.config = {
       SERVER: process.env.REACT_APP_SMS_SERVER || 'https://smsportal.hostpinnacle.co.ke/SMSApi',
-      USER_ID: process.env.REACT_APP_SMS_USER_ID || 'ficmahomelogistics',
-      PASSWORD: process.env.REACT_APP_SMS_PASSWORD || 'hqvu69ND',
+      USER_ID: process.env.REACT_APP_SMS_USER_ID || 'ficmahome',
+      PASSWORD: process.env.REACT_APP_SMS_PASSWORD || 'QjfNg17q',
       SENDER_NAME: process.env.REACT_APP_SMS_SENDER_NAME || 'FICMA_HOME'
     };
   }

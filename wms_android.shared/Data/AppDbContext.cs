@@ -20,6 +20,7 @@ namespace wms_android.shared.Data
         public DbSet<Role> Roles { get; set; }
         public DbSet<Shipment> Shipments { get; set; }
         public DbSet<Dispatch> Dispatches { get; set; }
+        public DbSet<DispatchSegment> DispatchSegments { get; set; }
         public DbSet<Branch> Branches { get; set; }
         public DbSet<UserBranch> UserBranches { get; set; }
         public DbSet<ContractCustomer> ContractCustomers { get; set; }
@@ -75,6 +76,38 @@ namespace wms_android.shared.Data
                       .HasForeignKey(p => p.CreatedById)
                       .OnDelete(DeleteBehavior.SetNull)
                       .IsRequired(false);
+
+                // Performance indexes for frequently queried columns
+                entity.HasIndex(e => e.CreatedAt)
+                    .HasDatabaseName("IX_Parcels_CreatedAt");
+
+                entity.HasIndex(e => e.Status)
+                    .HasDatabaseName("IX_Parcels_Status");
+
+                entity.HasIndex(e => e.Destination)
+                    .HasDatabaseName("IX_Parcels_Destination");
+
+                entity.HasIndex(e => e.CreatedById)
+                    .HasDatabaseName("IX_Parcels_CreatedById");
+
+                entity.HasIndex(e => e.DispatchTrackingCode)
+                    .HasDatabaseName("IX_Parcels_DispatchTrackingCode");
+
+                // Composite index for status + created_at (common query pattern)
+                entity.HasIndex(e => new { e.Status, e.CreatedAt })
+                    .HasDatabaseName("IX_Parcels_Status_CreatedAt");
+
+                // Composite index for destination + status
+                entity.HasIndex(e => new { e.Destination, e.Status })
+                    .HasDatabaseName("IX_Parcels_Destination_Status");
+
+                // Composite index for status + created_at + created_by_id (multi-destination dispatch query)
+                entity.HasIndex(e => new { e.Status, e.CreatedAt, e.CreatedById })
+                    .HasDatabaseName("IX_Parcels_Status_CreatedAt_CreatedById");
+
+                // Composite index for destination + status + created_at (date-range filtering)
+                entity.HasIndex(e => new { e.Destination, e.Status, e.CreatedAt })
+                    .HasDatabaseName("IX_Parcels_Destination_Status_CreatedAt");
             });
 
             // Configure Shipment entity
@@ -158,9 +191,59 @@ namespace wms_android.shared.Data
                 entity.HasMany(d => d.Parcels)
                     .WithMany()
                     .UsingEntity(j => j.ToTable("DispatchParcels"));
-                
+
+                // Configure relationship with Segments
+                entity.HasMany(d => d.Segments)
+                    .WithOne(s => s.Dispatch)
+                    .HasForeignKey(s => s.DispatchId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
                 // Ignore the Destination property since it doesn't exist in the database
                 entity.Ignore(e => e.Destination);
+
+                // Performance indexes for dispatch queries
+                entity.HasIndex(e => e.DispatchTime)
+                    .HasDatabaseName("IX_Dispatches_DispatchTime");
+
+                entity.HasIndex(e => e.Status)
+                    .HasDatabaseName("IX_Dispatches_Status");
+
+                entity.HasIndex(e => e.VehicleNumber)
+                    .HasDatabaseName("IX_Dispatches_VehicleNumber");
+
+                // Composite index for dispatch time + status (common query pattern)
+                entity.HasIndex(e => new { e.DispatchTime, e.Status })
+                    .HasDatabaseName("IX_Dispatches_DispatchTime_Status");
+
+                // Composite index for source branch + dispatch time
+                entity.HasIndex(e => new { e.SourceBranch, e.DispatchTime })
+                    .HasDatabaseName("IX_Dispatches_SourceBranch_DispatchTime");
+            });
+
+            // Configure DispatchSegment entity
+            modelBuilder.Entity<DispatchSegment>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).ValueGeneratedOnAdd();
+                entity.Property(e => e.Destination).IsRequired();
+                entity.Property(e => e.TotalParcels).HasDefaultValue(0);
+                entity.Property(e => e.TotalAmount).HasDefaultValue(0);
+                entity.Property(e => e.SequenceNumber).HasDefaultValue(0);
+
+                // Configure relationship with Parcels
+                entity.HasMany(ds => ds.Parcels)
+                    .WithMany()
+                    .UsingEntity(j => j.ToTable("DispatchSegmentParcels"));
+
+                // Performance indexes for dispatch segment queries
+                entity.HasIndex(e => e.DispatchId)
+                    .HasDatabaseName("IX_DispatchSegments_DispatchId");
+
+                entity.HasIndex(e => e.Destination)
+                    .HasDatabaseName("IX_DispatchSegments_Destination");
+
+                entity.HasIndex(e => new { e.DispatchId, e.SequenceNumber })
+                    .HasDatabaseName("IX_DispatchSegments_DispatchId_SequenceNumber");
             });
 
             // Seed Vehicle data

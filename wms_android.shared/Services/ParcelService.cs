@@ -22,16 +22,36 @@ namespace wms_android.shared.Services
         public ParcelService(HttpClient httpClient, IConfiguration configuration)
         {
             _httpClient = httpClient;
-            _baseUrl = configuration["ApiSettings:BaseUrl"] ?? "https://wmsandroidapi-w74du.ondigitalocean.app/";
             
-            // Configure HttpClient
-            _httpClient.BaseAddress = new Uri(_baseUrl);
-            _httpClient.Timeout = TimeSpan.FromSeconds(30); // Set default timeout
+            // Use existing HttpClient BaseAddress if already set (respects MauiProgram configuration)
+            if (_httpClient.BaseAddress != null)
+            {
+                _baseUrl = _httpClient.BaseAddress.ToString();
+                System.Diagnostics.Debug.WriteLine($"ParcelService using existing HttpClient BaseAddress: {_baseUrl}");
+            }
+            else
+            {
+                // Fallback to configuration or production URL if BaseAddress not set
+                _baseUrl = configuration["ApiSettings:BaseUrl"] ?? "https://wmsandroidapi-w74du.ondigitalocean.app/";
+                _httpClient.BaseAddress = new Uri(_baseUrl);
+                System.Diagnostics.Debug.WriteLine($"ParcelService set new BaseAddress from config: {_baseUrl}");
+            }
             
-            // Add default headers
-            _httpClient.DefaultRequestHeaders.Accept.Clear();
-            _httpClient.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-            _httpClient.DefaultRequestHeaders.Add("User-Agent", "WMS-Android-App");
+            // Set timeout only if not already configured
+            if (_httpClient.Timeout == Timeout.InfiniteTimeSpan)
+            {
+                _httpClient.Timeout = TimeSpan.FromSeconds(30);
+            }
+            
+            // Add default headers if not already present
+            if (!_httpClient.DefaultRequestHeaders.Accept.Any())
+            {
+                _httpClient.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+            }
+            if (!_httpClient.DefaultRequestHeaders.Contains("User-Agent"))
+            {
+                _httpClient.DefaultRequestHeaders.Add("User-Agent", "WMS-Android-App");
+            }
             
             System.Diagnostics.Debug.WriteLine($"ParcelService initialized with API URL: {_baseUrl}");
         }
@@ -67,8 +87,15 @@ namespace wms_android.shared.Services
             {
                 try 
                 {
-                    // Ensure the waybill number is set before sending to the server
-                    if (string.IsNullOrEmpty(parcel.WaybillNumber))
+                    // On retry attempts, clear the waybill number to let the server generate a fresh one
+                    if (retryAttempt > 0)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ParcelService MAUI Client] Retry attempt {retryAttempt}: Clearing waybill number to let server generate fresh one");
+                        parcel.WaybillNumber = null;
+                        parcel.QRCode = null;
+                    }
+                    // On first attempt, generate waybill number locally if not provided
+                    else if (string.IsNullOrEmpty(parcel.WaybillNumber))
                     {
                         parcel.WaybillNumber = await GenerateWaybillNumberAsync();
                         parcel.QRCode = parcel.WaybillNumber;
@@ -211,7 +238,7 @@ namespace wms_android.shared.Services
         {
             try
             {
-                // Generate a waybill number locally with the format "NID" + 5 random alphanumeric characters
+                // Generate a waybill number locally with the format "WB" + 5 random alphanumeric characters
                 System.Diagnostics.Debug.WriteLine("Generating local waybill number...");
                 
                 const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -219,7 +246,7 @@ namespace wms_android.shared.Services
                 var randomString = new string(Enumerable.Repeat(chars, 5)
                     .Select(s => s[random.Next(s.Length)]).ToArray());
                 
-                var waybillNumber = $"NID{randomString}";
+                var waybillNumber = $"WB{randomString}";
                 
                 System.Diagnostics.Debug.WriteLine($"Generated waybill number: {waybillNumber}");
                 return waybillNumber;
@@ -884,9 +911,33 @@ namespace wms_android.shared.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error fetching destinations: {ex.Message}");
-                // Return fallback destinations
-                return new List<string> { "Nairobi", "Mombasa", "Kisumu", "Eldoret", "Nakuru" };
+                System.Diagnostics.Debug.WriteLine($"Error getting destinations: {ex.Message}");
+                return await GetDestinationsAsync();
+            }
+        }
+        
+        public async Task<IEnumerable<Branch>> GetAllBranchesAsync()
+        {
+            try
+            {
+                System.Diagnostics.Debug.WriteLine("[ParcelService MAUI Client] Fetching all branches");
+                
+                var response = await _httpClient.GetAsync("/api/parcels/branches");
+                response.EnsureSuccessStatusCode();
+                var content = await response.Content.ReadAsStringAsync();
+                
+                var options = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                };
+                
+                return JsonSerializer.Deserialize<IEnumerable<Branch>>(content, options) ?? new List<Branch>();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error getting all branches: {ex.Message}");
+                // Fallback to return empty list rather than retry to avoid infinite loop
+                return new List<Branch>();
             }
         }
 
@@ -912,16 +963,25 @@ namespace wms_android.shared.Services
         {
             try
             {
-                System.Diagnostics.Debug.WriteLine($"[ParcelService] Fetching parcels for dispatch - Destination: {destination}");
+                System.Diagnostics.Debug.WriteLine($"[ParcelService MAUI Client] Fetching parcels for dispatch - Destination: '{destination}', Statuses: {(statuses != null ? string.Join(",", statuses) : "null")}");
                 
                 var parameters = new List<string>();
                 
-                if (!string.IsNullOrWhiteSpace(destination))
+                // Add destination parameter only if it has a value
+                if (!string.IsNullOrEmpty(destination))
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ParcelService MAUI Client] Adding destination parameter: '{destination}'");
                     parameters.Add($"destination={Uri.EscapeDataString(destination)}");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine("[ParcelService MAUI Client] Skipping destination parameter (destination is null/empty)");
+                }
                 
                 if (statuses != null && statuses.Any())
                 {
                     var statusString = string.Join(",", statuses);
+                    System.Diagnostics.Debug.WriteLine($"[ParcelService MAUI Client] Adding statuses parameter: '{statusString}'");
                     parameters.Add($"statuses={statusString}");
                 }
                 
@@ -949,7 +1009,8 @@ namespace wms_android.shared.Services
                 {
                     PropertyNameCaseInsensitive = true,
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                    ReferenceHandler = ReferenceHandler.Preserve
+                    ReferenceHandler = ReferenceHandler.IgnoreCycles,
+                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
                 };
                 
                 var result = JsonSerializer.Deserialize<IEnumerable<Parcel>>(content, options);
@@ -986,7 +1047,8 @@ namespace wms_android.shared.Services
                 {
                     PropertyNameCaseInsensitive = true,
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                    ReferenceHandler = ReferenceHandler.Preserve
+                    ReferenceHandler = ReferenceHandler.IgnoreCycles,
+                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
                 };
                 
                 var result = JsonSerializer.Deserialize<PaginatedResponse<Parcel>>(content, options);
@@ -1069,7 +1131,8 @@ namespace wms_android.shared.Services
                 {
                     PropertyNameCaseInsensitive = true,
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                    ReferenceHandler = ReferenceHandler.Preserve
+                    ReferenceHandler = ReferenceHandler.IgnoreCycles,
+                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
                 };
                 
                 var result = JsonSerializer.Deserialize<PaginatedResponse<Parcel>>(content, options);

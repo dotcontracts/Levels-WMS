@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.ComponentModel.DataAnnotations.Schema;
+using Newtonsoft.Json;
 
 namespace wms_android.shared.Models
 {
@@ -25,6 +26,7 @@ namespace wms_android.shared.Models
         public int? CreatedById { get; set; }
         
         [ForeignKey("CreatedById")]
+        [JsonIgnore] // Ignore navigation property to prevent circular reference
         public virtual User? CreatedBy { get; set; }
 
         public string? CreatorLastNameSnapshot { get; set; }
@@ -32,6 +34,7 @@ namespace wms_android.shared.Models
         // New Shipment relationship
         public Guid? ShipmentId { get; set; } 
         [ForeignKey("ShipmentId")]
+        [JsonIgnore] // Ignore this navigation property to prevent circular reference
         public virtual Shipment? Shipment { get; set; }
 
         // Sender Details
@@ -64,6 +67,7 @@ namespace wms_android.shared.Models
         public int? PaymentUpdatedById { get; set; }
         
         [ForeignKey("PaymentUpdatedById")]
+        [JsonIgnore] // Ignore navigation property to prevent circular reference
         public virtual User? PaymentUpdatedBy { get; set; }
         
         // Status

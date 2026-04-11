@@ -28,11 +28,14 @@ namespace wms_android.api.Services
 
         public async Task<Parcel> GetParcelByIdAsync(Guid id)
         {
-            return await _context.Parcels.FindAsync(id);
+            return await _context.Parcels
+                .AsNoTracking() // Prevent loading navigation properties and tracking
+                .FirstOrDefaultAsync(p => p.Id == id);
         }
 
         public async Task<Parcel> CreateParcelAsync(Parcel parcelInitialState)
         {
+            Console.WriteLine("=== SERVICE: CreateParcelAsync started ===");
             // 1. Initialize parcelToProcess from parcelInitialState
             Parcel parcelToProcess = new Parcel
             {
@@ -60,13 +63,6 @@ namespace wms_android.api.Services
             };
 
             System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] Initializing. Parcel ID: {parcelToProcess.Id}");
-
-            if (parcelToProcess.CreatedById.HasValue && string.IsNullOrEmpty(parcelToProcess.CreatorLastNameSnapshot))
-            {
-                var user = await _context.Users.FindAsync(parcelToProcess.CreatedById.Value);
-                if (user != null) parcelToProcess.CreatorLastNameSnapshot = user.LastName;
-                System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] Populated CreatorLastNameSnapshot for Parcel: {parcelToProcess.CreatorLastNameSnapshot}");
-            }
 
             string shipmentWaybillNumber = parcelInitialState.WaybillNumber;
             bool waybillGeneratedByServer = false;
@@ -122,14 +118,46 @@ namespace wms_android.api.Services
                         }
                     }
 
+                    // Populate CreatorLastNameSnapshot if not already set
+                    string creatorLastNameSnapshot = parcelToProcess.CreatorLastNameSnapshot;
+                    
+                    System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] Processing parcel. Original CreatorLastNameSnapshot: '{creatorLastNameSnapshot}', CreatedById: {parcelToProcess.CreatedById}");
+                    
+                    if (string.IsNullOrEmpty(creatorLastNameSnapshot) && parcelToProcess.CreatedById.HasValue)
+                    {
+                        var user = await _context.Users.FindAsync(parcelToProcess.CreatedById.Value);
+                        if (user != null)
+                        {
+                            creatorLastNameSnapshot = user.LastName;
+                            parcelToProcess.CreatorLastNameSnapshot = user.LastName; // Update parcel too
+                            System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] Found user and set CreatorLastNameSnapshot to: '{user.LastName}'");
+                        }
+                        else
+                        {
+                            creatorLastNameSnapshot = "Unknown"; // Fallback value
+                            System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] User not found, setting CreatorLastNameSnapshot to 'Unknown'");
+                        }
+                    }
+                    else if (string.IsNullOrEmpty(creatorLastNameSnapshot))
+                    {
+                        creatorLastNameSnapshot = "Unknown"; // Fallback when no user
+                        System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] No CreatedById, setting CreatorLastNameSnapshot to 'Unknown'");
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] Using existing CreatorLastNameSnapshot: '{creatorLastNameSnapshot}'");
+                    }
+
                     newShipment = new Shipment
                     {
                         Id = Guid.NewGuid(),
                         WaybillNumber = shipmentWaybillNumber,
                         CreatedAt = parcelToProcess.CreatedAt,
                         CreatedById = parcelToProcess.CreatedById,
-                        CreatorLastNameSnapshot = parcelToProcess.CreatorLastNameSnapshot
+                        CreatorLastNameSnapshot = creatorLastNameSnapshot
                     };
+                    
+                    System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] Created Shipment with CreatorLastNameSnapshot: '{newShipment.CreatorLastNameSnapshot}'");
                      // EF Core recommends DateTimeOffset for CreatedAt in Shipment, ensure conversion if Parcel.CreatedAt is DateTime
                     if (parcelToProcess.CreatedAt.Kind == DateTimeKind.Unspecified) {
                         newShipment.CreatedAt = new DateTimeOffset(DateTime.SpecifyKind(parcelToProcess.CreatedAt, DateTimeKind.Utc));
@@ -158,12 +186,54 @@ namespace wms_android.api.Services
                         _context.Parcels.Add(parcelToProcess);
                     }
                     
-                    System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] Parcel to save (Attempt {attempt + 1}): {System.Text.Json.JsonSerializer.Serialize(parcelToProcess)}");
-                    System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] Shipment to save (Attempt {attempt + 1}): {System.Text.Json.JsonSerializer.Serialize(newShipment)}");
+                    // Removed problematic JSON serialization logging to prevent circular reference errors
+                    System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] Parcel to save (Attempt {attempt + 1}): ID={parcelToProcess.Id}, WaybillNumber={parcelToProcess.WaybillNumber}");
+                    System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] Shipment to save (Attempt {attempt + 1}): ID={newShipment.Id}, WaybillNumber={newShipment.WaybillNumber}");
 
                     await _context.SaveChangesAsync();
                     System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] Successfully saved Shipment ID: {newShipment.Id} and Parcel ID: {parcelToProcess.Id} on attempt {attempt + 1}");
-                    return parcelToProcess;
+                    
+                    // Detach the entity from context to prevent circular reference during serialization
+                    _context.Entry(parcelToProcess).State = EntityState.Detached;
+                    if (newShipment != null)
+                    {
+                        _context.Entry(newShipment).State = EntityState.Detached;
+                    }
+                    
+                    // Create a clean parcel object without navigation properties to prevent circular references
+                    var cleanParcel = new Parcel
+                    {
+                        Id = parcelToProcess.Id,
+                        CreatedAt = parcelToProcess.CreatedAt,
+                        WaybillNumber = parcelToProcess.WaybillNumber,
+                        QRCode = parcelToProcess.QRCode,
+                        DispatchedAt = parcelToProcess.DispatchedAt,
+                        DispatchTrackingCode = parcelToProcess.DispatchTrackingCode,
+                        CreatedById = parcelToProcess.CreatedById,
+                        CreatorLastNameSnapshot = parcelToProcess.CreatorLastNameSnapshot,
+                        ShipmentId = parcelToProcess.ShipmentId,
+                        Sender = parcelToProcess.Sender,
+                        SenderTelephone = parcelToProcess.SenderTelephone,
+                        Receiver = parcelToProcess.Receiver,
+                        ReceiverTelephone = parcelToProcess.ReceiverTelephone,
+                        Destination = parcelToProcess.Destination,
+                        Quantity = parcelToProcess.Quantity,
+                        Description = parcelToProcess.Description,
+                        Amount = parcelToProcess.Amount,
+                        Rate = parcelToProcess.Rate,
+                        PaymentMethods = parcelToProcess.PaymentMethods,
+                        TotalAmount = parcelToProcess.TotalAmount,
+                        TotalRate = parcelToProcess.TotalRate,
+                        AmountPaid = parcelToProcess.AmountPaid,
+                        TransactionCode = parcelToProcess.TransactionCode,
+                        PaymentUpdatedAt = parcelToProcess.PaymentUpdatedAt,
+                        PaymentUpdatedById = parcelToProcess.PaymentUpdatedById,
+                        Status = parcelToProcess.Status
+                        // Explicitly NOT setting Shipment, CreatedBy, or PaymentUpdatedBy navigation properties
+                    };
+                    
+                    Console.WriteLine("=== SERVICE: Returning clean parcel ===");
+                    return cleanParcel;
                 }
                 catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
                 {
@@ -192,11 +262,13 @@ namespace wms_android.api.Services
         }
 
         // Renamed and added attemptOffset
+        private static readonly Random _random = new Random();
+        private const string AlphanumericChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
         public async Task<string> GeneratePotentiallyNonUniqueWaybillNumberAsync(int attemptOffset = 0)
         {
-            var today = DateTime.UtcNow.Date;
-            var count = await _context.Shipments.CountAsync(s => s.CreatedAt.Date == today && s.WaybillNumber != null);
-            var waybillNumber = $"NID{today:yyyyMMdd}{(count + 1 + attemptOffset).ToString("D4")}";
+            var suffix = new string(Enumerable.Range(0, 5).Select(_ => AlphanumericChars[_random.Next(AlphanumericChars.Length)]).ToArray());
+            var waybillNumber = $"FHL{suffix}";
             System.Diagnostics.Debug.WriteLine($"Generated potential WaybillNumber for Shipment: {waybillNumber} (Attempt offset: {attemptOffset})");
             return waybillNumber;
         }
@@ -232,7 +304,7 @@ namespace wms_android.api.Services
                     throw new Exception($"Parcel with ID {parcelId} not found");
                 }
 
-                System.Diagnostics.Debug.WriteLine($"Found parcel: {JsonSerializer.Serialize(parcel)}");
+                System.Diagnostics.Debug.WriteLine($"Found parcel: ID={parcel.Id}, Status={parcel.Status}");
 
                 // Update the status
                 parcel.Status = ParcelStatus.Confirmed;
@@ -251,7 +323,7 @@ namespace wms_android.api.Services
                     throw new Exception($"Failed to finalize parcel with ID {parcelId}");
                 }
 
-                System.Diagnostics.Debug.WriteLine($"Successfully confirmed parcel: {JsonSerializer.Serialize(updatedParcel)}");
+                System.Diagnostics.Debug.WriteLine($"Successfully confirmed parcel: ID={updatedParcel.Id}, Status={updatedParcel.Status}");
             }
             catch (Exception ex)
             {
@@ -297,6 +369,17 @@ namespace wms_android.api.Services
                 throw new InvalidOperationException($"A Shipment with WaybillNumber '{commonWaybillNumber}' already exists. Please use a new waybill number for the cart.");
             }
 
+            // Populate CreatorLastNameSnapshot for Shipment
+            string shipmentCreatorLastName = "Unknown"; // Default fallback
+            if (commonCreatedById.HasValue)
+            {
+                var user = await _context.Users.FindAsync(commonCreatedById.Value);
+                if (user != null)
+                {
+                    shipmentCreatorLastName = user.LastName;
+                }
+            }
+            
             // Create the new Shipment
             var newShipment = new Shipment
             {
@@ -304,16 +387,8 @@ namespace wms_android.api.Services
                 WaybillNumber = commonWaybillNumber,
                 CreatedAt = DateTimeOffset.UtcNow, 
                 CreatedById = commonCreatedById,
+                CreatorLastNameSnapshot = shipmentCreatorLastName
             };
-
-            if (commonCreatedById.HasValue)
-            {
-                var user = await _context.Users.FindAsync(commonCreatedById.Value);
-                if (user != null)
-                {
-                    newShipment.CreatorLastNameSnapshot = user.LastName;
-                }
-            }
             
             _context.Shipments.Add(newShipment);
             var processedParcels = new List<Parcel>();
@@ -415,20 +490,24 @@ namespace wms_android.api.Services
             System.Diagnostics.Debug.WriteLine($"[GetParcelByWaybillNumberAsync] Searching for Shipment with WaybillNumber: {waybillNumber}");
 
             var shipment = await _context.Shipments
-                                         .Include(s => s.Parcels) // Eager load the Parcels collection
+                                         .AsNoTracking() // Remove circular reference tracking
                                          .FirstOrDefaultAsync(s => s.WaybillNumber == waybillNumber);
 
             if (shipment != null)
             {
-                System.Diagnostics.Debug.WriteLine($"[GetParcelByWaybillNumberAsync] Found Shipment ID: {shipment.Id}. It has {shipment.Parcels?.Count ?? 0} parcels.");
-                return shipment.Parcels?.FirstOrDefault(); 
+                // Get first parcel for this shipment without including navigation properties
+                var parcel = await _context.Parcels
+                                          .AsNoTracking() // Remove circular reference tracking
+                                          .FirstOrDefaultAsync(p => p.ShipmentId == shipment.Id);
+                System.Diagnostics.Debug.WriteLine($"[GetParcelByWaybillNumberAsync] Found Shipment ID: {shipment.Id}. Retrieved parcel: {parcel?.Id}");
+                return parcel; 
             }
             else
             {
                 System.Diagnostics.Debug.WriteLine($"[GetParcelByWaybillNumberAsync] No Shipment found with WaybillNumber: {waybillNumber}. Attempting fallback to denormalized Parcel.WaybillNumber.");
                 // Fallback for cases where Parcel.WaybillNumber might be queried directly
                 var parcelDirectly = await _context.Parcels
-                                                   .Include(p => p.Shipment) // Also include its parent shipment if found this way
+                                                   .AsNoTracking() // Remove circular reference tracking
                 .FirstOrDefaultAsync(p => p.WaybillNumber == waybillNumber);
                 if (parcelDirectly != null) {
                      System.Diagnostics.Debug.WriteLine($"[GetParcelByWaybillNumberAsync] Fallback: Found Parcel ID: {parcelDirectly.Id} by direct WaybillNumber search.");
@@ -443,13 +522,18 @@ namespace wms_android.api.Services
         {
             System.Diagnostics.Debug.WriteLine($"[GetParcelsByQRCodeAsync] Searching for Shipment with WaybillNumber (acting as QRCode): {qrCode}");
             var shipment = await _context.Shipments
-                                         .Include(s => s.Parcels) // Eager load parcels
+                                         .AsNoTracking() // Remove circular reference tracking
                                          .FirstOrDefaultAsync(s => s.WaybillNumber == qrCode); // QRCode is Shipment's WaybillNumber
 
             if (shipment != null)
             {
-                System.Diagnostics.Debug.WriteLine($"[GetParcelsByQRCodeAsync] Found Shipment ID: {shipment.Id}. Returning {shipment.Parcels?.Count ?? 0} parcels.");
-                return shipment.Parcels ?? Enumerable.Empty<Parcel>();
+                // Get parcels for this shipment without including navigation properties
+                var parcels = await _context.Parcels
+                                           .AsNoTracking() // Remove circular reference tracking
+                                           .Where(p => p.ShipmentId == shipment.Id)
+                                           .ToListAsync();
+                System.Diagnostics.Debug.WriteLine($"[GetParcelsByQRCodeAsync] Found Shipment ID: {shipment.Id}. Returning {parcels.Count} parcels.");
+                return parcels;
             }
             else
             {
@@ -750,6 +834,13 @@ namespace wms_android.api.Services
                 .Select(p => p.Destination)
                 .Distinct()
                 .OrderBy(d => d)
+                .ToListAsync();
+        }
+        
+        public async Task<IEnumerable<Branch>> GetAllBranchesAsync()
+        {
+            return await _context.Branches
+                .OrderBy(b => b.Name)
                 .ToListAsync();
         }
 

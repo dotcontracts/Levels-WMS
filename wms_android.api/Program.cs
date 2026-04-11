@@ -168,12 +168,14 @@ public class Program
         });
 
         // Register services
+        builder.Services.AddMemoryCache();
         builder.Services.AddHttpClient();
         builder.Services.AddScoped<IUserService, wms_android.shared.Services.UserService>();
         builder.Services.AddScoped<IVehicleService, VehicleService>();
         builder.Services.AddScoped<IAuthService, AuthService>();
         builder.Services.AddScoped<ISmsService, wms_android.shared.Services.SmsService>();
         builder.Services.AddScoped<wms_android.api.Interfaces.ITokenService, wms_android.api.Services.TokenService>();
+        builder.Services.AddScoped<wms_android.api.Services.IDispatchSegmentService, wms_android.api.Services.DispatchSegmentService>();
 
         var app = builder.Build();
 

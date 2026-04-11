@@ -26,6 +26,7 @@ interface CreateDispatchFormData {
   driverPhone: string;
   vehicleNumber: string;
   parcelIds: string[];
+  allowMultipleDestinations: boolean;
 }
 
 interface ParcelFilterState {
@@ -66,7 +67,8 @@ const CreateDispatch: React.FC = () => {
     driverName: '',
     driverPhone: '',
     vehicleNumber: '',
-    parcelIds: []
+    parcelIds: [],
+    allowMultipleDestinations: true // Default to true for multi-destination support
   });
 
   useEffect(() => {
@@ -129,16 +131,73 @@ const CreateDispatch: React.FC = () => {
       console.log('CreateDispatch - Fetching parcels for user:', user);
       console.log('CreateDispatch - User branch ID:', user?.branchId);
       console.log('CreateDispatch - Is branch manager:', isBranchManager());
+      console.log('CreateDispatch - Multi-destination mode:', formData.allowMultipleDestinations);
       
-      // Use the new branch-based filtering method
-      // For branch managers: filter by creator's branch
-      // For admins: show all parcels with valid statuses
-      const userBranchId = isBranchManager() ? user?.branchId : undefined;
-      
-      const data = await wmsApi.getParcelsForDispatchByBranch(userBranchId);
-      console.log(`CreateDispatch - Received ${data.length} parcels for dispatch`);
-      
-      setParcels(data);
+      // Use optimized multi-destination dispatch endpoint when allowMultipleDestinations is true
+      if (formData.allowMultipleDestinations) {
+        const userBranchId = isBranchManager() ? user?.branchId : undefined;
+        
+        const data = await wmsApi.getParcelsForMultiDestDispatch({
+          page: 1,
+          pageSize: 500, // Larger page size for multi-destination mode
+          statuses: ['0', '1'], // Pending and Confirmed
+          fromDate: filters.dateFrom,
+          toDate: filters.dateTo,
+          createdByUsername: filters.createdBy === 'all' ? undefined : filters.createdBy,
+          userBranchId: userBranchId
+        });
+        
+        console.log('CreateDispatch - Full response data:', JSON.stringify(data, null, 2));
+        console.log(`CreateDispatch - parcelsByDestination type: ${typeof data.parcelsByDestination}, isArray: ${Array.isArray(data.parcelsByDestination)}`);
+        
+        // Flatten parcels from destination groups for backward compatibility
+        let allParcels: any[] = [];
+        
+        // Handle the ReferenceHandler.Preserve format with $values property
+        let parcelsByDestArray: any[] = [];
+        if (Array.isArray(data.parcelsByDestination)) {
+          parcelsByDestArray = data.parcelsByDestination;
+          console.log(`CreateDispatch - parcelsByDestination is a direct array`);
+        } else if (data.parcelsByDestination && data.parcelsByDestination.$values) {
+          parcelsByDestArray = data.parcelsByDestination.$values;
+          console.log(`CreateDispatch - parcelsByDestination uses $values format`);
+        }
+        
+        // Try different possible response structures
+        if (parcelsByDestArray.length > 0) {
+          allParcels = parcelsByDestArray.flatMap((group: any) => {
+            // Handle both direct parcels array and $values format
+            const parcels = group.parcels && group.parcels.$values ? group.parcels.$values : (group.parcels || []);
+            return parcels;
+          });
+          console.log(`CreateDispatch - Flattened ${allParcels.length} parcels from ${parcelsByDestArray.length} destination groups`);
+        } else if (Array.isArray(data)) {
+          // Fallback: if the entire response is an array
+          allParcels = data;
+          console.log(`CreateDispatch - Using direct array response with ${allParcels.length} parcels`);
+        } else if (data.parcels && Array.isArray(data.parcels)) {
+          // Another fallback structure
+          allParcels = data.parcels;
+          console.log(`CreateDispatch - Using data.parcels array with ${allParcels.length} parcels`);
+        } else if (data.parcels && data.parcels.$values) {
+          // Handle parcels with $values format
+          allParcels = data.parcels.$values;
+          console.log(`CreateDispatch - Using data.parcels.$values array with ${allParcels.length} parcels`);
+        } else {
+          console.log('CreateDispatch - No parcels found or empty response');
+          // Don't throw error for empty responses, just set empty array
+        }
+        
+        setParcels(allParcels);
+      } else {
+        // Use the branch-based filtering method for single-destination mode
+        const userBranchId = isBranchManager() ? user?.branchId : undefined;
+        
+        const data = await wmsApi.getParcelsForDispatchByBranch(userBranchId);
+        console.log(`CreateDispatch - Received ${data.length} parcels for dispatch`);
+        
+        setParcels(data);
+      }
     } catch (err) {
       console.error('CreateDispatch - Error fetching parcels:', err);
       setError('Failed to load parcels');
@@ -367,15 +426,15 @@ const CreateDispatch: React.FC = () => {
     return `${destinationAbbr}-${dateStr}-DS${randomStr}`;
   };
 
-  const handleFormChange = (field: keyof CreateDispatchFormData, value: string | string[]) => {
+  const handleFormChange = (field: keyof CreateDispatchFormData, value: string | string[] | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    
+
     // Auto-generate dispatch code and filter parcels when destination is selected
     if (field === 'destination' && typeof value === 'string') {
       if (value) {
         const newDispatchCode = generateDispatchCode(value);
         setFormData(prev => ({ ...prev, dispatchCode: newDispatchCode }));
-        
+
         // Update destination filter to match selected destination
         setFilters(prev => ({ ...prev, destination: value }));
       } else {
@@ -394,8 +453,13 @@ const CreateDispatch: React.FC = () => {
       return;
     }
 
-    if (!formData.destination || !formData.driverName || !formData.driverPhone || !formData.vehicleNumber) {
-      setError('Please fill in all required fields');
+    if (!formData.driverName || !formData.driverPhone || !formData.vehicleNumber) {
+      setError('Please fill in vehicle and driver details');
+      return;
+    }
+
+    if (!formData.allowMultipleDestinations && !formData.destination) {
+      setError('Please select a destination');
       return;
     }
 
@@ -404,18 +468,38 @@ const CreateDispatch: React.FC = () => {
       setError('');
       setSuccess('');
 
-      // Use the generated dispatch code
-      const dispatchCode = formData.dispatchCode;
+      // Get selected parcels
+      const selectedParcels = parcels.filter(p => selectedParcelIds.includes(p.id));
+
+      // Group parcels by destination for multi-destination support
+      const parcelsByDestination = selectedParcels.reduce((acc, parcel) => {
+        const dest = parcel.destination || 'Unknown';
+        if (!acc[dest]) {
+          acc[dest] = [];
+        }
+        acc[dest].push(parcel);
+        return acc;
+      }, {} as Record<string, Parcel[]>);
+
+      const uniqueDestinations = Object.keys(parcelsByDestination);
+      const primaryDestination = formData.allowMultipleDestinations
+        ? uniqueDestinations[0] || formData.destination
+        : formData.destination;
+
+      // Use generated dispatch code
+      const dispatchCode = formData.allowMultipleDestinations
+        ? generateDispatchCode(primaryDestination)
+        : formData.dispatchCode;
+
       if (!dispatchCode) {
         setError('Dispatch code not generated. Please select a destination.');
         return;
       }
 
-      
       const dispatchData = {
         dispatchCode,
         sourceBranch: formData.sourceBranch,
-        destination: formData.destination,
+        destination: formData.allowMultipleDestinations ? null : primaryDestination,
         driver: formData.driverName,
         driverPhone: formData.driverPhone,
         vehicleNumber: formData.vehicleNumber,
@@ -436,7 +520,11 @@ const CreateDispatch: React.FC = () => {
         } catch (updateError) {
         }
         
-        setSuccess(`Dispatch ${dispatchCode} created successfully! All parcels updated to in-transit.`);
+        const destinationText = formData.allowMultipleDestinations
+          ? `${uniqueDestinations.length} destination(s): ${uniqueDestinations.join(', ')}`
+          : primaryDestination;
+
+        setSuccess(`Dispatch ${dispatchCode} created successfully! Dispatched ${selectedParcelIds.length} parcels to ${destinationText}. All parcels updated to in-transit.`);
         
         // Reset form
         setFormData({
@@ -446,7 +534,8 @@ const CreateDispatch: React.FC = () => {
           driverName: '',
           driverPhone: '',
           vehicleNumber: '',
-          parcelIds: []
+          parcelIds: [],
+          allowMultipleDestinations: false
         });
         setSelectedParcelIds([]);
         
@@ -688,25 +777,55 @@ const CreateDispatch: React.FC = () => {
                 />
 
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    Destination *
-                  </label>
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <select
-                      value={formData.destination}
-                      onChange={(e) => handleFormChange('destination', e.target.value)}
-                      className="w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
-                      required
-                    >
-                      <option value="">Select destination</option>
-                      {destinations.map((dest) => (
-                        <option key={dest} value={dest}>
-                          {dest}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="flex items-center gap-3 mb-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.allowMultipleDestinations}
+                        onChange={(e) => handleFormChange('allowMultipleDestinations', e.target.checked)}
+                        className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Allow multiple destinations
+                      </span>
+                    </label>
                   </div>
+
+                  {!formData.allowMultipleDestinations && (
+                    <div className="relative">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Destination *
+                      </label>
+                      <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <select
+                        value={formData.destination}
+                        onChange={(e) => handleFormChange('destination', e.target.value)}
+                        className="w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+                        required
+                      >
+                        <option value="">Select destination</option>
+                        {destinations.map((dest) => (
+                          <option key={dest} value={dest}>
+                            {dest}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {formData.allowMultipleDestinations && selectedParcelIds.length > 0 && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                      <p className="text-sm text-blue-800">
+                        <span className="font-semibold">Multiple Destinations Mode:</span>
+                        Selected parcels will be grouped by destination automatically. <br/>
+                        Destinations: {parcels.filter(p => selectedParcelIds.includes(p.id))
+                          .map(p => p.destination)
+                          .filter((dest, index, arr) => arr.indexOf(dest) === index)
+                          .sort()
+                          .join(', ')}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <Input

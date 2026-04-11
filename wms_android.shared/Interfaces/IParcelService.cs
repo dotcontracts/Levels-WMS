@@ -53,6 +53,7 @@ namespace wms_android.shared.Interfaces
         Task<Dispatch> CreateDispatchAsync(Dispatch dispatch);
         Task<IEnumerable<Dispatch>> GetRecentDispatchesAsync();
         Task<IEnumerable<string>> GetDestinationsAsync();
+        Task<IEnumerable<Branch>> GetAllBranchesAsync();
         Task<IEnumerable<Parcel>> GetAllParcelsAsync();
         
         // Paginated methods for performance optimization

@@ -425,6 +425,57 @@ class WMSApiService {
     }
   }
 
+  // Paginated parcels endpoint for better performance
+  async getParcelsPaged(params: {
+    page?: number;
+    pageSize?: number;
+    destination?: string;
+    status?: number;
+    statuses?: string;
+    fromDate?: string;
+    toDate?: string;
+    createdByUsername?: string;
+    search?: string;
+  }): Promise<{
+    data: Parcel[];
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  }> {
+    try {
+      const queryParams = new URLSearchParams();
+      
+      if (params.page !== undefined) queryParams.append('page', params.page.toString());
+      if (params.pageSize !== undefined) queryParams.append('pageSize', params.pageSize.toString());
+      if (params.destination) queryParams.append('destination', params.destination);
+      if (params.status !== undefined) queryParams.append('status', params.status.toString());
+      if (params.statuses) queryParams.append('statuses', params.statuses);
+      if (params.fromDate) queryParams.append('fromDate', params.fromDate);
+      if (params.toDate) queryParams.append('toDate', params.toDate);
+      if (params.createdByUsername) queryParams.append('createdByUsername', params.createdByUsername);
+      if (params.search) queryParams.append('search', params.search);
+
+      const url = `${API_BASE_URL}/Parcels/paged?${queryParams.toString()}`;
+      
+      const response = await fetch(url, {
+        headers: this.getHeaders(),
+        signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch parcels: ${response.status}`);
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      throw new Error(`Failed to connect to WMS API: ${error}`);
+    }
+  }
+
   async getParcelById(parcelId: string): Promise<Parcel | null> {
     try {
       const response = await fetch(`${API_BASE_URL}/Parcels/${parcelId}`, {
@@ -536,6 +587,102 @@ class WMSApiService {
 
       const data = await response.json();
       return data.$values || data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // New optimized multi-destination dispatch endpoint
+  async getParcelsForMultiDestDispatch(params?: {
+    page?: number;
+    pageSize?: number;
+    statuses?: string[];
+    fromDate?: string;
+    toDate?: string;
+    createdByUsername?: string;
+    userBranchId?: number;
+  }): Promise<any> {
+    try {
+      const url = `${API_BASE_URL}/Parcels/dispatch-multi-dest`;
+      const urlParams = new URLSearchParams();
+      
+      if (params?.page) {
+        urlParams.append('page', params.page.toString());
+      }
+      
+      if (params?.pageSize) {
+        urlParams.append('pageSize', params.pageSize.toString());
+      }
+      
+      if (params?.statuses && params.statuses.length > 0) {
+        urlParams.append('statuses', params.statuses.join(','));
+      }
+      
+      if (params?.fromDate) {
+        urlParams.append('fromDate', params.fromDate);
+      }
+      
+      if (params?.toDate) {
+        urlParams.append('toDate', params.toDate);
+      }
+      
+      if (params?.createdByUsername) {
+        urlParams.append('createdByUsername', params.createdByUsername);
+      }
+      
+      if (params?.userBranchId) {
+        urlParams.append('userBranchId', params.userBranchId.toString());
+      }
+
+      const response = await fetch(`${url}?${urlParams}`, {
+        headers: this.getHeaders(),
+        signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch parcels for multi-destination dispatch: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // New dispatch statistics endpoint
+  async getDispatchStatistics(params?: {
+    fromDate?: string;
+    toDate?: string;
+    userBranchId?: number;
+  }): Promise<any> {
+    try {
+      const url = `${API_BASE_URL}/Parcels/dispatch-stats`;
+      const urlParams = new URLSearchParams();
+      
+      if (params?.fromDate) {
+        urlParams.append('fromDate', params.fromDate);
+      }
+      
+      if (params?.toDate) {
+        urlParams.append('toDate', params.toDate);
+      }
+      
+      if (params?.userBranchId) {
+        urlParams.append('userBranchId', params.userBranchId.toString());
+      }
+
+      const response = await fetch(`${url}?${urlParams}`, {
+        headers: this.getHeaders(),
+        signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch dispatch statistics: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data;
     } catch (error) {
       throw error;
     }
@@ -814,7 +961,7 @@ class WMSApiService {
   async createDispatch(dispatchData: {
     dispatchCode: string;
     sourceBranch: string;
-    destination: string;
+    destination: string | null;
     driver: string;
     driverPhone?: string;
     vehicleNumber: string;

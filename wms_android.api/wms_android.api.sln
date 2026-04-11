@@ -4,7 +4,7 @@ VisualStudioVersion = 17.5.2.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "wms_android.api", "wms_android.api.csproj", "{A5C42423-1C56-A150-776A-A13104DFA710}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "wms_android.shared", "wms_android.shared\wms_android.shared.csproj", "{8BD1E3DE-FC7D-4C34-8C42-9B843A53FA3E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "wms_android.shared", "..\wms_android.shared\wms_android.shared.csproj", "{8BD1E3DE-FC7D-4C34-8C42-9B843A53FA3E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

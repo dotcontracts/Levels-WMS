@@ -271,11 +271,15 @@ const ViewDispatch: React.FC = () => {
           parcels.push(enhancedParcel);
         }
         
-        // Sort parcels by creation date, latest first
+        // Sort parcels by waybill number alphabetically
         const sortedParcels = parcels.sort((a, b) => {
-          const dateA = new Date(a.createdAt || 0);
-          const dateB = new Date(b.createdAt || 0);
-          return dateB.getTime() - dateA.getTime();
+          const waybillA = a.waybillNumber || '';
+          const waybillB = b.waybillNumber || '';
+          return waybillA.localeCompare(waybillB, undefined, { 
+            numeric: false, 
+            sensitivity: 'base',
+            caseFirst: 'upper'
+          });
         });
         
         setDispatchParcels(sortedParcels);
@@ -326,11 +330,15 @@ const ViewDispatch: React.FC = () => {
             }
           }
           
-          // Sort parcels by creation date, latest first
+          // Sort parcels by waybill number alphabetically
           const sortedParcels = allParcels.sort((a, b) => {
-            const dateA = new Date(a.createdAt || 0);
-            const dateB = new Date(b.createdAt || 0);
-            return dateB.getTime() - dateA.getTime();
+            const waybillA = a.waybillNumber || '';
+            const waybillB = b.waybillNumber || '';
+            return waybillA.localeCompare(waybillB, undefined, { 
+              numeric: false, 
+              sensitivity: 'base',
+              caseFirst: 'upper'
+            });
           });
           
           setDispatchParcels(sortedParcels);
