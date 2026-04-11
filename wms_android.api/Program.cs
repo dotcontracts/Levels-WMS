@@ -203,14 +203,22 @@ public class Program
                     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                     try
                     {
+                        // Try direct connection test first to get more detailed error
+                        using var testConnection = new Npgsql.NpgsqlConnection(dbContext.Database.GetConnectionString());
+                        await testConnection.OpenAsync(cts.Token);
+                        logger.LogInformation("✓ Direct connection test successful");
+                        testConnection.Close();
+                        
+                        // Now try EF Core's CanConnectAsync
                         var canConnect = await dbContext.Database.CanConnectAsync(cts.Token);
                         if (!canConnect)
                         {
-                            throw new InvalidOperationException("Database connection test returned false - cannot establish connection");
+                            throw new InvalidOperationException("EF Core CanConnectAsync returned false after successful direct connection");
                         }
                     }
                     catch (Exception connEx)
                     {
+                        logger.LogError($"Connection string being used: {dbContext.Database.GetConnectionString()?.Replace(dbPassword, "***")}");
                         throw new InvalidOperationException($"Database connection failed: {connEx.GetType().Name}: {connEx.Message}", connEx);
                     }
                     
