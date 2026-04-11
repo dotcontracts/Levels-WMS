@@ -28,7 +28,7 @@ WORKDIR /src
 # Optimize restore process - reduce memory usage
 RUN echo "=== Restoring NuGet packages ===" && \
     dotnet nuget locals all --clear && \
-    dotnet restore \
+    dotnet restore wms_android.api.csproj \
     --verbosity minimal \
     --no-cache \
     --disable-parallel || (echo "ERROR: Restore failed!" && exit 1)
@@ -45,10 +45,10 @@ RUN echo "=== Files after copy ===" && \
     echo "=== Shared project files ===" && \
     ls -la /src/wms_android.shared/ | head -20
 
-# Build and publish in one step to avoid file missing issues
+# Build and publish the API project specifically to avoid solution path issues
 WORKDIR /src
 RUN echo "Building and publishing application..." && \
-    dotnet publish \
+    dotnet publish wms_android.api.csproj \
     -c Release \
     -o /app/publish \
     --verbosity minimal \
