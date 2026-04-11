@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using wms_android.shared.Models;
 using wms_android.shared.Data;
-// using wms_android.shared.Data;
+using wms_android.api.Services;
 
 namespace wms_android.api.Controllers
 {
@@ -11,10 +11,12 @@ namespace wms_android.api.Controllers
     public class DispatchesController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly IDispatchSegmentService _segmentService;
 
-        public DispatchesController(AppDbContext context)
+        public DispatchesController(AppDbContext context, IDispatchSegmentService segmentService)
         {
             _context = context;
+            _segmentService = segmentService;
         }
 
         [HttpPost("create")]
@@ -28,7 +30,7 @@ namespace wms_android.api.Controllers
                 Console.WriteLine($"[DispatchesController] Destination: '{dispatch.Destination}'");
                 Console.WriteLine($"[DispatchesController] ParcelIds count: {dispatch.ParcelIds?.Count ?? 0}");
                 Console.WriteLine($"[DispatchesController] ParcelIds: {string.Join(", ", dispatch.ParcelIds ?? new List<Guid>())}");
-                
+
                 // Validate parcel IDs
                 if (dispatch.ParcelIds == null || dispatch.ParcelIds.Count == 0)
                     return BadRequest("At least one parcel ID is required");
@@ -44,10 +46,10 @@ namespace wms_android.api.Controllers
                     return BadRequest($"Some parcels not found: {string.Join(", ", missingIds)}");
                 }
 
-                // Generate a new UUID for the database ID (primary key)
+                // Generate a new UUID for database ID (primary key)
                 dispatch.Id = Guid.NewGuid();
-                // Preserve the DispatchCode sent from client (e.g., "KRC-20250716-DSIF1Y6")
-                // If no DispatchCode provided, use the generated UUID as fallback
+                // Preserve DispatchCode sent from client
+                // If no DispatchCode provided, use generated UUID as fallback
                 if (string.IsNullOrEmpty(dispatch.DispatchCode))
                 {
                     dispatch.DispatchCode = dispatch.Id.ToString();
@@ -67,24 +69,75 @@ namespace wms_android.api.Controllers
                 // Associate parcels with the dispatch
                 dispatch.Parcels = existingParcels;
 
-                // Add dispatch to database
+                // Group parcels by destination for multi-destination support
+                var parcelsByDestination = existingParcels
+                    .GroupBy(p => p.Destination)
+                    .ToDictionary(g => g.Key, g => g.ToList());
+
+                // If single destination or no destination specified, use the provided one
+                if (parcelsByDestination.Count == 1 || !string.IsNullOrEmpty(dispatch.Destination))
+                {
+                    var primaryDestination = !string.IsNullOrEmpty(dispatch.Destination)
+                        ? dispatch.Destination
+                        : parcelsByDestination.Keys.First();
+
+                    // Set the primary destination on the dispatch
+                    dispatch.Destination = primaryDestination;
+                }
+                else
+                {
+                    // Set primary destination to first destination for backward compatibility
+                    dispatch.Destination = parcelsByDestination.Keys.First();
+                }
+
+                // Add dispatch to database FIRST (must exist before creating segments)
                 _context.Dispatches.Add(dispatch);
                 await _context.SaveChangesAsync();
 
-                // Return a simplified response to avoid deserialization issues
+                // NOW create segments after dispatch is saved
+                if (parcelsByDestination.Count == 1 || !string.IsNullOrEmpty(dispatch.Destination))
+                {
+                    var primaryDestination = dispatch.Destination;
+
+                    // Create a single segment for all parcels
+                    await _segmentService.CreateDispatchSegmentAsync(
+                        dispatch.Id,
+                        primaryDestination,
+                        dispatch.ParcelIds
+                    );
+                }
+                else
+                {
+                    // Create segments for each destination
+                    foreach (var kvp in parcelsByDestination)
+                    {
+                        var destination = kvp.Key;
+                        var parcelIds = kvp.Value.Select(p => p.Id).ToList();
+
+                        await _segmentService.CreateDispatchSegmentAsync(
+                            dispatch.Id,
+                            destination,
+                            parcelIds
+                        );
+                    }
+                }
+
+                // Return enhanced response with segments
                 var response = new
                 {
                     Id = dispatch.Id,
                     DispatchCode = dispatch.DispatchCode,
                     SourceBranch = dispatch.SourceBranch,
-                    Destination = dispatch.EffectiveDestination, // Use EffectiveDestination for backward compatibility
+                    Destination = dispatch.EffectiveDestination,
                     VehicleNumber = dispatch.VehicleNumber,
                     Driver = dispatch.Driver,
                     DriverPhone = dispatch.DriverPhone,
                     ParcelIds = dispatch.ParcelIds,
                     DispatchTime = dispatch.DispatchTime,
                     Status = dispatch.Status,
-                    ParcelCount = dispatch.ParcelIds?.Count ?? 0
+                    ParcelCount = dispatch.ParcelIds?.Count ?? 0,
+                    TotalAmount = dispatch.TotalAmount,
+                    AllDestinations = dispatch.AllDestinations
                 };
 
                 Console.WriteLine($"[DispatchesController] Returning simplified response: {System.Text.Json.JsonSerializer.Serialize(response)}");
@@ -104,12 +157,46 @@ namespace wms_android.api.Controllers
         [HttpGet("{id}")]
         public async Task<ActionResult<Dispatch>> GetDispatch(Guid id)
         {
-            var dispatch = await _context.Dispatches.FindAsync(id);
+            var dispatch = await _context.Dispatches
+                .AsNoTracking() // Remove circular reference tracking
+                .FirstOrDefaultAsync(d => d.Id == id);
+
+            if (dispatch != null)
+            {
+                // Load segments separately to avoid circular references
+                var segments = await _context.DispatchSegments
+                    .AsNoTracking()
+                    .Where(ds => ds.DispatchId == id)
+                    .ToListAsync();
+                    
+                // Load parcels for each segment separately using join table
+                foreach (var segment in segments)
+                {
+                    var parcelIds = await _context.Database.SqlQuery<Guid>(
+                        $"SELECT \"ParcelsId\" FROM \"DispatchSegmentParcels\" WHERE \"DispatchSegmentId\" = {segment.Id}")
+                        .ToListAsync();
+                        
+                    segment.Parcels = await _context.Parcels
+                        .AsNoTracking()
+                        .Where(p => parcelIds.Contains(p.Id))
+                        .ToListAsync();
+                }
+                
+                dispatch.Segments = segments;
+            }
+
             if (dispatch == null)
             {
                 return NotFound();
             }
             return Ok(dispatch);
+        }
+
+        [HttpGet("{id}/segments")]
+        public async Task<ActionResult<IEnumerable<DispatchSegment>>> GetDispatchSegments(Guid id)
+        {
+            var segments = await _segmentService.GetSegmentsByDispatchIdCachedAsync(id);
+            return Ok(segments);
         }
 
         [HttpGet("branch/{branch}")]
@@ -141,10 +228,23 @@ namespace wms_android.api.Controllers
         [HttpGet("{id}/note")]
         public async Task<ActionResult<DispatchNote>> GetDispatchNote(Guid id)
         {
-            // Load dispatch with parcel relationships
+            // Load dispatch without circular references
             var dispatch = await _context.Dispatches
-                .Include(d => d.Parcels)  // Eager load parcels
+                .AsNoTracking() // Remove circular reference tracking
                 .FirstOrDefaultAsync(d => d.Id == id);
+                
+            if (dispatch != null)
+            {
+                // Load parcels separately to avoid circular references using join table
+                var parcelIds = await _context.Database.SqlQuery<Guid>(
+                    $"SELECT \"ParcelsId\" FROM \"DispatchParcels\" WHERE \"DispatchesId\" = {dispatch.Id}")
+                    .ToListAsync();
+                    
+                dispatch.Parcels = await _context.Parcels
+                    .AsNoTracking()
+                    .Where(p => parcelIds.Contains(p.Id))
+                    .ToListAsync();
+            }
 
             if (dispatch == null)
             {

@@ -15,9 +15,10 @@ using Microsoft.Extensions.Options;
 using wms_android.api.Services;
 using wms_android.api.Interfaces;
 using System.Linq;
+using Microsoft.Extensions.Caching.Memory;
 public class Program
 {
-    public static void Main(string[] args)
+    public static async Task Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
 
@@ -27,17 +28,25 @@ public class Program
         Console.WriteLine($"Working Directory: {Directory.GetCurrentDirectory()}");
         Console.WriteLine($"Content Root: {builder.Environment.ContentRootPath}");
 
-        // Add services to container
-        builder.Services.AddControllers().AddJsonOptions(options =>
+        // Add services to container - Use Newtonsoft.Json for circular reference handling
+        builder.Services.AddControllers().AddNewtonsoftJson(options =>
         {
-            options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.Preserve;
-            options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+            options.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore;
+            options.SerializerSettings.NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore;
+            options.SerializerSettings.ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver();
         });
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
 
+        // Add memory cache for performance optimization
+        builder.Services.AddMemoryCache(options =>
+        {
+            options.SizeLimit = 1024; // Limit cache size to prevent memory issues
+        });
+
         // Register services
         builder.Services.AddScoped<IParcelService, ApiParcelService>();
+        builder.Services.AddScoped<IDispatchSegmentService, DispatchSegmentService>();
 
         // Configure database using connection string from appsettings or environment variables
         // Always prefer environment variables in production for security
@@ -53,11 +62,13 @@ public class Program
         if (!string.IsNullOrEmpty(dbHost) && !string.IsNullOrEmpty(dbName) && 
             !string.IsNullOrEmpty(dbUser) && !string.IsNullOrEmpty(dbPassword))
         {
-            // Use correct Npgsql connection string parameter names
-            // Npgsql uses camelCase parameter names: MinPoolSize, MaxPoolSize (no spaces)
-            connectionString = $"Host={dbHost};Port={dbPort};Database={dbName};Username={dbUser};Password={dbPassword};SSL Mode=Require;Trust Server Certificate=true;Pooling=true;MinPoolSize=5;MaxPoolSize=100;Command Timeout=30;Timeout=30;Keepalive=60";
-            Console.WriteLine($"✓ Built connection string from environment variables");
+            // Production-safe connection pool configuration to prevent "too many clients" errors
+            // Reduced MaxPoolSize for multiple app instances, added connection lifecycle management
+            connectionString = $"Host={dbHost};Port={dbPort};Database={dbName};Username={dbUser};Password={dbPassword};SSL Mode=Require;Trust Server Certificate=true;Pooling=true;MinPoolSize=2;MaxPoolSize=20;Connection Idle Lifetime=300;Command Timeout=30;Connection Timeout=15;Keepalive=60;Connection Pruning Interval=10;Health Check Timeout=5";
+            Console.WriteLine($"✓ Built production-safe connection string from environment variables");
             Console.WriteLine($"  Host: {dbHost}, Port: {dbPort}, Database: {dbName}, User: {dbUser}");
+            Console.WriteLine($"  Connection Pool: MinSize=2, MaxSize=20 (production-optimized)");
+            Console.WriteLine($"  Connection Lifecycle: IdleLifetime=300s, PruningInterval=10s");
         }
         else
         {
@@ -82,9 +93,10 @@ public class Program
             {
                 npgsqlOptions.MigrationsAssembly("wms_android.api");
                 npgsqlOptions.EnableRetryOnFailure(
-                    maxRetryCount: 3,
-                    maxRetryDelay: TimeSpan.FromSeconds(10),
-                    errorCodesToAdd: null);
+                    maxRetryCount: 5,
+                    maxRetryDelay: TimeSpan.FromSeconds(30),
+                    errorCodesToAdd: new[] { "53300" }); // Handle "too many clients" errors
+                npgsqlOptions.CommandTimeout(45); // Increased for migration operations
             }));
 
         // Add Health Checks with error handling
@@ -132,30 +144,16 @@ public class Program
                 };
             });
 
-        // Configure CORS - support environment variables fallback
-        var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+        // Configure CORS - Always use our hardcoded origins to ensure they work
+        var corsOrigins = new[]
+        {
+            "https://wms-ficma-dispatch-l5z4y.ondigitalocean.app", // React app URL
+            "https://levelsapi-82i8a.ondigitalocean.app", // API URL  
+            "http://localhost:3000", // Local development
+            "https://localhost:3001" // Local development HTTPS
+        };
         
-        // If no config file CORS settings, use environment variables
-        if (corsOrigins == null || corsOrigins.Length == 0)
-        {
-            var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://wms-ficma-dispatch-l5z4y.ondigitalocean.app";
-            var apiBaseUrl = Environment.GetEnvironmentVariable("API_BASE_URL") ?? "https://levelsapi-82i8a.ondigitalocean.app";
-            
-            corsOrigins = new[]
-            {
-                frontendUrl,
-                apiBaseUrl,
-                "https://wms-ficma-dispatch-l5z4y.ondigitalocean.app", // React app URL
-                "http://localhost:3000",
-                "https://localhost:3001"
-            };
-            
-            Console.WriteLine($"✓ Using CORS origins from environment variables: {string.Join(", ", corsOrigins)}");
-        }
-        else
-        {
-            Console.WriteLine($"✓ Using CORS origins from configuration: {string.Join(", ", corsOrigins)}");
-        }
+        Console.WriteLine($"✓ Using hardcoded CORS origins: {string.Join(", ", corsOrigins)}");
         builder.Services.AddCors(options =>
         {
             options.AddPolicy("AllowWebApp",
@@ -179,63 +177,113 @@ public class Program
 
         var app = builder.Build();
 
-        // Apply database migrations on startup
+        // Apply database migrations on startup with connection storm prevention
         using (var scope = app.Services.CreateScope())
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-            try
+            // Add startup delay to prevent connection storms from multiple instances
+            var startupDelay = Random.Shared.Next(1000, 5000); // Random delay 1-5 seconds
+            logger.LogInformation($"Applying startup delay of {startupDelay}ms to prevent connection storms...");
+            await Task.Delay(startupDelay);
+
+            var maxRetries = 10; // Increased for production resilience
+            var baseDelay = TimeSpan.FromSeconds(2);
+            
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
-                logger.LogInformation("Attempting to connect to database and apply migrations...");
-                
-                // Check if database exists and can be connected to
-                var canConnect = dbContext.Database.CanConnect();
-                logger.LogInformation($"Database can connect: {canConnect}");
-                
-                // Get pending migrations
-                var pendingMigrations = dbContext.Database.GetPendingMigrations().ToList();
-                logger.LogInformation($"Pending migrations: {pendingMigrations.Count}");
-                if (pendingMigrations.Any())
-                {
-                    logger.LogInformation($"Migrations to apply: {string.Join(", ", pendingMigrations)}");
-                }
-                
-                // Handle migration conflicts gracefully
                 try
                 {
-                    // Apply migrations
-                    dbContext.Database.Migrate();
-                    logger.LogInformation("Database migration completed successfully");
+                    logger.LogInformation($"Database connection attempt {attempt}/{maxRetries}...");
+                    
+                    // Test connection with timeout
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                    var canConnect = await dbContext.Database.CanConnectAsync(cts.Token);
+                    
+                    if (!canConnect)
+                    {
+                        throw new InvalidOperationException("Database connection test failed");
+                    }
+                    
+                    logger.LogInformation("✓ Database connection successful");
+                    
+                    // Get pending migrations
+                    var pendingMigrations = dbContext.Database.GetPendingMigrations().ToList();
+                    logger.LogInformation($"Pending migrations: {pendingMigrations.Count}");
+                    if (pendingMigrations.Any())
+                    {
+                        logger.LogInformation($"Migrations to apply: {string.Join(", ", pendingMigrations)}");
+                    }
+                    
+                    // Handle migration conflicts gracefully
+                    try
+                    {
+                        // Apply migrations with timeout
+                        using var migrationCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+                        await dbContext.Database.MigrateAsync(migrationCts.Token);
+                        logger.LogInformation("✓ Database migration completed successfully");
+                        break; // Success, exit retry loop
+                    }
+                    catch (Npgsql.PostgresException pgEx) when (pgEx.SqlState == "42P07" || pgEx.SqlState == "42701")
+                    {
+                        // Handle "relation already exists" or "column already exists" errors
+                        logger.LogWarning($"Migration conflict detected: {pgEx.Message}");
+                        logger.LogInformation("Attempting to fix migration history...");
+                        
+                        // Mark problematic migrations as applied
+                        var migrationHistorySql = @"
+                            INSERT INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
+                            VALUES 
+                                ('20251205133225_InitialCreate', '8.0.8'),
+                                ('20251211170446_UpdateParcelStatusNaming', '8.0.8'),
+                                ('20251229090510_UpdateInvoiceItemStructure', '8.0.8')
+                            ON CONFLICT (""MigrationId"") DO NOTHING;
+                        ";
+                        
+                        dbContext.Database.ExecuteSqlRaw(migrationHistorySql);
+                        logger.LogInformation("✓ Migration history updated. Database should now be in sync.");
+                        break; // Success, exit retry loop
+                    }
                 }
-                catch (Npgsql.PostgresException pgEx) when (pgEx.SqlState == "42P07" || pgEx.SqlState == "42701")
+                catch (Exception ex) when (attempt < maxRetries)
                 {
-                    // Handle "relation already exists" or "column already exists" errors
-                    logger.LogWarning($"Migration conflict detected: {pgEx.Message}");
-                    logger.LogInformation("Attempting to fix migration history...");
+                    // Handle connection exhaustion specifically
+                    if (ex.Message.Contains("too many clients") || 
+                        ex.Message.Contains("53300") ||
+                        ex is Npgsql.PostgresException pgEx && pgEx.SqlState == "53300")
+                    {
+                        var exponentialDelay = TimeSpan.FromMilliseconds(baseDelay.TotalMilliseconds * Math.Pow(2, attempt - 1));
+                        var jitteredDelay = exponentialDelay + TimeSpan.FromMilliseconds(Random.Shared.Next(0, 1000));
+                        
+                        logger.LogWarning($"Database connection limit reached (attempt {attempt}/{maxRetries}). " +
+                                        $"Retrying in {jitteredDelay.TotalSeconds:F1} seconds... Error: {ex.Message}");
+                        
+                        await Task.Delay(jitteredDelay);
+                        continue;
+                    }
                     
-                    // Mark problematic migrations as applied
-                    var migrationHistorySql = @"
-                        INSERT INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
-                        VALUES 
-                            ('20251205133225_InitialCreate', '8.0.8'),
-                            ('20251211170446_UpdateParcelStatusNaming', '8.0.8'),
-                            ('20251229090510_UpdateInvoiceItemStructure', '8.0.8')
-                        ON CONFLICT (""MigrationId"") DO NOTHING;
-                    ";
-                    
-                    dbContext.Database.ExecuteSqlRaw(migrationHistorySql);
-                    logger.LogInformation("Migration history updated. Database should now be in sync.");
+                    // Other database errors
+                    var retryDelay = TimeSpan.FromSeconds(2 * attempt + Random.Shared.Next(1, 3));
+                    logger.LogWarning($"Database error on attempt {attempt}/{maxRetries}. " +
+                                    $"Retrying in {retryDelay.TotalSeconds:F1} seconds... Error: {ex.Message}");
+                    await Task.Delay(retryDelay);
                 }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "An error occurred while migrating the database. Error: {Message}", ex.Message);
-                logger.LogError("Stack trace: {StackTrace}", ex.StackTrace);
-                // In production, we should still throw to prevent app from starting with incomplete database
-                // This ensures we catch migration issues early
-                logger.LogCritical("CRITICAL: Database migration failed. Application cannot continue without proper database schema.");
-                throw; // Re-throw to prevent app from starting with broken database
+                catch (Exception ex)
+                {
+                    // Final attempt failed
+                    logger.LogError(ex, "CRITICAL: Database migration failed after {MaxRetries} attempts. Error: {Message}", maxRetries, ex.Message);
+                    logger.LogError("Stack trace: {StackTrace}", ex.StackTrace);
+                    
+                    // Log connection pool information for debugging
+                    logger.LogError("Connection string parameters: MaxPoolSize=20, MinPoolSize=2");
+                    logger.LogError("This error typically indicates:");
+                    logger.LogError("1. PostgreSQL max_connections limit exceeded");
+                    logger.LogError("2. Too many application instances running simultaneously");
+                    logger.LogError("3. Database server resource exhaustion");
+                    
+                    throw; // Re-throw to prevent app from starting with broken database
+                }
             }
         }
 
@@ -289,8 +337,12 @@ public class Program
 
         try
         {
-            Console.WriteLine("✓ Starting application...");
-            app.Run();
+            Console.WriteLine("✓ Application startup completed successfully");
+            Console.WriteLine("✓ Database connections optimized for production (MaxPool=20)");
+            Console.WriteLine("✓ Startup delay and retry logic active to prevent connection storms");
+            Console.WriteLine("✓ Starting WMS Android API server...");
+            
+            await app.RunAsync();
         }
         catch (Exception ex)
         {

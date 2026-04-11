@@ -26,7 +26,7 @@ namespace wms_android.api.Controllers
         {
             try
             {
-                var query = _context.Parcels.AsQueryable();
+                var query = _context.Parcels.AsNoTracking().AsQueryable();
                 
                 // If branchName is provided, filter by destination column
                 if (!string.IsNullOrEmpty(branchName))
@@ -65,7 +65,6 @@ namespace wms_android.api.Controllers
                 pageSize = Math.Clamp(pageSize, 1, 500); // Max 500 items per page
 
                 var query = _context.Parcels
-                    .Include(p => p.CreatedBy)
                     .AsQueryable();
 
                 // Apply filters at database level for optimal performance
@@ -176,7 +175,6 @@ namespace wms_android.api.Controllers
                 pageSize = Math.Clamp(pageSize, 1, 500);
 
                 var query = _context.Parcels
-                    .Include(p => p.CreatedBy)
                     .Where(p => p.CreatedById == userId)
                     .AsQueryable();
 
@@ -324,6 +322,30 @@ namespace wms_android.api.Controllers
             }
         }
 
+        /// <summary>
+        /// Get all branches for destination selection
+        /// </summary>
+        [HttpGet("branches")]
+        public async Task<ActionResult<IEnumerable<Branch>>> GetAllBranches()
+        {
+            try
+            {
+                // Add cache headers for better performance
+                Response.Headers.Add("Cache-Control", "public, max-age=3600"); // 1 hour cache
+                
+                var branches = await _context.Branches
+                    .OrderBy(b => b.Name)
+                    .ToListAsync();
+                    
+                return Ok(branches);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error getting all branches: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
         [HttpGet("waybill/generate")]
         public async Task<ActionResult<string>> GenerateWaybill()
         {
@@ -462,33 +484,57 @@ namespace wms_android.api.Controllers
                 // Note: CreatedById is now part of the Parcel model and should be passed in the request
                 // If it's not set, it will be null in the database, which is allowed
 
-                var created = await _parcelService.CreateParcelAsync(parcel);
+                Console.WriteLine("=== CONTROLLER: Calling CreateParcelAsync ===");
                 
-                if (created == null)
+                try 
                 {
-                    throw new Exception("Failed to create parcel - service returned null");
-                }
+                    var created = await _parcelService.CreateParcelAsync(parcel);
+                    Console.WriteLine("=== CONTROLLER: Service call completed successfully ===");
+                    
+                    if (created == null)
+                    {
+                        Console.WriteLine("=== CONTROLLER: Service returned null - unexpected ===");
+                        throw new Exception("Failed to create parcel - service returned null");
+                    }
 
-                // Log created parcel
-                System.Diagnostics.Debug.WriteLine($"Created parcel: {JsonConvert.SerializeObject(created)}");
-                
-                return CreatedAtAction(nameof(GetParcel), new { id = created.Id }, created);
+                    Console.WriteLine("=== CONTROLLER: Parcel creation completed successfully ===");
+                    
+                    // Return success without accessing the created object properties
+                    return Ok(new { Message = "Parcel created successfully" });
+                }
+                catch (Exception serviceEx)
+                {
+                    Console.WriteLine($"=== SERVICE LAYER EXCEPTION ===");
+                    Console.WriteLine($"Exception Type: {serviceEx.GetType().Name}");
+                    Console.WriteLine($"Exception Message: {serviceEx.Message}");
+                    Console.WriteLine($"Stack Trace: {serviceEx.StackTrace}");
+                    
+                    // Log inner exceptions
+                    var innerEx = serviceEx.InnerException;
+                    int depth = 1;
+                    while (innerEx != null && depth <= 5)
+                    {
+                        Console.WriteLine($"Inner Exception {depth}: {innerEx.GetType().Name} - {innerEx.Message}");
+                        innerEx = innerEx.InnerException;
+                        depth++;
+                    }
+                    
+                    throw; // Re-throw to be caught by outer catch
+                }
             }
             catch (Exception ex)
             {
-                var errorMessage = $"Error creating parcel: {ex.Message}";
-                if (ex.InnerException != null)
-                {
-                    errorMessage += $" Inner exception: {ex.InnerException.Message}";
-                }
-                System.Diagnostics.Debug.WriteLine(errorMessage);
-                System.Diagnostics.Debug.WriteLine($"Stack trace: {ex.StackTrace}");
+                Console.WriteLine($"=== CONTROLLER LEVEL EXCEPTION ===");
+                Console.WriteLine($"Exception Type: {ex.GetType().Name}");
+                Console.WriteLine($"Exception Message: {ex.Message}");
+                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
                 
                 return StatusCode(500, new { 
-                    error = "Internal server error", 
+                    error = "Internal server error",
                     message = ex.Message,
+                    type = ex.GetType().Name,
                     innerException = ex.InnerException?.Message,
-                    stackTrace = ex.StackTrace 
+                    stackTrace = ex.StackTrace?.Split('\n').Take(10) // Limit stack trace length
                 });
             }
         }
@@ -639,7 +685,6 @@ namespace wms_android.api.Controllers
             try
             {
                 var query = _context.Parcels
-                    .Include(p => p.CreatedBy)
                     .AsQueryable();
 
                 // Apply filters
@@ -691,6 +736,230 @@ namespace wms_android.api.Controllers
             }
         }
 
+        /// <summary>
+        /// Enhanced multi-destination dispatch loading with optimized performance
+        /// Loads all dispatchable parcels across all destinations without destination constraint
+        /// </summary>
+        [HttpGet("dispatch-multi-dest")]
+        public async Task<ActionResult<MultiDestinationDispatchResult>> GetParcelsForMultiDestinationDispatch(
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 100,
+            [FromQuery] string? statuses = null,
+            [FromQuery] DateTime? fromDate = null,
+            [FromQuery] DateTime? toDate = null,
+            [FromQuery] string? createdByUsername = null,
+            [FromQuery] int? userBranchId = null)
+        {
+            try
+            {
+                // Validate pagination parameters
+                page = Math.Max(1, page);
+                pageSize = Math.Clamp(pageSize, 10, 500); // Min 10, Max 500 items per page
+
+                var query = _context.Parcels
+                    .AsQueryable();
+
+                // Default to pending and confirmed for dispatch
+                var validStatuses = new List<ParcelStatus> { ParcelStatus.Pending, ParcelStatus.Confirmed };
+                if (!string.IsNullOrEmpty(statuses))
+                {
+                    var statusList = statuses.Split(',')
+                        .Where(s => Enum.TryParse<ParcelStatus>(s.Trim(), out _))
+                        .Select(s => Enum.Parse<ParcelStatus>(s.Trim()))
+                        .ToList();
+                    if (statusList.Any())
+                    {
+                        validStatuses = statusList;
+                    }
+                }
+                query = query.Where(p => validStatuses.Contains(p.Status));
+
+                // Branch filtering - filter by creator's branch if userBranchId provided
+                if (userBranchId.HasValue)
+                {
+                    query = query.Where(p => p.CreatedBy != null && p.CreatedBy.BranchId == userBranchId.Value);
+                }
+
+                // Date filtering - default to last 7 days for multi-destination
+                if (!fromDate.HasValue)
+                {
+                    fromDate = DateTime.UtcNow.AddDays(-7);
+                }
+                query = query.Where(p => p.CreatedAt.Date >= fromDate.Value.Date);
+
+                if (toDate.HasValue)
+                {
+                    var endDate = toDate.Value.Date.AddDays(1);
+                    query = query.Where(p => p.CreatedAt < endDate);
+                }
+
+                // Username filtering
+                if (!string.IsNullOrEmpty(createdByUsername))
+                {
+                    query = query.Where(p => p.CreatedBy != null && p.CreatedBy.Username == createdByUsername);
+                }
+
+                // Get total count before pagination
+                var totalCount = await query.CountAsync();
+                var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+
+                // Get paginated parcels
+                var parcels = await query
+                    .OrderByDescending(p => p.CreatedAt)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToListAsync();
+
+                // Group parcels by destination for client-side display optimization
+                var parcelsByDestination = parcels
+                    .GroupBy(p => p.Destination ?? "Unknown")
+                    .Select(g => new DestinationGroup
+                    {
+                        Destination = g.Key,
+                        ParcelCount = g.Count(),
+                        TotalAmount = g.Sum(p => p.TotalAmount),
+                        Parcels = g.ToList()
+                    })
+                    .OrderBy(g => g.Destination)
+                    .ToList();
+
+                // Get unique destinations for filtering
+                var allDestinations = await _context.Parcels
+                    .Where(p => validStatuses.Contains(p.Status))
+                    .Where(p => p.CreatedAt.Date >= fromDate.Value.Date)
+                    .Where(p => !string.IsNullOrEmpty(p.Destination))
+                    .Select(p => p.Destination)
+                    .Distinct()
+                    .OrderBy(d => d)
+                    .ToListAsync();
+
+                // Get unique clerks for filtering
+                var allClerks = await _context.Parcels
+                    .Where(p => validStatuses.Contains(p.Status))
+                    .Where(p => p.CreatedAt.Date >= fromDate.Value.Date)
+                    .Where(p => p.CreatedBy != null)
+                    .Select(p => new ClerkInfo
+                    {
+                        Id = p.CreatedById.HasValue ? p.CreatedById.Value : 0,
+                        Username = p.CreatedBy!.Username,
+                        BranchName = p.CreatedBy.Branch != null ? p.CreatedBy.Branch.Name : "Unknown"
+                    })
+                    .Distinct()
+                    .OrderBy(c => c.Username)
+                    .ToListAsync();
+
+                var result = new MultiDestinationDispatchResult
+                {
+                    ParcelsByDestination = parcelsByDestination,
+                    TotalParcels = totalCount,
+                    TotalAmount = parcels.Sum(p => p.TotalAmount),
+                    AvailableDestinations = allDestinations,
+                    AvailableClerks = allClerks,
+                    Pagination = new PaginationInfo
+                    {
+                        Page = page,
+                        PageSize = pageSize,
+                        TotalCount = totalCount,
+                        TotalPages = totalPages,
+                        HasNextPage = page < totalPages,
+                        HasPreviousPage = page > 1
+                    }
+                };
+
+                System.Diagnostics.Debug.WriteLine($"Retrieved {parcels.Count} parcels across {parcelsByDestination.Count} destinations");
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in GetParcelsForMultiDestinationDispatch: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Get dispatch statistics for dashboard and summary views
+        /// </summary>
+        [HttpGet("dispatch-stats")]
+        public async Task<ActionResult<DispatchStatistics>> GetDispatchStatistics(
+            [FromQuery] DateTime? fromDate = null,
+            [FromQuery] DateTime? toDate = null,
+            [FromQuery] int? userBranchId = null)
+        {
+            try
+            {
+                fromDate = fromDate ?? DateTime.UtcNow.AddDays(-30);
+                toDate = toDate ?? DateTime.UtcNow;
+
+                var query = _context.Parcels.AsQueryable();
+
+                // Date filtering
+                query = query.Where(p => p.CreatedAt.Date >= fromDate.Value.Date);
+                query = query.Where(p => p.CreatedAt.Date <= toDate.Value.Date);
+
+                // Branch filtering
+                if (userBranchId.HasValue)
+                {
+                    query = query.Where(p => p.CreatedBy != null && p.CreatedBy.BranchId == userBranchId.Value);
+                }
+
+                // Get statistics by status
+                var statsByStatus = await query
+                    .GroupBy(p => p.Status)
+                    .Select(g => new StatusStatistics
+                    {
+                        Status = g.Key.ToString(),
+                        Count = g.Count(),
+                        TotalAmount = g.Sum(p => p.TotalAmount)
+                    })
+                    .ToListAsync();
+
+                // Get statistics by destination
+                var statsByDestination = await query
+                    .Where(p => !string.IsNullOrEmpty(p.Destination))
+                    .GroupBy(p => p.Destination!)
+                    .Select(g => new DestinationStatistics
+                    {
+                        Destination = g.Key,
+                        Count = g.Count(),
+                        TotalAmount = g.Sum(p => p.TotalAmount),
+                        PendingCount = g.Count(p => p.Status == ParcelStatus.Pending),
+                        ConfirmedCount = g.Count(p => p.Status == ParcelStatus.Confirmed)
+                    })
+                    .OrderByDescending(g => g.Count)
+                    .Take(10) // Top 10 destinations
+                    .ToListAsync();
+
+                // Total statistics
+                var totalParcels = await query.CountAsync();
+                var totalAmount = await query.SumAsync(p => p.TotalAmount);
+                var pendingParcels = await query.CountAsync(p => p.Status == ParcelStatus.Pending);
+                var confirmedParcels = await query.CountAsync(p => p.Status == ParcelStatus.Confirmed);
+
+                var statistics = new DispatchStatistics
+                {
+                    TotalParcels = totalParcels,
+                    TotalAmount = totalAmount,
+                    PendingParcels = pendingParcels,
+                    ConfirmedParcels = confirmedParcels,
+                    ReadyForDispatch = pendingParcels + confirmedParcels,
+                    StatisticsByStatus = statsByStatus,
+                    StatisticsByDestination = statsByDestination,
+                    Period = new DateRange
+                    {
+                        From = fromDate.Value,
+                        To = toDate.Value
+                    }
+                };
+
+                return Ok(statistics);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error in GetDispatchStatistics: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
         [HttpGet("clerks")]
         public async Task<ActionResult<IEnumerable<string>>> GetClerks([FromQuery] string? destination = null, [FromQuery] ParcelStatus? status = null)
         {
@@ -699,11 +968,10 @@ namespace wms_android.api.Controllers
                 Response.Headers.Add("Cache-Control", "public, max-age=300"); // 5 minutes cache
                 
                 var query = _context.Parcels
-                    .Include(p => p.CreatedBy)
-                    .Where(p => p.CreatedBy != null)
+                    .Where(p => p.CreatedById != null)
                     .AsQueryable();
 
-                if (!string.IsNullOrEmpty(destination))
+                if (!string.IsNullOrWhiteSpace(destination))
                 {
                     query = query.Where(p => p.Destination == destination);
                 }
@@ -964,5 +1232,76 @@ namespace wms_android.api.Controllers
         public decimal AmountPaid { get; set; }
         public string? TransactionCode { get; set; }
         public int? UpdatedById { get; set; }
+    }
+
+    // Multi-destination dispatch result DTOs
+    public class MultiDestinationDispatchResult
+    {
+        public List<DestinationGroup> ParcelsByDestination { get; set; } = new();
+        public int TotalParcels { get; set; }
+        public decimal TotalAmount { get; set; }
+        public List<string> AvailableDestinations { get; set; } = new();
+        public List<ClerkInfo> AvailableClerks { get; set; } = new();
+        public PaginationInfo Pagination { get; set; } = new();
+    }
+
+    public class DestinationGroup
+    {
+        public string Destination { get; set; } = string.Empty;
+        public int ParcelCount { get; set; }
+        public decimal TotalAmount { get; set; }
+        public List<Parcel> Parcels { get; set; } = new();
+    }
+
+    public class ClerkInfo
+    {
+        public int Id { get; set; }
+        public string Username { get; set; } = string.Empty;
+        public string BranchName { get; set; } = string.Empty;
+    }
+
+    public class PaginationInfo
+    {
+        public int Page { get; set; }
+        public int PageSize { get; set; }
+        public int TotalCount { get; set; }
+        public int TotalPages { get; set; }
+        public bool HasNextPage { get; set; }
+        public bool HasPreviousPage { get; set; }
+    }
+
+    // Dispatch statistics DTOs
+    public class DispatchStatistics
+    {
+        public int TotalParcels { get; set; }
+        public decimal TotalAmount { get; set; }
+        public int PendingParcels { get; set; }
+        public int ConfirmedParcels { get; set; }
+        public int ReadyForDispatch { get; set; }
+        public List<StatusStatistics> StatisticsByStatus { get; set; } = new();
+        public List<DestinationStatistics> StatisticsByDestination { get; set; } = new();
+        public DateRange Period { get; set; } = new();
+    }
+
+    public class StatusStatistics
+    {
+        public string Status { get; set; } = string.Empty;
+        public int Count { get; set; }
+        public decimal TotalAmount { get; set; }
+    }
+
+    public class DestinationStatistics
+    {
+        public string Destination { get; set; } = string.Empty;
+        public int Count { get; set; }
+        public decimal TotalAmount { get; set; }
+        public int PendingCount { get; set; }
+        public int ConfirmedCount { get; set; }
+    }
+
+    public class DateRange
+    {
+        public DateTime From { get; set; }
+        public DateTime To { get; set; }
     }
 } 

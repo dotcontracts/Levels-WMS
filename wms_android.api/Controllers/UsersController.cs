@@ -31,17 +31,23 @@ namespace wms_android.api.Controllers
         {
             try
             {
-                // Get all users with their roles first
+                // Get all users with their roles and branches in a single efficient query
                 var users = await _context.Users
+                    .AsNoTracking()
                     .Include(u => u.Role)
                     .ToListAsync();
+                
+                // Get all branches at once to avoid N+1 queries
+                var branches = await _context.Branches
+                    .AsNoTracking()
+                    .ToDictionaryAsync(b => b.Id, b => b);
                 
                 // Format the response with branch information
                 var formattedUsers = new List<dynamic>();
                 
                 foreach (var user in users)
                 {
-                    // Try to get branch information separately to handle potential schema mismatches
+                    // Get branch information from preloaded dictionary
                     var branchInfo = new
                     {
                         Id = (int?)null,
@@ -53,23 +59,18 @@ namespace wms_android.api.Controllers
                     
                     try
                     {
-                        // Try to get branch information if BranchId is set
-                        if (user.BranchId.HasValue)
+                        // Get branch information if BranchId is set
+                        if (user.BranchId.HasValue && branches.ContainsKey(user.BranchId.Value))
                         {
-                            var branch = await _context.Branches
-                                .FirstOrDefaultAsync(b => b.Id == user.BranchId.Value);
-                            
-                            if (branch != null)
+                            var branch = branches[user.BranchId.Value];
+                            branchInfo = new
                             {
-                                branchInfo = new
-                                {
-                                    Id = (int?)branch.Id,
-                                    Name = branch.Name,
-                                    Address = branch.Address,
-                                    Phone = branch.Phone,
-                                    Email = branch.Email
-                                };
-                            }
+                                Id = (int?)branch.Id,
+                                Name = branch.Name,
+                                Address = branch.Address,
+                                Phone = branch.Phone,
+                                Email = branch.Email
+                            };
                         }
                     }
                     catch (Exception branchEx)
@@ -275,6 +276,101 @@ namespace wms_android.api.Controllers
             catch (Exception ex)
             {
                 return StatusCode(500, $"Internal server error: {ex.Message}");
+            }
+        }
+
+        // GET: api/Users/username/{username}
+        [HttpGet("username/{username}")]
+        [AllowAnonymous] // For testing; consider adding authorization in production
+        public async Task<ActionResult<dynamic>> GetUserByUsername(string username)
+        {
+            try
+            {
+                Console.WriteLine($"[UsersController] Getting user by username: '{username}'");
+                
+                // Get user by username
+                var user = await _context.Users
+                    .Include(u => u.Role)
+                    .FirstOrDefaultAsync(u => u.Username == username);
+
+                if (user == null)
+                {
+                    Console.WriteLine($"[UsersController] User '{username}' not found");
+                    return NotFound(new { message = $"User with username '{username}' not found" });
+                }
+
+                Console.WriteLine($"[UsersController] User found - ID: {user.Id}, Username: {user.Username}, RoleId: {user.RoleId}");
+                Console.WriteLine($"[UsersController] Role object: {(user.Role != null ? $"Role ID: {user.Role.Id}, Name: '{user.Role.Name}'" : "null")}");
+                
+                // If role is null but RoleId is set, there might be a database issue
+                if (user.Role == null && user.RoleId != 0)
+                {
+                    Console.WriteLine($"[UsersController] WARNING: User has RoleId {user.RoleId} but Role is null - checking database...");
+                    var roleExists = await _context.Roles.AnyAsync(r => r.Id == user.RoleId);
+                    Console.WriteLine($"[UsersController] Role with ID {user.RoleId} exists in database: {roleExists}");
+                }
+
+                // Get branch information if available
+                var branchInfo = new
+                {
+                    Id = (int?)null,
+                    Name = (string?)null,
+                    Address = (string?)null,
+                    Phone = (string?)null,
+                    Email = (string?)null
+                };
+
+                try
+                {
+                    if (user.BranchId.HasValue)
+                    {
+                        var branch = await _context.Branches
+                            .FirstOrDefaultAsync(b => b.Id == user.BranchId.Value);
+
+                        if (branch != null)
+                        {
+                            branchInfo = new
+                            {
+                                Id = (int?)branch.Id,
+                                Name = branch.Name,
+                                Address = branch.Address,
+                                Phone = branch.Phone,
+                                Email = branch.Email
+                            };
+                        }
+                    }
+                }
+                catch
+                {
+                    // Ignore branch lookup errors
+                }
+
+                // Format the response - match the User model structure expected by the client
+                var result = new
+                {
+                    id = user.Id,
+                    username = user.Username,
+                    firstName = user.FirstName,
+                    lastName = user.LastName,
+                    email = user.Email,
+                    isActive = user.IsActive,
+                    roleId = user.RoleId,
+                    role = user.Role != null ? new
+                    {
+                        id = user.Role.Id,
+                        name = user.Role.Name,
+                        description = user.Role.Description
+                    } : null,
+                    branchId = user.BranchId,
+                    branch = branchInfo
+                };
+
+                Console.WriteLine($"[UsersController] Returning result with role: {(result.role != null ? $"ID: {result.role.id}, Name: '{result.role.name}'" : "null")}");
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = $"Error retrieving user by username: {ex.Message}" });
             }
         }
 

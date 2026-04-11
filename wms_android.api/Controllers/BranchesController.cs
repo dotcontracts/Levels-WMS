@@ -22,7 +22,7 @@ namespace wms_android.api.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Branch>>> GetBranches()
         {
-            return await _context.Branches.ToListAsync();
+            return await _context.Branches.AsNoTracking().ToListAsync();
         }
     }
 } 

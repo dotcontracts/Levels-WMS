@@ -1,0 +1,31 @@
+[Unit]
+Description=WMS Database Connection Guardian
+Documentation=https://github.com/your-org/wms-android
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/home/temporary/Projects/NID_WMS/WMS_Android
+ExecStart=/home/temporary/Projects/NID_WMS/WMS_Android/connection_guardian.sh
+ExecStop=/bin/kill -SIGTERM $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=connection-guardian
+
+# Resource limits
+LimitNOFILE=1024
+MemoryLimit=100M
+
+# Security settings
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/tmp
+
+[Install]
+WantedBy=multi-user.target

@@ -262,10 +262,27 @@ namespace wms_android.api.Controllers
                 }
                 
                 var eligibleParcels = await query
-                    .Include(p => p.CreatedBy)
-                    .Include(p => p.Shipment)
+                    .AsNoTracking() // Remove circular reference tracking
                     .OrderByDescending(p => p.DispatchedAt ?? p.CreatedAt)
                     .ToListAsync();
+                    
+                // Load related entities separately to avoid circular references
+                foreach (var parcel in eligibleParcels)
+                {
+                    if (parcel.CreatedById.HasValue)
+                    {
+                        parcel.CreatedBy = await _context.Users
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(u => u.Id == parcel.CreatedById.Value);
+                    }
+                    
+                    if (parcel.ShipmentId.HasValue)
+                    {
+                        parcel.Shipment = await _context.Shipments
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(s => s.Id == parcel.ShipmentId.Value);
+                    }
+                }
 
                 return Ok(eligibleParcels);
             }
