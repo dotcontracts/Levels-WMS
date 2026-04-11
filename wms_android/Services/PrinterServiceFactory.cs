@@ -52,18 +52,11 @@ namespace wms_android.Services
                     }
                 case PosDeviceType.CH10:
                     {
+                        // CH10 SDK is currently unavailable - fallback to adaptive service
                         var logger = _loggerFactory.CreateLogger<CH10PrinterService>();
-                        try
-                        {
-                        return new CH10PrinterService();
-                        }
-                        catch (Exception ex)
-                        {
-                            logger.LogError(ex, "Failed to create CH10PrinterService - falling back to Adaptive");
-                            // Fall back to adaptive service if CH10 service creation fails
-                            var adaptiveLogger = _loggerFactory.CreateLogger<AdaptivePrinterService>();
-                            return new AdaptivePrinterService(adaptiveLogger, _loggerFactory);
-                        }
+                        logger.LogWarning("CH10 SDK reference removed - falling back to AdaptivePrinterService");
+                        var adaptiveLogger = _loggerFactory.CreateLogger<AdaptivePrinterService>();
+                        return new AdaptivePrinterService(adaptiveLogger, _loggerFactory);
                     }
                 default:
                     return GetDefaultPrinterService();

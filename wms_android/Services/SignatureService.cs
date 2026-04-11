@@ -29,7 +29,15 @@ namespace wms_android.Services
         public SignatureService()
         {
             _httpClient = new HttpClient();
-            _apiBaseUrl = "https://wmsandroidapi-w74du.ondigitalocean.app/api"; // Update with your actual API base URL
+            
+            #if DEBUG
+                // Use development API for debug builds
+                var localIP = "192.168.1.69"; // Should match the IP in MauiProgram.cs
+                _apiBaseUrl = $"http://{localIP}:8081/api";
+            #else
+                // Use production API for release builds
+                _apiBaseUrl = "https://wmsandroidapi-w74du.ondigitalocean.app/api";
+            #endif
         }
 
         public async Task<bool> InitializeSignaturePadAsync()

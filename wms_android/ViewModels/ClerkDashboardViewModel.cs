@@ -143,9 +143,15 @@ namespace wms_android.ViewModels
                 
                 // Try to get current user info from preferences or cache
                 var username = Preferences.Get("CurrentUsername", string.Empty);
+                _logger.LogInformation($"Retrieved username from preferences: '{username}'");
+                Debug.WriteLine($"[ClerkDashboard] Retrieved username from preferences: '{username}'");
+                
                 if (!string.IsNullOrEmpty(username))
                 {
                     var user = await _userService.GetUserByUsernameAsync(username);
+                    _logger.LogInformation($"User service returned: {(user != null ? $"User found - ID: {user.Id}, Username: {user.Username}, Role: {user.Role?.Name}" : "null")}");
+                    Debug.WriteLine($"[ClerkDashboard] User service returned: {(user != null ? $"User found - ID: {user.Id}, Username: {user.Username}, Role: {user.Role?.Name}" : "null")}");
+                    
                     if (user != null)
                     {
                         // Use FirstName if available, fallback to Username if FirstName is null/empty
@@ -154,9 +160,21 @@ namespace wms_android.ViewModels
                         
                         // Set manager/admin visibility based on role
                         var roleName = user.Role?.Name ?? "Unknown";
+                        Debug.WriteLine($"[ClerkDashboard] Role name: '{roleName}', RoleId: {user.Role?.Id}");
                         IsManagerOrAdmin = IsUserManagerOrAdmin(roleName);
                         _logger.LogInformation($"User role: '{roleName}', IsManagerOrAdmin: {IsManagerOrAdmin}");
+                        Debug.WriteLine($"[ClerkDashboard] User role: '{roleName}', IsManagerOrAdmin: {IsManagerOrAdmin}");
                     }
+                    else
+                    {
+                        Debug.WriteLine($"[ClerkDashboard] User not found for username: '{username}'");
+                        _logger.LogWarning($"User not found for username: '{username}'");
+                    }
+                }
+                else
+                {
+                    Debug.WriteLine("[ClerkDashboard] No username found in preferences");
+                    _logger.LogWarning("No username found in preferences");
                 }
                 
                 _logger.LogInformation($"Dashboard data loaded for user {currentUserId}: Amount Owed: Ksh {AmountOwed:N2}, Outstanding Debit: Ksh {CashIn:N2}, Daily Sales: Ksh {DailySales:N2}, Monthly Sales: Ksh {MonthlySales:N2}");
@@ -180,19 +198,33 @@ namespace wms_android.ViewModels
 
         private bool IsUserManagerOrAdmin(string roleName)
         {
+            Debug.WriteLine($"[ClerkDashboard] IsUserManagerOrAdmin called with roleName: '{roleName}'");
+            
             if (string.IsNullOrWhiteSpace(roleName))
             {
                 _logger.LogInformation("Role name is null or empty, denying access");
+                Debug.WriteLine("[ClerkDashboard] Role name is null or empty, denying access");
                 return false;
             }
                 
             var role = roleName.ToLowerInvariant();
+            Debug.WriteLine($"[ClerkDashboard] Role converted to lowercase: '{role}'");
+            
             var isManagerOrAdmin = role.Contains("manager") || 
                                   role.Contains("admin") || 
                                   role.Contains("supervisor") ||
                                   role == "manager" ||
                                   role == "administrator" ||
                                   role == "admin";
+            
+            Debug.WriteLine($"[ClerkDashboard] Role checks:");
+            Debug.WriteLine($"  - contains 'manager': {role.Contains("manager")}");
+            Debug.WriteLine($"  - contains 'admin': {role.Contains("admin")}");
+            Debug.WriteLine($"  - contains 'supervisor': {role.Contains("supervisor")}");
+            Debug.WriteLine($"  - equals 'manager': {role == "manager"}");
+            Debug.WriteLine($"  - equals 'administrator': {role == "administrator"}");
+            Debug.WriteLine($"  - equals 'admin': {role == "admin"}");
+            Debug.WriteLine($"  - Final result: {isManagerOrAdmin}");
                                   
             _logger.LogInformation($"Role check for '{roleName}': {isManagerOrAdmin}");
             return isManagerOrAdmin;

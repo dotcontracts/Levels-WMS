@@ -333,9 +333,9 @@ namespace wms_android.ViewModels
             var sb = new StringBuilder();
             
             // Header
-            sb.AppendLine("        NID Logistics Ltd");
-            sb.AppendLine("           0116000004");
-            sb.AppendLine("  info@nidlogistics.co.ke");
+            sb.AppendLine("    FICMA HOME LOGISTICS");
+            sb.AppendLine("        0707136852");
+            sb.AppendLine("ficmahomelogistics19@gmail.com");
             sb.AppendLine("    *** DELIVERY RECEIPT ***");
             sb.AppendLine();
             
@@ -372,9 +372,8 @@ namespace wms_android.ViewModels
             sb.AppendLine("   and company will not be liable.");
             sb.AppendLine();
             sb.AppendLine("PAYMENT INFO:");
-            sb.AppendLine("Paybill: 522533");
-            sb.AppendLine("Account: 1329713648");
-            sb.AppendLine("Mpesa Till: 4214115");
+            sb.AppendLine("Paybill: 247247");
+            sb.AppendLine("Account: 889404");
             sb.AppendLine();
             sb.AppendLine("RECIPIENT CONFIRMATION:");
             sb.AppendLine();

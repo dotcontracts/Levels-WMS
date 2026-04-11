@@ -406,6 +406,10 @@ Total Amount: Ksh {TotalAmount:N2}
 
 Processed by: {username}
 
+PAYMENT INFORMATION:
+Paybill: 247247
+Account: 889404
+
 NB:
 1. Contents not checked.
 2. Customers are advised to insu
@@ -459,6 +463,10 @@ Total Amount: Ksh {TotalAmount:N2}
 --------------------------------
 
 Processed by: {username}
+
+PAYMENT INFORMATION:
+Paybill: 247247
+Account: 889404
 
 NB:
 1. Contents not checked.

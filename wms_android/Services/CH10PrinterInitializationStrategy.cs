@@ -64,52 +64,26 @@ namespace wms_android.Services
             
             try
             {
-                _logger.LogInformation("CH10Strategy: Attempting to initialize CH10 printer service");
+                _logger.LogInformation("CH10Strategy: CH10 SDK is currently unavailable - skipping initialization");
                 
-                var ch10Service = new CH10PrinterService();
-                var initResult = await ch10Service.InitializeAsync();
-                
-                result.Metadata["ServiceInitialization"] = initResult ? "Success" : "Failed";
-                
-                if (initResult)
-                {
-                    _logger.LogInformation("CH10Strategy: CH10 printer service initialized successfully");
-                    
-                    // Test basic connectivity
-                    var status = await ch10Service.GetPrinterStatusAsync();
-                    result.Metadata["PrinterStatus"] = status;
-                    _logger.LogInformation($"CH10Strategy: Printer status: {status}");
-                    
-                    // Test scanner status
-                    var scannerStatus = await ch10Service.GetScannerStatusAsync();
-                    result.Metadata["ScannerStatus"] = scannerStatus;
-                    
-                    // Clean up test service
-                    ch10Service.Dispose();
-                    
-                    result.Success = true;
-                    return result;
-                }
-                else
-                {
-                    _logger.LogWarning("CH10Strategy: CH10 printer service initialization failed");
-                    ch10Service.Dispose();
-                    result.ErrorMessage = "CH10 printer service initialization failed";
-                    return result;
-                }
+                // CH10 SDK is unavailable - return failure to trigger fallback
+                result.ErrorMessage = "CH10 SDK reference has been removed";
+                result.Success = false;
+                return result;
             }
             catch (System.Exception ex)
             {
                 _logger.LogError(ex, "CH10Strategy: Exception during initialization");
                 result.ErrorMessage = $"CH10 initialization exception: {ex.Message}";
+                result.Success = false;
                 return result;
             }
         }
 
         public IPrinterService CreatePrinterService()
         {
-            _logger.LogInformation("CH10Strategy: Creating CH10 printer service");
-            return new CH10PrinterService();
+            _logger.LogInformation("CH10Strategy: CH10 SDK unavailable - returning stub implementation");
+            return new CH10PrinterService(); // Return stub service
         }
 
         public PosDeviceType GetDeviceType()

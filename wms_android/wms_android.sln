@@ -7,10 +7,10 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "wms_android", "wms_android.
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "wms_android.data", "..\wms_android.data\wms_android.data.csproj", "{D0FED432-5D43-47E9-A141-7694412B3FEC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AndroidPosSdk", "..\AndroidPosSdk\AndroidPosSdk.csproj", "{86E0A679-88EA-4CB6-ABD6-5E995AA79C6A}"
+<!-- Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AndroidPosSdk", "..\AndroidPosSdk\AndroidPosSdk.csproj", "{86E0A679-88EA-4CB6-ABD6-5E995AA79C6A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VanstonePosSdk", "..\VanstonePosSdk\VanstonePosSdk.csproj", "{08EE499A-9DCE-4DC8-9972-45A7B400B0EA}"
-EndProject
+<!-- Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VanstonePosSdk", "..\VanstonePosSdk\VanstonePosSdk.csproj", "{08EE499A-9DCE-4DC8-9972-45A7B400B0EA}"
+EndProject -->
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

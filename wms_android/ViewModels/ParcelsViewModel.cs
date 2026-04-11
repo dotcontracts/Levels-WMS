@@ -336,26 +336,34 @@ namespace wms_android.ViewModels
 
                 if (_smsService != null && !string.IsNullOrEmpty(CurrentParcel.ReceiverTelephone))
                 {
-                    _loadingService.Show("Sending notification...");
-                    try
+                    // Send SMS in background without blocking receipt printing
+                    _ = Task.Run(async () =>
                     {
-                        // Check if SMS was already sent for this parcel
-                        bool alreadySent = await _parcelService.CheckSmsNotificationSentAsync(CurrentParcel.Id);
-                        
-                        if (!alreadySent)
+                        try
                         {
-                            await _smsService.SendTemplatedParcelNotificationAsync(CurrentParcel);
-                            Debug.WriteLine($"SMS notification sent for parcel {CurrentParcel.Id}");
+                            Debug.WriteLine($"[SMS Background] Starting SMS sending for parcel {CurrentParcel.Id}");
+                            
+                            // Check if SMS was already sent for this parcel
+                            bool alreadySent = await _parcelService.CheckSmsNotificationSentAsync(CurrentParcel.Id);
+                            
+                            if (!alreadySent)
+                            {
+                                await _smsService.SendTemplatedParcelNotificationAsync(CurrentParcel);
+                                Debug.WriteLine($"[SMS Background] SMS sent successfully for parcel {CurrentParcel.Id}");
+                            }
+                            else
+                            {
+                                Debug.WriteLine($"[SMS Background] Skipping duplicate SMS for parcel {CurrentParcel.Id} - already sent");
+                            }
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            Debug.WriteLine($"Skipping duplicate SMS for parcel {CurrentParcel.Id} - already sent");
+                            Debug.WriteLine($"[SMS Background] Failed to send SMS notification for parcel {CurrentParcel.Id}: {ex.Message}");
+                            // Don't let SMS errors affect the main registration process
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"Failed to send SMS notification: {ex.Message}");
-                    }
+                    });
+                    
+                    Debug.WriteLine($"[SMS Background] SMS processing started in background for parcel {CurrentParcel.Id}");
                 }
 
                 _loadingService.Show("Preparing receipt view...");
@@ -541,32 +549,42 @@ namespace wms_android.ViewModels
                     
                     if (_smsService != null)
                     {
-                        _loadingService.Show("Sending notifications...");
-                        foreach (var parcel in ParcelsInWaybill)
+                        // Send SMS in background for all parcels without blocking receipt printing
+                        _ = Task.Run(async () =>
                         {
-                            if (!string.IsNullOrEmpty(parcel.ReceiverTelephone))
+                            Debug.WriteLine($"[SMS Background] Starting SMS sending for {ParcelsInWaybill.Count} parcels in waybill");
+                            
+                            foreach (var parcel in ParcelsInWaybill)
                             {
-                                try
+                                if (!string.IsNullOrEmpty(parcel.ReceiverTelephone))
                                 {
-                                    // Check if SMS was already sent for this parcel
-                                    bool alreadySent = await _parcelService.CheckSmsNotificationSentAsync(parcel.Id);
-                                    
-                                    if (!alreadySent)
+                                    try
                                     {
-                                        await _smsService.SendTemplatedParcelNotificationAsync(parcel);
-                                        Debug.WriteLine($"SMS notification sent for parcel {parcel.Id}");
+                                        // Check if SMS was already sent for this parcel
+                                        bool alreadySent = await _parcelService.CheckSmsNotificationSentAsync(parcel.Id);
+                                        
+                                        if (!alreadySent)
+                                        {
+                                            await _smsService.SendTemplatedParcelNotificationAsync(parcel);
+                                            Debug.WriteLine($"[SMS Background] SMS sent successfully for parcel {parcel.Id}");
+                                        }
+                                        else
+                                        {
+                                            Debug.WriteLine($"[SMS Background] Skipping duplicate SMS for parcel {parcel.Id} - already sent");
+                                        }
                                     }
-                                    else
+                                    catch (Exception ex)
                                     {
-                                        Debug.WriteLine($"Skipping duplicate SMS for parcel {parcel.Id} - already sent");
+                                        Debug.WriteLine($"[SMS Background] Failed to send SMS notification for parcel {parcel.Id}: {ex.Message}");
+                                        // Don't let SMS errors affect the main registration process
                                     }
-                                }
-                                catch (Exception ex)
-                                {
-                                    Debug.WriteLine($"Failed to send SMS notification for parcel {parcel.Id}: {ex.Message}");
                                 }
                             }
-                        }
+                            
+                            Debug.WriteLine($"[SMS Background] SMS processing completed for waybill");
+                        });
+                        
+                        Debug.WriteLine($"[SMS Background] SMS processing started in background for waybill with {ParcelsInWaybill.Count} parcels");
                     }
                 }
                 catch (InvalidOperationException ioe)

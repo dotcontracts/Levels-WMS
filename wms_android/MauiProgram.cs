@@ -68,19 +68,21 @@ namespace wms_android
 
             builder.Configuration.AddConfiguration(configuration);
 
+            // Define API base URLs
+            #if DEBUG
+                var localIP = "192.168.1.69"; // Change this to your actual machine IP
+                var apiBaseUrl = $"http://{localIP}:8081/";
+            #else
+                var apiBaseUrl = "https://wmsandroidapi-w74du.ondigitalocean.app/";
+            #endif
+
             // Create HttpClient for API access
             builder.Services.AddTransient<HttpClient>(sp => {
                 var client = new HttpClient();
 
-                #if DEBUG
-                    // Get IP from your local machine - you may need to update this IP
-                    var localIP = "192.168.1.69"; // Change this to your actual machine IP
-                    var baseUrl = $"http://{localIP}:8081/";
-                    // For debugging - add more detailed logging
-                    System.Diagnostics.Debug.WriteLine($"API Base URL configured as: {baseUrl}");
-                #else
-                    var baseUrl = "https://wmsandroidapi-w74du.ondigitalocean.app/";
-                #endif
+                var baseUrl = apiBaseUrl;
+                // For debugging - add more detailed logging
+                System.Diagnostics.Debug.WriteLine($"API Base URL configured as: {baseUrl}");
                 
                 // Ensure baseUrl doesn't include "/api"
                 if (baseUrl.EndsWith("/api/")) {
@@ -100,6 +102,18 @@ namespace wms_android
             });
                 
             // Register shared services - use these instead of data project equivalents
+            // Create a configuration object for services that need it
+            builder.Services.AddSingleton<IConfiguration>(sp =>
+            {
+                var config = new ConfigurationBuilder()
+                    .AddInMemoryCollection(new Dictionary<string, string>
+                    {
+                        {"ApiSettings:BaseUrl", apiBaseUrl}
+                    })
+                    .Build();
+                return config;
+            });
+            
             builder.Services.AddTransient<wms_android.shared.Services.ParcelService>();
             builder.Services.AddTransient<wms_android.shared.Interfaces.IParcelService, wms_android.shared.Services.ParcelService>();
             

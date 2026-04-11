@@ -65,7 +65,25 @@
 
                     <!-- Destination Selection -->
                     <StackLayout>
-                        <Label Text="Destination" FontSize="14" TextColor="{StaticResource PrimaryDark}"/>
+                        <Label Text="Dispatch Mode" FontSize="14" TextColor="{StaticResource PrimaryDark}"/>
+                        <StackLayout Orientation="Horizontal" VerticalOptions="Center" Spacing="10">
+                            <CheckBox IsChecked="{Binding UseMultiDestinationMode}" 
+                                       VerticalOptions="Center" />
+                            <Label Text="Multi-Destination Mode (Recommended)" 
+                                   FontSize="14" 
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource Primary}"
+                                   VerticalOptions="Center" />
+                        </StackLayout>
+                        <Label Text="Enable to select parcels from multiple destinations in one dispatch" 
+                               FontSize="11" 
+                               TextColor="{StaticResource Secondary}"
+                               LineBreakMode="WordWrap" />
+                    </StackLayout>
+
+                    <!-- Single Destination Selection (visible only in single destination mode) -->
+                    <StackLayout IsVisible="{Binding UseMultiDestinationMode, Converter={StaticResource InvertedBoolConverter}}">
+                        <Label Text="Single Destination" FontSize="14" TextColor="{StaticResource PrimaryDark}"/>
                         <Picker ItemsSource="{Binding DestinationOptions}" 
                                 SelectedItem="{Binding SelectedDestination}"
                                 Title="Select destination"
@@ -93,8 +111,21 @@
                            FontAttributes="Bold"
                            TextColor="{StaticResource PrimaryDark}" />
 
-                    <!-- Destination must be selected message -->
-                    <Frame IsVisible="{Binding HasDestinationSelected, Converter={StaticResource InvertedBoolConverter}}"
+                    <!-- Multi-destination summary -->
+                    <Frame IsVisible="{Binding UseMultiDestinationMode}"
+                           BackgroundColor="{StaticResource PrimaryLight}"
+                           BorderColor="{StaticResource Primary}"
+                           CornerRadius="8"
+                           Padding="15">
+                        <Label Text="{Binding MultiDestSummary}" 
+                               FontSize="14"
+                               TextColor="{StaticResource PrimaryDark}"
+                               HorizontalTextAlignment="Center"
+                               LineBreakMode="WordWrap" />
+                    </Frame>
+
+                    <!-- Destination must be selected message (only for single destination mode) -->
+                    <Frame IsVisible="{Binding UseMultiDestinationMode, Converter={StaticResource InvertedBoolConverter}}"
                            BackgroundColor="{StaticResource PrimaryLight}"
                            BorderColor="{StaticResource Secondary}"
                            CornerRadius="8"
@@ -106,11 +137,27 @@
                     </Frame>
 
                     <!-- Filter Section -->
-                    <StackLayout IsVisible="{Binding HasDestinationSelected}" Spacing="10">
+                    <StackLayout Spacing="10">
                         <Label Text="Filter Parcels" 
                                FontSize="16" 
                                FontAttributes="Bold"
                                TextColor="{StaticResource PrimaryDark}" />
+
+                        <!-- Batch Selection Buttons (Multi-destination mode) -->
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10" IsVisible="{Binding UseMultiDestinationMode}">
+                            <Button Grid.Column="0"
+                                    Text="Select All" 
+                                    Command="{Binding SelectAllParcelsCommand}"
+                                    BackgroundColor="{StaticResource Primary}"
+                                    TextColor="White"
+                                    CornerRadius="8" />
+                            <Button Grid.Column="1"
+                                    Text="Deselect All" 
+                                    Command="{Binding DeselectAllParcelsCommand}"
+                                    BackgroundColor="{StaticResource Secondary}"
+                                    TextColor="{StaticResource PrimaryDark}"
+                                    CornerRadius="8" />
+                        </Grid>
 
                         <!-- Date Range -->
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
@@ -162,8 +209,7 @@
 
 
                     <!-- Parcels List -->
-                    <CollectionView IsVisible="{Binding HasDestinationSelected}"
-                                    ItemsSource="{Binding FilteredParcels}"
+                    <CollectionView ItemsSource="{Binding FilteredParcels}"
                                     BackgroundColor="{StaticResource Background}">
                         <CollectionView.EmptyView>
                             <StackLayout HorizontalOptions="Center" VerticalOptions="Center" Padding="20">
@@ -270,6 +316,40 @@
             </StackLayout>
         </ScrollView>
 
+        <!-- Load More Button (Progressive Loading) -->
+        <Button Grid.Row="2"
+                Text="Load More Parcels"
+                Command="{Binding LoadMoreParcelsCommand}"
+                IsVisible="{Binding HasMorePages}"
+                BackgroundColor="{StaticResource Secondary}"
+                TextColor="{StaticResource PrimaryDark}"
+                FontSize="14"
+                Margin="15"
+                HeightRequest="45"
+                CornerRadius="8"
+                Padding="15,10"/>
+
+        <!-- Refresh Button -->
+        <Button Grid.Row="2"
+                Text="Refresh Parcels"
+                Command="{Binding RefreshParcelsProgressivelyCommand}"
+                IsVisible="{Binding IsLoadingMore, Converter={StaticResource InvertedBoolConverter}}"
+                BackgroundColor="{StaticResource Primary}"
+                TextColor="White"
+                FontSize="14"
+                Margin="15"
+                HeightRequest="45"
+                CornerRadius="8"
+                Padding="15,10" />
+
+        <!-- Loading Indicator for Progressive Loading -->
+        <ActivityIndicator Grid.Row="2"
+                           IsRunning="{Binding IsLoadingMore}"
+                           IsVisible="{Binding IsLoadingMore}"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center"
+                           Margin="15" />
+
         <!-- Done Button -->
         <Button Grid.Row="2" 
                 Text="Done - Dispatch Selected Parcels"
@@ -280,6 +360,8 @@
                 FontSize="16"
                 FontAttributes="Bold"
                 Margin="15"
-                HeightRequest="50" />
+                HeightRequest="50"
+                CornerRadius="8"
+                Padding="15,10" />
     </Grid>
 </ContentPage>
