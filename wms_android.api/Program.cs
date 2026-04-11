@@ -199,13 +199,19 @@ public class Program
                 {
                     logger.LogInformation($"Database connection attempt {attempt}/{maxRetries}...");
                     
-                    // Test connection with timeout
+                    // Test connection with timeout and detailed error info
                     using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                    var canConnect = await dbContext.Database.CanConnectAsync(cts.Token);
-                    
-                    if (!canConnect)
+                    try
                     {
-                        throw new InvalidOperationException("Database connection test failed");
+                        var canConnect = await dbContext.Database.CanConnectAsync(cts.Token);
+                        if (!canConnect)
+                        {
+                            throw new InvalidOperationException("Database connection test returned false - cannot establish connection");
+                        }
+                    }
+                    catch (Exception connEx)
+                    {
+                        throw new InvalidOperationException($"Database connection failed: {connEx.GetType().Name}: {connEx.Message}", connEx);
                     }
                     
                     logger.LogInformation("✓ Database connection successful");
@@ -268,7 +274,15 @@ public class Program
                     // Other database errors
                     var retryDelay = TimeSpan.FromSeconds(2 * attempt + Random.Shared.Next(1, 3));
                     logger.LogWarning($"Database error on attempt {attempt}/{maxRetries}. " +
-                                    $"Retrying in {retryDelay.TotalSeconds:F1} seconds... Error: {ex.Message}");
+                                    $"Retrying in {retryDelay.TotalSeconds:F1} seconds... " +
+                                    $"Error Type: {ex.GetType().Name}, Message: {ex.Message}");
+                    
+                    // Log inner exception details if available
+                    if (ex.InnerException != null)
+                    {
+                        logger.LogWarning($"Inner exception: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}");
+                    }
+                    
                     await Task.Delay(retryDelay);
                 }
                 catch (Exception ex)
