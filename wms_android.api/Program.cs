@@ -64,11 +64,11 @@ public class Program
         {
             // Production-safe connection pool configuration to prevent "too many clients" errors
             // Reduced MaxPoolSize for multiple app instances, added connection lifecycle management
-            connectionString = $"Host={dbHost};Port={dbPort};Database={dbName};Username={dbUser};Password={dbPassword};SSL Mode=Require;Trust Server Certificate=true;Pooling=true;MinPoolSize=2;MaxPoolSize=20;Connection Idle Lifetime=300;Command Timeout=30;Connection Timeout=15;Keepalive=60;Connection Pruning Interval=10;Health Check Timeout=5";
+            connectionString = $"Host={dbHost};Port={dbPort};Database={dbName};Username={dbUser};Password={dbPassword};SSL Mode=Require;Trust Server Certificate=true;Pooling=true;MinPoolSize=1;MaxPoolSize=8;Connection Idle Lifetime=180;Command Timeout=30;Connection Timeout=10;Keepalive=30;Connection Pruning Interval=5;Health Check Timeout=3;No Reset On Close=true";
             Console.WriteLine($"✓ Built production-safe connection string from environment variables");
             Console.WriteLine($"  Host: {dbHost}, Port: {dbPort}, Database: {dbName}, User: {dbUser}");
-            Console.WriteLine($"  Connection Pool: MinSize=2, MaxSize=20 (production-optimized)");
-            Console.WriteLine($"  Connection Lifecycle: IdleLifetime=300s, PruningInterval=10s");
+            Console.WriteLine($"  Connection Pool: MinSize=1, MaxSize=8 (ultra-conservative)");
+            Console.WriteLine($"  Connection Lifecycle: IdleLifetime=180s, PruningInterval=5s");
         }
         else
         {
@@ -179,16 +179,19 @@ public class Program
 
         var app = builder.Build();
 
-        // Apply database migrations on startup with connection storm prevention
-        using (var scope = app.Services.CreateScope())
+        // Apply database migrations on startup with connection storm prevention and timeout
+        using var startupCts = new CancellationTokenSource(TimeSpan.FromMinutes(3)); // 3-minute startup timeout
+        try
         {
-            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            using (var scope = app.Services.CreateScope())
+            {
+                var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-            // Add startup delay to prevent connection storms from multiple instances
-            var startupDelay = Random.Shared.Next(1000, 5000); // Random delay 1-5 seconds
-            logger.LogInformation($"Applying startup delay of {startupDelay}ms to prevent connection storms...");
-            await Task.Delay(startupDelay);
+                // Add startup delay to prevent connection storms from multiple instances
+                var startupDelay = Random.Shared.Next(500, 2000); // Reduced delay: 0.5-2 seconds
+                logger.LogInformation($"Applying startup delay of {startupDelay}ms to prevent connection storms...");
+                await Task.Delay(startupDelay, startupCts.Token);
 
             var maxRetries = 10; // Increased for production resilience
             var baseDelay = TimeSpan.FromSeconds(2);
@@ -309,6 +312,13 @@ public class Program
                     throw; // Re-throw to prevent app from starting with broken database
                 }
             }
+        }
+        catch (OperationCanceledException) when (startupCts.Token.IsCancellationRequested)
+        {
+            Console.WriteLine("❌ CRITICAL: Application startup timed out after 3 minutes");
+            Console.WriteLine("This usually indicates database connection issues or migration deadlock");
+            Console.WriteLine("Check database connectivity and connection pool settings");
+            throw new TimeoutException("Application startup timed out waiting for database operations");
         }
 
         // Configure path base for DigitalOcean routing
