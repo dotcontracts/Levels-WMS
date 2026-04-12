@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 using wms_android.shared.Data;
 using wms_android.shared.Models;
 using wms_android.shared.DTOs;
@@ -72,6 +73,13 @@ namespace wms_android.api.Controllers
                     return BadRequest(new { message = "Name is required" });
                 }
 
+                // Get current user ID from JWT claims
+                var currentUserId = GetCurrentUserId();
+                if (!currentUserId.HasValue)
+                {
+                    return Unauthorized(new { message = "User authentication required" });
+                }
+
                 // Check if customer with same name or email already exists
                 var existingCustomer = await _context.ContractCustomers
                     .Where(c => c.Name.ToLower() == createDto.Name.ToLower() || 
@@ -97,7 +105,7 @@ namespace wms_android.api.Controllers
                     PaymentTerms = createDto.PaymentTerms ?? "Net 30",
                     TaxRate = createDto.TaxRate,
                     IsActive = true,
-                    CreatedById = GetCurrentUserId(),
+                    CreatedById = currentUserId.Value,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
@@ -235,11 +243,15 @@ namespace wms_android.api.Controllers
             }
         }
 
-        private int GetCurrentUserId()
+        private int? GetCurrentUserId()
         {
-            // TODO: Implement proper authentication and get user ID from JWT token
-            // For now, return a default user ID
-            return 1; // Admin user
+            // Get user ID from JWT token claims
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (int.TryParse(userIdClaim, out int userId))
+            {
+                return userId;
+            }
+            return null;
         }
 
         private async Task<string> GenerateContractNumberAsync()
