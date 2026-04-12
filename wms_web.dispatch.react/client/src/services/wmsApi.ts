@@ -393,13 +393,25 @@ class WMSApiService {
   }
 
   // Parcels API methods
-  async getParcels(branchName?: string): Promise<Parcel[]> {
+  async getParcels(branchName?: string, page?: number, pageSize?: number): Promise<Parcel[]> {
     try {
       let url = `${API_BASE_URL}/Parcels`;
       
-      // Add branch filter if provided - API filters by destination using branchName parameter
+      // Add query parameters
+      const params = new URLSearchParams();
       if (branchName) {
-        url += `?branchName=${encodeURIComponent(branchName)}`;
+        params.append('branchName', branchName);
+      }
+      if (page !== undefined) {
+        params.append('page', page?.toString());
+      }
+      if (pageSize !== undefined) {
+        params.append('pageSize', pageSize?.toString());
+      }
+      
+      const queryString = params.toString();
+      if (queryString) {
+        url += `?${queryString}`;
       }
       
       const response = await fetch(url, {

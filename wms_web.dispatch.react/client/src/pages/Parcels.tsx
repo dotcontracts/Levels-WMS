@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Package, Search, Filter, Download, Eye, Edit, RefreshCw, Calendar, MapPin, DollarSign, User, Phone, X, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Card, Button, Badge, Table, FilterPanel, FilterField } from '../components/ui';
 import { VirtualScrollTable } from '../components/VirtualScrollTable';
+import { SkeletonTable } from '../components/SkeletonTable';
 import { SMSButton } from '../components/SMSButton';
 import { wmsApi, Parcel } from '../services/wmsApi';
 import { generateQRCode } from '../utils/qrCode';
@@ -20,10 +21,25 @@ interface ParcelFilterState {
   clerk: string;
 }
 
+interface PaginationState {
+  currentPage: number;
+  totalPages: number;
+  totalCount: number;
+  hasMoreData: boolean;
+  isLoadingMore: boolean;
+}
+
 const Parcels: React.FC = () => {
   const [parcels, setParcels] = useState<Parcel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [pagination, setPagination] = useState<PaginationState>({
+    currentPage: 1,
+    totalPages: 1,
+    totalCount: 0,
+    hasMoreData: true,
+    isLoadingMore: false
+  });
   const [showFilters, setShowFilters] = useState(false);
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
   const [showParcelModal, setShowParcelModal] = useState(false);
@@ -521,7 +537,7 @@ const Parcels: React.FC = () => {
       // Determine if we should filter by branch
       const branchName = isBranchManager() && user?.branch?.name ? user.branch.name : undefined;
 
-      const data = await wmsApi.getParcels(branchName);
+      const data = await wmsApi.getParcels(branchName, pagination.currentPage, 200); // 200 records per page
 
       // Populate user information for parcels that don't have createdBy populated
       try {
@@ -551,7 +567,21 @@ const Parcels: React.FC = () => {
           return dateB.getTime() - dateA.getTime();
         });
 
-        setParcels(sortedParcels);
+        // Append parcels if loading more, replace if new load
+        if (pagination.currentPage === 1) {
+          setParcels(sortedParcels);
+        } else {
+          setParcels(prev => [...prev, ...sortedParcels]);
+        }
+
+        // Update pagination state
+        setPagination(prev => ({
+          ...prev,
+          totalCount: data.length,
+          totalPages: Math.ceil(data.length / 200),
+          hasMoreData: sortedParcels.length >= 200,
+          currentPage: prev.currentPage
+        }));
 
         // Extract unique destinations for filter dropdown
         const destinationSet = new Set(updatedParcels.map(p => p.destination).filter(Boolean));
@@ -585,6 +615,15 @@ const Parcels: React.FC = () => {
         // Extract unique payment methods even if user mapping fails
         const paymentMethodSet = new Set(data.map(p => p.paymentMethods).filter(Boolean));
         setPaymentMethods(Array.from(paymentMethodSet).sort());
+
+        // Update pagination state for fallback
+        setPagination(prev => ({
+          ...prev,
+          totalCount: data.length,
+          totalPages: Math.ceil(data.length / 200),
+          hasMoreData: data.length >= 200,
+          currentPage: prev.currentPage
+        }));
       }
     } catch (err) {
       setError('Failed to load parcels');
@@ -1108,6 +1147,7 @@ const Parcels: React.FC = () => {
           }
           onRowClick={(parcel) => {
             // TODO: Navigate to parcel details
+            console.log('Parcel clicked:', parcel);
           }}
         />
       </Card>
