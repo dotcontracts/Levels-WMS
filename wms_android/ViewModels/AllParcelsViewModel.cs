@@ -58,6 +58,9 @@ namespace wms_android.ViewModels
         [ObservableProperty]
         private string _statusText = string.Empty;
 
+        // Computed property for UI binding
+        public bool IsNotLoadingAll => !IsLoadingAll;
+
         // Pagination settings
         private const int PAGE_SIZE = 200; // Increased from 50 to 200 for better UX
         private bool _isInitialLoad = true;
@@ -455,6 +458,11 @@ namespace wms_android.ViewModels
         partial void OnTotalCountChanged(int value)
         {
             UpdateStatusText();
+        }
+
+        partial void OnIsLoadingAllChanged(bool value)
+        {
+            OnPropertyChanged(nameof(IsNotLoadingAll));
         }
 
         /// <summary>
