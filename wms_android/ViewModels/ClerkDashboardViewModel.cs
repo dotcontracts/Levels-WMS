@@ -71,8 +71,17 @@ namespace wms_android.ViewModels
         [RelayCommand]
         private async Task NavigateToViewAllParcels()
         {
-            _logger.LogInformation("Navigate to view all parcels");
-            await Shell.Current.GoToAsync(nameof(AllParcelsView));
+            try
+            {
+                _logger.LogInformation("Navigate to view all parcels");
+                await Shell.Current.GoToAsync(nameof(AllParcelsView));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error navigating to AllParcelsView");
+                Debug.WriteLine($"Error navigating to AllParcelsView: {ex.Message}");
+                await Application.Current.MainPage.DisplayAlert("Error", "Failed to open parcels view. Please try again.", "OK");
+            }
         }
 
         [RelayCommand]

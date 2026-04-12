@@ -693,10 +693,16 @@ namespace wms_android.api.Controllers
         [HttpGet("dispatch")]
         public async Task<ActionResult<IEnumerable<Parcel>>> GetParcelsForDispatch([FromQuery] string? destination = null, 
             [FromQuery] string? statuses = null, [FromQuery] DateTime? fromDate = null, [FromQuery] DateTime? toDate = null, 
-            [FromQuery] string? createdByUsername = null)
+            [FromQuery] string? createdByUsername = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 100)
         {
             try
             {
+                // Validate pagination parameters
+                page = Math.Max(1, page);
+                pageSize = Math.Clamp(pageSize, 1, 500);
+
                 var query = _context.Parcels
                     .AsQueryable();
 
@@ -718,11 +724,11 @@ namespace wms_android.api.Controllers
                     query = query.Where(p => p.Status == ParcelStatus.Pending || p.Status == ParcelStatus.Confirmed);
                 }
 
-                // Date filtering - limit to 2 days by default
-                if (fromDate.HasValue)
-                {
-                    query = query.Where(p => p.CreatedAt.Date >= fromDate.Value.Date);
-                }
+                // Date filtering - DEFAULT to last 7 days if not provided, then apply user filter
+                var defaultFromDate = DateTime.UtcNow.AddDays(-7);
+                var effectiveFromDate = fromDate ?? defaultFromDate;
+                query = query.Where(p => p.CreatedAt.Date >= effectiveFromDate.Date);
+                
                 if (toDate.HasValue)
                 {
                     query = query.Where(p => p.CreatedAt.Date <= toDate.Value.Date);
@@ -734,9 +740,11 @@ namespace wms_android.api.Controllers
                     query = query.Where(p => p.CreatedBy != null && p.CreatedBy.Username == createdByUsername);
                 }
 
-                // Get all parcels (no pagination needed for 2-day range)
+                // Add pagination to prevent memory issues and improve performance
                 var parcels = await query
                     .OrderByDescending(p => p.CreatedAt)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
                     .ToListAsync();
 
                 System.Diagnostics.Debug.WriteLine($"Retrieved {parcels.Count} parcels for dispatch");
