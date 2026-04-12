@@ -22,10 +22,17 @@ namespace wms_android.api.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetParcels([FromQuery] string? branchName = null)
+        public async Task<IActionResult> GetParcels(
+            [FromQuery] string? branchName = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 100)
         {
             try
             {
+                // Validate pagination parameters
+                page = Math.Max(1, page);
+                pageSize = Math.Clamp(pageSize, 1, 1000); // Max 1000 items per page
+                
                 var query = _context.Parcels.AsNoTracking().AsQueryable();
                 
                 // If branchName is provided, filter by destination column
@@ -34,7 +41,13 @@ namespace wms_android.api.Controllers
                     query = query.Where(p => p.Destination == branchName);
                 }
                 
-                var parcels = await query.ToListAsync();
+                // Add default ordering and pagination to prevent loading all records
+                var parcels = await query
+                    .OrderByDescending(p => p.CreatedAt)
+                    .Skip((page - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToListAsync();
+                    
                 return Ok(parcels);
             }
             catch (Exception)
