@@ -312,6 +312,7 @@ public class Program
                     throw; // Re-throw to prevent app from starting with broken database
                 }
             } // End for loop
+            } // End using scope
         }
         catch (OperationCanceledException) when (startupCts.Token.IsCancellationRequested)
         {
