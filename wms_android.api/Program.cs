@@ -311,7 +311,7 @@ public class Program
                     
                     throw; // Re-throw to prevent app from starting with broken database
                 }
-            }
+            } // End for loop
         }
         catch (OperationCanceledException) when (startupCts.Token.IsCancellationRequested)
         {
