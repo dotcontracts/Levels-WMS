@@ -96,7 +96,7 @@
                             BackgroundColor="{StaticResource Background}"
                             RemainingItemsThreshold="20"
                             RemainingItemsThresholdReachedCommand="{Binding LoadNextPageCommand}"
-                            ItemSizingStrategy="RetainVirtualization">
+                            ItemSizingStrategy="MeasureFirstItem">
             <CollectionView.EmptyView>
                 <StackLayout HorizontalOptions="Center" VerticalOptions="Center">
                     <Label Text="No parcels found" 
