@@ -64,7 +64,7 @@ public class Program
         {
             // Production-safe connection pool configuration to prevent "too many clients" errors
             // Reduced MaxPoolSize for multiple app instances, added connection lifecycle management
-            connectionString = $"Host={dbHost};Port={dbPort};Database={dbName};Username={dbUser};Password={dbPassword};SSL Mode=Require;Trust Server Certificate=true;Pooling=true;MinPoolSize=1;MaxPoolSize=8;IdleLifetime=180;Command Timeout=30;Timeout=10;Keepalive=30;Pruning Interval=5";
+            connectionString = $"Host={dbHost};Port={dbPort};Database={dbName};Username={dbUser};Password={dbPassword};SSL Mode=Require;Trust Server Certificate=true;Pooling=true;Minimum Pool Size=1;Maximum Pool Size=8;Connection Idle Lifetime=180;Command Timeout=30;Timeout=10;Keepalive=30";
             Console.WriteLine($"✓ Built production-safe connection string from environment variables");
             Console.WriteLine($"  Host: {dbHost}, Port: {dbPort}, Database: {dbName}, User: {dbUser}");
             Console.WriteLine($"  Connection Pool: MinSize=1, MaxSize=8 (ultra-conservative)");
