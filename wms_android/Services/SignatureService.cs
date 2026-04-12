@@ -36,7 +36,7 @@ namespace wms_android.Services
                 _apiBaseUrl = $"http://{localIP}:8081/api";
             #else
                 // Use production API for release builds
-                _apiBaseUrl = "https://wmsandroidapi-w74du.ondigitalocean.app/api";
+                _apiBaseUrl = "https://levelsapi-82i8a.ondigitalocean.app/api";
             #endif
         }
 

@@ -32,7 +32,7 @@ namespace wms_android.shared.Services
             else
             {
                 // Fallback to configuration or production URL if BaseAddress not set
-                _baseUrl = configuration["ApiSettings:BaseUrl"] ?? "https://wmsandroidapi-w74du.ondigitalocean.app/";
+                _baseUrl = configuration["ApiSettings:BaseUrl"] ?? "https://levelsapi-82i8a.ondigitalocean.app/";
                 _httpClient.BaseAddress = new Uri(_baseUrl);
                 System.Diagnostics.Debug.WriteLine($"ParcelService set new BaseAddress from config: {_baseUrl}");
             }

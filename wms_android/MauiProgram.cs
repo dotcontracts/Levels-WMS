@@ -73,7 +73,7 @@ namespace wms_android
                 var localIP = "192.168.1.69"; // Change this to your actual machine IP
                 var apiBaseUrl = $"http://{localIP}:8081/";
             #else
-                var apiBaseUrl = "https://wmsandroidapi-w74du.ondigitalocean.app/";
+                var apiBaseUrl = "https://levelsapi-82i8a.ondigitalocean.app/";
             #endif
 
             // Create HttpClient for API access
@@ -96,7 +96,7 @@ namespace wms_android
                     System.Diagnostics.Debug.WriteLine($"Configured HttpClient with BaseAddress: {baseUrl}");
                 } catch (Exception ex) {
                     System.Diagnostics.Debug.WriteLine($"Error setting BaseAddress: {ex.Message}");
-                    client.BaseAddress = new Uri("https://wmsandroidapi-w74du.ondigitalocean.app/");
+                    client.BaseAddress = new Uri("https://levelsapi-82i8a.ondigitalocean.app/");
                 }
                 return client;
             });
