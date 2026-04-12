@@ -64,11 +64,11 @@ public class Program
         {
             // Production-safe connection pool configuration to prevent "too many clients" errors
             // Reduced MaxPoolSize for multiple app instances, added connection lifecycle management
-            connectionString = $"Host={dbHost};Port={dbPort};Database={dbName};Username={dbUser};Password={dbPassword};SSL Mode=Require;Trust Server Certificate=true;Pooling=true;MinPoolSize=1;MaxPoolSize=8;Connection Idle Lifetime=180;Command Timeout=30;Connection Timeout=10;Keepalive=30;Connection Pruning Interval=5;Health Check Timeout=3;No Reset On Close=true";
+            connectionString = $"Host={dbHost};Port={dbPort};Database={dbName};Username={dbUser};Password={dbPassword};SSL Mode=Require;Trust Server Certificate=true;Pooling=true;MinPoolSize=1;MaxPoolSize=8;Idle Lifetime=180;Command Timeout=30;Timeout=10;Keepalive=30;Pruning Interval=5";
             Console.WriteLine($"✓ Built production-safe connection string from environment variables");
             Console.WriteLine($"  Host: {dbHost}, Port: {dbPort}, Database: {dbName}, User: {dbUser}");
             Console.WriteLine($"  Connection Pool: MinSize=1, MaxSize=8 (ultra-conservative)");
-            Console.WriteLine($"  Connection Lifecycle: IdleLifetime=180s, PruningInterval=5s");
+            Console.WriteLine($"  Connection Lifecycle: IdleLifetime=180s, Timeout=10s, PruningInterval=5s");
         }
         else
         {
