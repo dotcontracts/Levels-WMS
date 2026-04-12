@@ -40,6 +40,8 @@ interface RevenueData {
 const FinancialDashboard: React.FC = () => {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState({ loaded: 0, total: 0 });
+  const [loadingStatus, setLoadingStatus] = useState('Initializing...');
   const [summary, setSummary] = useState<FinancialSummary>({
     totalRevenue: 0,
     monthlyRevenue: 0,
@@ -61,13 +63,26 @@ const FinancialDashboard: React.FC = () => {
   const loadFinancialData = async () => {
     try {
       setIsLoading(true);
+      setLoadingStatus('Loading financial data...');
+      setLoadingProgress({ loaded: 0, total: 0 });
 
-      // Load invoices, parcels, and expenses data
-      const [invoices, parcels, expensesSummary] = await Promise.all([
+      // Load invoices and expenses first (faster)
+      setLoadingStatus('Loading invoices and expenses...');
+      const [invoices, expensesSummary] = await Promise.all([
         wmsApi.getInvoices(),
-        wmsApi.getParcels(),
         wmsApi.getExpensesSummary()
       ]);
+
+      // Load parcels progressively with progress callback
+      setLoadingStatus('Loading parcels data...');
+      const parcels = await wmsApi.getAllParcelsProgressively({
+        onProgress: (loaded, total) => {
+          setLoadingProgress({ loaded, total });
+          setLoadingStatus(`Loading parcels: ${loaded} of ${total}`);
+        },
+        chunkSize: 1000,
+        fields: ['id', 'waybillNumber', 'totalAmount', 'paymentMethods', 'createdAt', 'status', 'createdById']
+      });
 
       // Calculate financial summary
       const now = new Date();
@@ -163,8 +178,10 @@ const FinancialDashboard: React.FC = () => {
 
     } catch (error) {
       console.error('Failed to load financial data:', error);
+      setLoadingStatus('Failed to load data. Please try again.');
     } finally {
       setIsLoading(false);
+      setLoadingProgress({ loaded: 0, total: 0 });
     }
   };
 
@@ -220,9 +237,35 @@ const FinancialDashboard: React.FC = () => {
   ];
 
   if (isLoading) {
+    const progressPercentage = loadingProgress.total > 0 
+      ? Math.round((loadingProgress.loaded / loadingProgress.total) * 100)
+      : 0;
+
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-brand-500"></div>
+      <div className="flex flex-col items-center justify-center min-h-screen space-y-6 p-8">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-brand-500 mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Loading Financial Dashboard</h2>
+          <p className="text-gray-600 mb-4">{loadingStatus}</p>
+          
+          {loadingProgress.total > 0 && (
+            <div className="w-80 mx-auto">
+              <div className="flex justify-between text-sm text-gray-600 mb-2">
+                <span>Progress</span>
+                <span>{progressPercentage}%</span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-brand-500 h-2 rounded-full transition-all duration-300" 
+                  style={{ width: `${progressPercentage}%` }}
+                ></div>
+              </div>
+              <p className="text-sm text-gray-500 mt-2">
+                {loadingProgress.loaded.toLocaleString()} of {loadingProgress.total.toLocaleString()} records
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     );
   }

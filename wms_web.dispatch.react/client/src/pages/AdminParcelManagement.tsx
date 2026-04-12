@@ -73,13 +73,29 @@ interface ParcelFilterState {
   dateRange: { from: string; to: string };
 }
 
+interface PaginationState {
+  currentPage: number;
+  totalPages: number;
+  totalCount: number;
+  hasMoreData: boolean;
+  isLoadingMore: boolean;
+}
+
 const AdminParcelManagement: React.FC = () => {
   const { user, isAdmin, isAccountant } = useAuth();
   const [parcels, setParcels] = useState<Parcel[]>([]);
-  const [filteredParcels, setFilteredParcels] = useState<Parcel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  
+  // Pagination state
+  const [pagination, setPagination] = useState<PaginationState>({
+    currentPage: 1,
+    totalPages: 1,
+    totalCount: 0,
+    hasMoreData: true,
+    isLoadingMore: false
+  });
   
   // Dropdown options for edit modal
   const [availableDestinations, setAvailableDestinations] = useState<string[]>([]);
@@ -188,125 +204,185 @@ const AdminParcelManagement: React.FC = () => {
     }
   }, [user, isAdmin, isAccountant]);
 
-  // Load parcels and clerks
-  const loadParcels = useCallback(async (forceRefresh = false) => {
+  // Load parcels with pagination and server-side filtering
+  const loadParcels = useCallback(async (forceRefresh = false, loadMore = false) => {
     if (!user || (!isAdmin() && !isAccountant())) return;
     
     try {
-      setLoading(true);
+      if (!loadMore) {
+        setLoading(true);
+      } else {
+        setPagination(prev => ({ ...prev, isLoadingMore: true }));
+      }
       setError(null);
+
+      // Reset pagination if not loading more
+      const currentPage = loadMore ? pagination.currentPage + 1 : 1;
+
+      // Build search parameters from filters
+      const searchParams: any = {
+        page: currentPage,
+        pageSize: 200
+      };
+
+      // Add filter parameters
+      if (filters.waybillNumber) {
+        searchParams.search = filters.waybillNumber;
+      }
+      if (filters.destination) {
+        searchParams.destination = filters.destination;
+      }
+      if (filters.status && filters.status !== 'all') {
+        searchParams.status = parseInt(filters.status);
+      }
+      if (filters.dateRange.from) {
+        searchParams.fromDate = filters.dateRange.from;
+      }
+      if (filters.dateRange.to) {
+        searchParams.toDate = filters.dateRange.to;
+      }
+      if (filters.createdBy) {
+        searchParams.createdByUsername = filters.createdBy;
+      }
+
+      // Build a comprehensive search string for additional fields
+      let searchTerms = [];
+      if (filters.paymentMethod) {
+        searchTerms.push(filters.paymentMethod);
+      }
       
-      
-      // Load all parcels (admin can see all)
-      const allParcels = await wmsApi.getParcels();
-      setParcels(allParcels);
-      setFilteredParcels(allParcels);
-      
-      // Extract unique destinations and payment methods for dropdowns
-      const destinations = Array.from(new Set(allParcels.map(p => p.destination).filter(Boolean)));
-      const paymentMethods = Array.from(new Set(allParcels.map(p => p.paymentMethods).filter(Boolean)));
-      setAvailableDestinations(destinations);
-      setAvailablePaymentMethods(paymentMethods);
-      
-      // Load all users for filter dropdown and created by mapping
+      // Combine with existing search if any
+      if (searchTerms.length > 0) {
+        const additionalSearch = searchTerms.join(' ');
+        if (searchParams.search) {
+          searchParams.search += ` ${additionalSearch}`;
+        } else {
+          searchParams.search = additionalSearch;
+        }
+      }
+
+      const result = await wmsApi.getParcelsPaged(searchParams);
+      const data = result.data;
+
+      // Load users for mapping if needed
       try {
         const users = await wmsApi.getUsers();
         setAllUsers(users);
-        
-        // Map user names to parcels that don't have createdBy populated
-        const updatedParcels = allParcels.map(parcel => {
+
+        // Map user names to parcels
+        const updatedParcels = data.map(parcel => {
           if (!parcel.createdBy && parcel.createdById) {
             const user = users.find(u => u.id === parcel.createdById);
             if (user) {
-              return { ...parcel, createdBy: { username: user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.username } };
+              return {
+                ...parcel,
+                createdBy: {
+                  username: user.firstName && user.lastName 
+                    ? `${user.firstName} ${user.lastName}` 
+                    : user.username
+                }
+              };
             }
           }
           return parcel;
         });
-        
-        setParcels(updatedParcels);
-        setFilteredParcels(updatedParcels);
-        
+
+        // Sort parcels by creation date, latest first
+        const sortedParcels = updatedParcels.sort((a, b) => {
+          const dateA = new Date(a.createdAt || 0);
+          const dateB = new Date(b.createdAt || 0);
+          return dateB.getTime() - dateA.getTime();
+        });
+
+        // Append parcels if loading more, replace if new load
+        if (loadMore) {
+          setParcels(prev => [...prev, ...sortedParcels]);
+        } else {
+          setParcels(sortedParcels);
+        }
+
+        // Update pagination state using API response
+        setPagination(prev => ({
+          ...prev,
+          totalCount: result.totalCount,
+          totalPages: result.totalPages,
+          hasMoreData: result.hasNextPage,
+          currentPage: result.page,
+          isLoadingMore: false
+        }));
+
+        // Extract unique destinations and payment methods for filter dropdowns
+        const destinations = Array.from(new Set(updatedParcels.map(p => p.destination).filter(Boolean)));
+        const paymentMethods = Array.from(new Set(updatedParcels.map(p => p.paymentMethods).filter(Boolean)));
+        setAvailableDestinations(destinations);
+        setAvailablePaymentMethods(paymentMethods);
+
         // Set clerks for filter
         const clerkUsers = users.filter(u => u.role?.name === 'Clerk' || u.roles?.includes('clerk'));
-        setClerks(clerkUsers.map(u => ({ id: u.id, username: u.firstName && u.lastName ? `${u.firstName} ${u.lastName}` : u.username })));
-      } catch (err) {
+        setClerks(clerkUsers.map(u => ({ 
+          id: u.id, 
+          username: u.firstName && u.lastName ? `${u.firstName} ${u.lastName}` : u.username 
+        })));
+
+      } catch (userErr) {
+        // Continue with parcels even if user mapping fails
+        const sortedParcels = data.sort((a, b) => {
+          const dateA = new Date(a.createdAt || 0);
+          const dateB = new Date(b.createdAt || 0);
+          return dateB.getTime() - dateA.getTime();
+        });
+
+        if (loadMore) {
+          setParcels(prev => [...prev, ...sortedParcels]);
+        } else {
+          setParcels(sortedParcels);
+        }
+
+        // Update pagination state for fallback
+        setPagination(prev => ({
+          ...prev,
+          totalCount: result.totalCount,
+          totalPages: result.totalPages,
+          hasMoreData: result.hasNextPage,
+          currentPage: result.page,
+          isLoadingMore: false
+        }));
       }
       
     } catch (err) {
       setError('Failed to load parcels');
     } finally {
-      setLoading(false);
+      if (!loadMore) {
+        setLoading(false);
+      } else {
+        setPagination(prev => ({ ...prev, isLoadingMore: false }));
+      }
     }
-  }, [user, isAdmin, isAccountant]);
+  }, [user, isAdmin, isAccountant, pagination.currentPage, filters]);
 
   useEffect(() => {
     loadParcels();
-  }, [loadParcels]);
+  }, []);
 
-  // Apply filters
+  // Refetch data when filters change
   useEffect(() => {
-    let filtered = [...parcels];
-    
-    if (filters.waybillNumber) {
-      filtered = filtered.filter(p => 
-        p.waybillNumber.toLowerCase().includes(filters.waybillNumber.toLowerCase())
-      );
-    }
-    
-    if (filters.createdBy) {
-      filtered = filtered.filter(p => 
-        p.createdBy?.username === filters.createdBy ||
-        p.createdById.toString() === filters.createdBy
-      );
-    }
-    
-    if (filters.dateCreated) {
-      filtered = filtered.filter(p => {
-        const parcelDate = new Date(p.createdAt).toISOString().split('T')[0];
-        return parcelDate === filters.dateCreated;
-      });
-    }
-    
-    if (filters.status && filters.status !== 'all') {
-      const statusMap: Record<string, number> = {
-        'pending': PARCEL_STATUS.PENDING,
-        'confirmed': PARCEL_STATUS.FINALIZED,
-        'in-transit': PARCEL_STATUS.IN_TRANSIT,
-        'delivered': PARCEL_STATUS.DELIVERED,
-        'cancelled': PARCEL_STATUS.CANCELLED
-      };
-      filtered = filtered.filter(p => p.status === statusMap[filters.status]);
-    }
+    // Reset pagination and refetch when filters change
+    setPagination(prev => ({
+      ...prev,
+      currentPage: 1,
+      isLoadingMore: false
+    }));
+    loadParcels(true);
+  }, [filters]);
 
-    if (filters.destination) {
-      filtered = filtered.filter(p => p.destination === filters.destination);
+  // Load more handler for infinite scroll
+  const handleLoadMore = useCallback(() => {
+    if (!pagination.isLoadingMore && pagination.hasMoreData) {
+      loadParcels(false, true);
     }
+  }, [pagination.isLoadingMore, pagination.hasMoreData, loadParcels]);
 
-    if (filters.paymentMethod) {
-      filtered = filtered.filter(p => p.paymentMethods === filters.paymentMethod);
-    }
-
-    if (filters.amountRange.from || filters.amountRange.to) {
-      filtered = filtered.filter(p => {
-        const amount = p.amount;
-        const from = filters.amountRange.from ? Number(filters.amountRange.from) : 0;
-        const to = filters.amountRange.to ? Number(filters.amountRange.to) : Infinity;
-        return amount >= from && amount <= to;
-      });
-    }
-
-    if (filters.dateRange.from || filters.dateRange.to) {
-      filtered = filtered.filter(p => {
-        const parcelDate = new Date(p.createdAt);
-        const from = filters.dateRange.from ? new Date(filters.dateRange.from) : new Date(0);
-        const to = filters.dateRange.to ? new Date(filters.dateRange.to) : new Date();
-        return parcelDate >= from && parcelDate <= to;
-      });
-    }
-    
-    setFilteredParcels(filtered);
-  }, [parcels, filters]);
+  // Since we're doing server-side filtering, use parcels directly
 
   // Handle filter changes
   const handleFilterChange = (key: string, value: string | { from: string; to: string }) => {
@@ -753,17 +829,20 @@ const AdminParcelManagement: React.FC = () => {
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900">
-              Parcels ({filteredParcels.length})
+              Parcels ({parcels.length} of {pagination.totalCount})
             </h2>
           </div>
         </div>
 
         <VirtualScrollTable
-          data={filteredParcels}
+          data={parcels}
           columns={columns}
           rowHeight={64}
           containerHeight={600}
           loading={loading}
+          hasMoreData={pagination.hasMoreData}
+          isLoadingMore={pagination.isLoadingMore}
+          onLoadMore={handleLoadMore}
           emptyMessage={
             Object.values(filters).some(filter => filter) 
               ? 'Try adjusting your filters or refresh the data' 

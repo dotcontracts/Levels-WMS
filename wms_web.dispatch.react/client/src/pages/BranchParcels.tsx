@@ -63,7 +63,9 @@ const BranchParcels: React.FC = () => {
       }
       
       // Fetch parcels - for admins get all, for branch managers filter by destination
-      const data = await wmsApi.getParcels();
+      const data = await wmsApi.getAllParcelsForReports({
+        destination: isBranchManager() && branchName ? branchName : undefined
+      });
       
       // Filter by branch destination for branch managers
       let branchFilteredData = data;

@@ -437,7 +437,7 @@ class WMSApiService {
     }
   }
 
-  // Paginated parcels endpoint for better performance
+  // Paginated parcels endpoint for better performance with request deduplication
   async getParcelsPaged(params: {
     page?: number;
     pageSize?: number;
@@ -472,19 +472,159 @@ class WMSApiService {
 
       const url = `${API_BASE_URL}/Parcels/paged?${queryParams.toString()}`;
       
-      const response = await fetch(url, {
+      // Simple request deduplication to prevent identical simultaneous calls
+      const pendingRequestsMap = (globalThis as any)._pendingWMSRequests || ((globalThis as any)._pendingWMSRequests = new Map());
+      
+      if (pendingRequestsMap.has(url)) {
+        console.log('Reusing pending request for:', url);
+        return await pendingRequestsMap.get(url);
+      }
+      
+      const requestPromise = fetch(url, {
         headers: this.getHeaders(),
         signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+      }).then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to fetch parcels: ${response.status}`);
+        }
+        return await response.json();
+      }).finally(() => {
+        // Clear from pending map when request completes
+        pendingRequestsMap.delete(url);
       });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch parcels: ${response.status}`);
-      }
-
-      const result = await response.json();
-      return result;
+      
+      pendingRequestsMap.set(url, requestPromise);
+      return await requestPromise;
+      
     } catch (error) {
       throw new Error(`Failed to connect to WMS API: ${error}`);
+    }
+  }
+
+  // Progressive loading for complete datasets - optimized to avoid redundant count queries
+  async getAllParcelsProgressively(options: {
+    onProgress?: (loaded: number, total: number) => void;
+    chunkSize?: number;
+    dateRange?: { from: string; to: string };
+    fields?: string[];
+    destination?: string;
+    search?: string;
+  } = {}): Promise<Parcel[]> {
+    const {
+      onProgress,
+      chunkSize = 500,
+      dateRange,
+      fields,
+      destination,
+      search
+    } = options;
+
+    try {
+      const allParcels: Parcel[] = [];
+      let currentPage = 1;
+      let totalCount = 0;
+      let hasMoreData = true;
+      
+      while (hasMoreData) {
+        const params = {
+          page: currentPage,
+          pageSize: chunkSize,
+          ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to }),
+          ...(destination && { destination }),
+          ...(search && { search })
+        };
+
+        const response = await this.getParcelsPaged(params);
+        
+        // Set total count from first response
+        if (currentPage === 1) {
+          totalCount = response.totalCount;
+          if (totalCount === 0) {
+            onProgress?.(0, 0);
+            return [];
+          }
+        }
+        
+        allParcels.push(...response.data);
+        hasMoreData = response.hasNextPage;
+        
+        // Report progress
+        onProgress?.(allParcels.length, totalCount);
+        
+        currentPage++;
+        
+        // Small delay to prevent overwhelming the server, but only between requests
+        if (hasMoreData) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      }
+
+      return allParcels;
+    } catch (error) {
+      throw new Error(`Failed to load all parcels: ${error}`);
+    }
+  }
+
+  // Optimized for financial calculations with smaller, faster chunks
+  async getAllParcelsForFinancial(dateRange?: { from: string; to: string }): Promise<Parcel[]> {
+    try {
+      return await this.getAllParcelsProgressively({
+        dateRange,
+        chunkSize: 400, // Smaller chunks for faster response times
+        fields: ['id', 'waybillNumber', 'totalAmount', 'paymentMethods', 'createdAt', 'status', 'createdById']
+      });
+    } catch (error) {
+      console.warn('Failed to load financial data progressively, falling back to direct pagination');
+      // Fallback to direct pagination instead of old getParcels method
+      try {
+        const response = await this.getParcelsPaged({
+          page: 1,
+          pageSize: 500,
+          ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to })
+        });
+        return response.data;
+      } catch (fallbackError) {
+        throw new Error(`Failed to load financial data: ${fallbackError}`);
+      }
+    }
+  }
+
+  // Optimized for reports with efficient chunk management
+  async getAllParcelsForReports(filters: {
+    startDate?: string;
+    endDate?: string;
+    destination?: string;
+    search?: string;
+  } = {}): Promise<Parcel[]> {
+    try {
+      const dateRange = filters.startDate && filters.endDate 
+        ? { from: filters.startDate, to: filters.endDate }
+        : undefined;
+
+      return await this.getAllParcelsProgressively({
+        dateRange,
+        destination: filters.destination,
+        search: filters.search,
+        chunkSize: 300 // Smaller chunks for better performance
+      });
+    } catch (error) {
+      console.warn('Failed to load reports data progressively, falling back to direct pagination');
+      // Fallback to direct pagination instead of old getParcels method
+      try {
+        const response = await this.getParcelsPaged({
+          page: 1,
+          pageSize: 400,
+          ...(filters.startDate && filters.endDate && { 
+            fromDate: filters.startDate, 
+            toDate: filters.endDate 
+          }),
+          ...(filters.destination && { destination: filters.destination }),
+          ...(filters.search && { search: filters.search })
+        });
+        return response.data;
+      } catch (fallbackError) {
+        throw new Error(`Failed to load reports data: ${fallbackError}`);
+      }
     }
   }
 

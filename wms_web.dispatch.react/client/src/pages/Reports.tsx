@@ -438,11 +438,36 @@ const Reports: React.FC = () => {
     }
   };
 
-  // Fetch clerk cash-in data - load paid parcels and enhance with deposits
+  // Fetch clerk cash-in data - optimized version
   const fetchClerkCashInData = useCallback(async (filterDate?: string): Promise<ClerkCashInData[]> => {
     try {
-      // Always start by getting all paid parcels from the main API
-      const allParcels = await wmsApi.getParcels();
+      // Use direct paginated API call for better performance
+      const response = await wmsApi.getParcelsPaged({
+        page: 1,
+        pageSize: 300, // Smaller chunks for cash-in calculations
+        ...(filterDate && { fromDate: filterDate, toDate: filterDate })
+      });
+      
+      let allParcels = response.data;
+      
+      // Load additional pages if needed (limit to reasonable amount)
+      if (response.hasNextPage && response.totalPages <= 5) {
+        const remainingPages = [];
+        for (let page = 2; page <= response.totalPages; page++) {
+          remainingPages.push(
+            wmsApi.getParcelsPaged({
+              page,
+              pageSize: 300,
+              ...(filterDate && { fromDate: filterDate, toDate: filterDate })
+            })
+          );
+        }
+        
+        const remainingResponses = await Promise.all(remainingPages);
+        remainingResponses.forEach(resp => {
+          allParcels = allParcels.concat(resp.data);
+        });
+      }
 
       // Filter for paid parcels and by date if specified
       let paidParcels = allParcels.filter(parcel =>
@@ -550,11 +575,39 @@ const Reports: React.FC = () => {
     }
   }, []);
 
-  // Fetch clerk debit data with date range filtering
+  // Fetch clerk debit data with date range filtering - optimized version
   const fetchClerkDebitData = useCallback(async (dateRange: { from: string; to: string }): Promise<ClerkDebitData[]> => {
     try {
-      // Get all parcels
-      const allParcels = await wmsApi.getParcels();
+      // Use direct paginated API call with optimized parameters
+      const response = await wmsApi.getParcelsPaged({
+        page: 1,
+        pageSize: 500, // Reasonable chunk size for debit calculations
+        fromDate: dateRange.from,
+        toDate: dateRange.to
+      });
+      
+      let allParcels = response.data;
+      
+      // If there are more pages, load them efficiently
+      if (response.hasNextPage) {
+        const remainingPages = [];
+        for (let page = 2; page <= Math.min(response.totalPages, 10); page++) { // Limit to 10 pages max (5000 records)
+          remainingPages.push(
+            wmsApi.getParcelsPaged({
+              page,
+              pageSize: 500,
+              fromDate: dateRange.from,
+              toDate: dateRange.to
+            })
+          );
+        }
+        
+        // Load remaining pages in parallel for better performance
+        const remainingResponses = await Promise.all(remainingPages);
+        remainingResponses.forEach(resp => {
+          allParcels = allParcels.concat(resp.data);
+        });
+      }
 
       // Filter parcels by date range and paid status
       const paidParcels = allParcels.filter(parcel => {
@@ -679,7 +732,10 @@ const Reports: React.FC = () => {
 
       // Get all parcels and users
       const [allParcels, allUsers] = await Promise.all([
-        wmsApi.getParcels(),
+        wmsApi.getAllParcelsForReports({
+          startDate: dateRange.from,
+          endDate: dateRange.to
+        }),
         wmsApi.getUsers()
       ]);
 
@@ -1227,7 +1283,7 @@ const Reports: React.FC = () => {
 
       try {
         const results = await Promise.allSettled([
-          wmsApi.getParcels(),
+          wmsApi.getAllParcelsForReports(),
           wmsApi.getDispatches()
         ]);
 
@@ -1349,7 +1405,11 @@ const Reports: React.FC = () => {
         apiFilters.status = parcelFilters.status;
       }
 
-      const parcelsData = await wmsApi.getParcels();
+      const parcelsData = await wmsApi.getAllParcelsForReports({
+        startDate: parcelFilters.dateFrom,
+        endDate: parcelFilters.dateTo,
+        destination: parcelFilters.destination !== 'All' ? parcelFilters.destination : undefined
+      });
 
       // Apply client-side filtering based on the filters
       let filtered = parcelsData;
@@ -1412,7 +1472,7 @@ const Reports: React.FC = () => {
     try {
       // Use Promise.allSettled to handle API failures gracefully
       const results = await Promise.allSettled([
-        wmsApi.getParcels(),
+        wmsApi.getAllParcelsForReports(),
         wmsApi.getUsers()
       ]);
 
