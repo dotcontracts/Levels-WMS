@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:viewmodels="clr-namespace:wms_android.ViewModels"
              xmlns:models="clr-namespace:wms_android.shared.Models;assembly=wms_android.shared"
+             xmlns:controls="clr-namespace:wms_android.Controls"
              x:Class="wms_android.Views.AllParcelsView"
              x:DataType="viewmodels:AllParcelsViewModel"
              BackgroundColor="{StaticResource Background}"
@@ -58,17 +59,26 @@
             </StackLayout>
 
             <!-- Filter Buttons -->
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="5">
                 <Button Grid.Column="0" 
                         Text="Apply Filters" 
                         Command="{Binding ApplyFiltersCommand}"
                         BackgroundColor="{StaticResource Primary}"
-                        TextColor="White" />
+                        TextColor="White" 
+                        FontSize="12" />
                 <Button Grid.Column="1" 
                         Text="Clear Filters" 
                         Command="{Binding ClearFiltersCommand}"
+                        BackgroundColor="{StaticResource PrimaryDark}"
+                        TextColor="White" 
+                        FontSize="12" />
+                <Button Grid.Column="2" 
+                        Text="Load All" 
+                        Command="{Binding LoadAllParcelsCommand}"
                         BackgroundColor="{StaticResource Secondary}"
-                        TextColor="{StaticResource PrimaryDark}" />
+                        TextColor="{StaticResource PrimaryDark}"
+                        FontSize="12"
+                        IsEnabled="{Binding IsNotLoadingAll}" />
             </Grid>
         </StackLayout>
 
@@ -84,8 +94,9 @@
             
             <CollectionView ItemsSource="{Binding Parcels}"
                             BackgroundColor="{StaticResource Background}"
-                            RemainingItemsThreshold="10"
-                            RemainingItemsThresholdReachedCommand="{Binding LoadNextPageCommand}">
+                            RemainingItemsThreshold="20"
+                            RemainingItemsThresholdReachedCommand="{Binding LoadNextPageCommand}"
+                            ItemSizingStrategy="RetainVirtualization">
             <CollectionView.EmptyView>
                 <StackLayout HorizontalOptions="Center" VerticalOptions="Center">
                     <Label Text="No parcels found" 
@@ -176,7 +187,13 @@
             </CollectionView.ItemTemplate>
             </CollectionView>
             
-            <!-- Loading More Indicator -->
+            <!-- Skeleton Loading Indicator for Scroll -->
+            <StackLayout IsVisible="{Binding IsLoadingMore}" Padding="10">
+                <controls:SkeletonLoading />
+                <controls:SkeletonLoading />
+            </StackLayout>
+            
+            <!-- Simple Loading More Indicator as fallback -->
             <ActivityIndicator IsRunning="{Binding IsLoadingMore}"
                                IsVisible="{Binding IsLoadingMore}"
                                HorizontalOptions="Center"

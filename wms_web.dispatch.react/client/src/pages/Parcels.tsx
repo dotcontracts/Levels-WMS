@@ -66,6 +66,17 @@ const Parcels: React.FC = () => {
     fetchParcels();
   }, []);
 
+  // Refetch data when filters change
+  useEffect(() => {
+    // Reset pagination and refetch when filters change
+    setPagination(prev => ({
+      ...prev,
+      currentPage: 1,
+      isLoadingMore: false
+    }));
+    fetchParcels(true);
+  }, [filters]);
+
   // Close export dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -529,15 +540,68 @@ const Parcels: React.FC = () => {
   // Legacy function for backward compatibility
   const handleExportPDF = () => handleExport('pdf');
 
-  const fetchParcels = async (forceRefresh = false) => {
+  const fetchParcels = async (forceRefresh = false, loadMore = false) => {
     try {
-      setLoading(true);
+      if (!loadMore) {
+        setLoading(true);
+      } else {
+        setPagination(prev => ({ ...prev, isLoadingMore: true }));
+      }
       setError('');
 
-      // Determine if we should filter by branch
-      const branchName = isBranchManager() && user?.branch?.name ? user.branch.name : undefined;
+      // Reset pagination if not loading more
+      const currentPage = loadMore ? pagination.currentPage + 1 : 1;
 
-      const data = await wmsApi.getParcels(branchName, pagination.currentPage, 200); // 200 records per page
+      // Build search parameters from filters
+      const searchParams: any = {
+        page: currentPage,
+        pageSize: 200
+      };
+
+      // Add filter parameters
+      if (filters.search) {
+        searchParams.search = filters.search;
+      }
+      if (filters.destination) {
+        searchParams.destination = filters.destination;
+      }
+      if (filters.status) {
+        searchParams.status = parseInt(filters.status);
+      }
+      if (filters.dateRange.from) {
+        searchParams.fromDate = filters.dateRange.from;
+      }
+      if (filters.dateRange.to) {
+        searchParams.toDate = filters.dateRange.to;
+      }
+      if (filters.clerk) {
+        searchParams.createdByUsername = filters.clerk;
+      }
+
+      // Build a comprehensive search string for fields not directly supported
+      let searchTerms = [];
+      if (filters.sender) {
+        searchTerms.push(filters.sender);
+      }
+      if (filters.receiver) {
+        searchTerms.push(filters.receiver);
+      }
+      if (filters.paymentMethod) {
+        searchTerms.push(filters.paymentMethod);
+      }
+      
+      // Combine with existing search if any
+      if (searchTerms.length > 0) {
+        const additionalSearch = searchTerms.join(' ');
+        if (searchParams.search) {
+          searchParams.search += ` ${additionalSearch}`;
+        } else {
+          searchParams.search = additionalSearch;
+        }
+      }
+
+      const result = await wmsApi.getParcelsPaged(searchParams);
+      const data = result.data;
 
       // Populate user information for parcels that don't have createdBy populated
       try {
@@ -568,19 +632,20 @@ const Parcels: React.FC = () => {
         });
 
         // Append parcels if loading more, replace if new load
-        if (pagination.currentPage === 1) {
-          setParcels(sortedParcels);
-        } else {
+        if (loadMore) {
           setParcels(prev => [...prev, ...sortedParcels]);
+        } else {
+          setParcels(sortedParcels);
         }
 
-        // Update pagination state
+        // Update pagination state using API response
         setPagination(prev => ({
           ...prev,
-          totalCount: data.length,
-          totalPages: Math.ceil(data.length / 200),
-          hasMoreData: sortedParcels.length >= 200,
-          currentPage: prev.currentPage
+          totalCount: result.totalCount,
+          totalPages: result.totalPages,
+          hasMoreData: result.hasNextPage,
+          currentPage: result.page,
+          isLoadingMore: false
         }));
 
         // Extract unique destinations for filter dropdown
@@ -616,21 +681,32 @@ const Parcels: React.FC = () => {
         const paymentMethodSet = new Set(data.map(p => p.paymentMethods).filter(Boolean));
         setPaymentMethods(Array.from(paymentMethodSet).sort());
 
-        // Update pagination state for fallback
+        // Update pagination state for fallback  
         setPagination(prev => ({
           ...prev,
-          totalCount: data.length,
-          totalPages: Math.ceil(data.length / 200),
-          hasMoreData: data.length >= 200,
-          currentPage: prev.currentPage
+          totalCount: result.totalCount,
+          totalPages: result.totalPages,
+          hasMoreData: result.hasNextPage,
+          currentPage: result.page,
+          isLoadingMore: false
         }));
       }
     } catch (err) {
       setError('Failed to load parcels');
     } finally {
-      setLoading(false);
+      if (!loadMore) {
+        setLoading(false);
+      } else {
+        setPagination(prev => ({ ...prev, isLoadingMore: false }));
+      }
     }
   };
+
+  const handleLoadMore = useCallback(() => {
+    if (!pagination.isLoadingMore && pagination.hasMoreData) {
+      fetchParcels(false, true);
+    }
+  }, [pagination.isLoadingMore, pagination.hasMoreData]);
 
   const getStatusBadge = (status: number) => {
     const statusMap = {
@@ -828,49 +904,8 @@ const Parcels: React.FC = () => {
     }
   ], [destinations, clerks, paymentMethods]);
 
-  const filteredParcels = parcels.filter(parcel => {
-    // Search filter
-    const matchesSearch = !filters.search ||
-      parcel.waybillNumber.toLowerCase().includes(filters.search.toLowerCase()) ||
-      parcel.destination.toLowerCase().includes(filters.search.toLowerCase()) ||
-      parcel.sender.toLowerCase().includes(filters.search.toLowerCase()) ||
-      parcel.receiver.toLowerCase().includes(filters.search.toLowerCase());
-
-    // Status filter
-    const matchesStatus = !filters.status || parcel.status.toString() === filters.status;
-
-    // Destination filter
-    const matchesDestination = !filters.destination ||
-      parcel.destination.toLowerCase().includes(filters.destination.toLowerCase());
-
-    // Payment method filter
-    const matchesPaymentMethod = !filters.paymentMethod ||
-      parcel.paymentMethods === filters.paymentMethod;
-
-    // Date range filter
-    const matchesDateRange = (!filters.dateRange.from && !filters.dateRange.to) ||
-      ((filters.dateRange.from ? new Date(parcel.createdAt) >= new Date(filters.dateRange.from) : true) &&
-        (filters.dateRange.to ? (() => {
-          const endDate = new Date(filters.dateRange.to);
-          endDate.setHours(23, 59, 59, 999); // Set to end of day
-          return new Date(parcel.createdAt) <= endDate;
-        })() : true));
-
-    // Sender filter
-    const matchesSender = !filters.sender ||
-      parcel.sender.toLowerCase().includes(filters.sender.toLowerCase());
-
-    // Receiver filter
-    const matchesReceiver = !filters.receiver ||
-      parcel.receiver.toLowerCase().includes(filters.receiver.toLowerCase());
-
-    // Clerk filter
-    const matchesClerk = !filters.clerk ||
-      parcel.createdBy?.username === filters.clerk;
-
-    return matchesSearch && matchesStatus && matchesDestination && matchesPaymentMethod &&
-      matchesDateRange && matchesSender && matchesReceiver && matchesClerk;
-  });
+  // Since we're doing server-side filtering, use parcels directly
+  const filteredParcels = parcels;
 
   // Virtual table columns
   const columns = [
@@ -1138,6 +1173,9 @@ const Parcels: React.FC = () => {
           rowHeight={72}
           containerHeight={600}
           loading={loading}
+          hasMoreData={pagination.hasMoreData}
+          isLoadingMore={pagination.isLoadingMore}
+          onLoadMore={handleLoadMore}
           emptyMessage={
             Object.values(filters).some(filter =>
               typeof filter === 'string' ? filter :

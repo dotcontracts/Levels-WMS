@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="wms_android.Controls.SkeletonLoading">
+    
+    <Grid Padding="20">
+        <!-- Skeleton Parcel Item -->
+        <Frame BackgroundColor="{StaticResource Background}" 
+               BorderColor="{StaticResource PrimaryLight}" 
+               CornerRadius="10" 
+               Padding="15" 
+               HeightRequest="120">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="15" RowSpacing="8">
+                
+                <!-- Shimmer effect for header -->
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                    <Frame BackgroundColor="#E0E0E0" 
+                           CornerRadius="4" 
+                           HeightRequest="16"
+                           WidthRequest="60" />
+                    <Grid Grid.Column="1" RowDefinitions="Auto,Auto">
+                        <BoxView BackgroundColor="#D0D0D0" 
+                               CornerRadius="2" 
+                               HeightRequest="12" />
+                        <BoxView BackgroundColor="#C0C0C0" 
+                               CornerRadius="2" 
+                               HeightRequest="12" 
+                               WidthRequest="80" />
+                    </Grid>
+                </Grid>
+
+                <!-- Skeleton content rows -->
+                <Grid Grid.Row="1">
+                    <BoxView BackgroundColor="#E0E0E0" CornerRadius="4" HeightRequest="40" />
+                </Grid>
+                
+                <Grid Grid.Row="2">
+                    <BoxView BackgroundColor="#E0E0E0" CornerRadius="4" HeightRequest="40" />
+                </Grid>
+                
+                <Grid Grid.Row="3">
+                    <BoxView BackgroundColor="#E0E0E0" CornerRadius="4" HeightRequest="40" />
+                </Grid>
+            </Grid>
+        </Frame>
+    </Grid>
+</ContentView>

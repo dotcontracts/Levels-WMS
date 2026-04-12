@@ -17,6 +17,9 @@ interface VirtualScrollTableProps<T> {
   className?: string;
   loading?: boolean;
   emptyMessage?: string;
+  hasMoreData?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 export function VirtualScrollTable<T extends Record<string, any>>({
@@ -27,7 +30,10 @@ export function VirtualScrollTable<T extends Record<string, any>>({
   onRowClick,
   className = '',
   loading = false,
-  emptyMessage = 'No data available'
+  emptyMessage = 'No data available',
+  hasMoreData = false,
+  isLoadingMore = false,
+  onLoadMore
 }: VirtualScrollTableProps<T>) {
   const [scrollTop, setScrollTop] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -72,7 +78,17 @@ export function VirtualScrollTable<T extends Record<string, any>>({
     if (headerRef.current) {
       headerRef.current.scrollLeft = target.scrollLeft;
     }
-  }, []);
+
+    // Check if we're near the bottom (within 200px) and should load more data
+    if (hasMoreData && !isLoadingMore && onLoadMore) {
+      const { scrollTop, scrollHeight, clientHeight } = target;
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      
+      if (distanceFromBottom < 200) {
+        onLoadMore();
+      }
+    }
+  }, [hasMoreData, isLoadingMore, onLoadMore]);
 
   const handleSort = useCallback((field: string) => {
     if (field === sortField) {
@@ -155,7 +171,7 @@ export function VirtualScrollTable<T extends Record<string, any>>({
         onScroll={handleScroll}
       >
         {/* Total height to create scrollbar */}
-        <div style={{ height: sortedData.length * rowHeight, position: 'relative' }}>
+        <div style={{ height: sortedData.length * rowHeight + (isLoadingMore ? 60 : 0), position: 'relative' }}>
           {/* Visible rows */}
           <div style={{ transform: `translateY(${startIndex * rowHeight}px)` }}>
             {visibleItems.map((item, index) => {
@@ -181,13 +197,32 @@ export function VirtualScrollTable<T extends Record<string, any>>({
               );
             })}
           </div>
+          
+          {/* Loading indicator at the bottom */}
+          {isLoadingMore && (
+            <div 
+              className="flex items-center justify-center border-b border-gray-100"
+              style={{ 
+                position: 'absolute',
+                top: sortedData.length * rowHeight,
+                height: 60,
+                width: '100%',
+                background: 'white'
+              }}
+            >
+              <div className="flex items-center space-x-2 text-gray-500">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                <span className="text-sm">Loading more...</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       
       {/* Footer with total count */}
       <div className="bg-gray-50 px-4 py-2 border-t border-gray-200">
         <p className="text-sm text-gray-500">
-          Showing {visibleItems.length} of {sortedData.length} items
+          Showing {visibleItems.length} of {sortedData.length} items{hasMoreData ? ' (more available)' : ''}
         </p>
       </div>
     </div>

@@ -53,10 +53,13 @@ namespace wms_android.ViewModels
         private bool _hasPreviousPage;
 
         [ObservableProperty]
+        private bool _isLoadingAll;
+
+        [ObservableProperty]
         private string _statusText = string.Empty;
 
         // Pagination settings
-        private const int PAGE_SIZE = 50;
+        private const int PAGE_SIZE = 200; // Increased from 50 to 200 for better UX
         private bool _isInitialLoad = true;
 
         // Filter options collections
@@ -206,6 +209,86 @@ namespace wms_android.ViewModels
         public async Task SearchParcels()
         {
             await ApplyFilters();
+        }
+
+        [RelayCommand]
+        public async Task LoadAllParcels()
+        {
+            if (IsLoading || IsLoadingAll)
+                return;
+
+            try
+            {
+                IsLoadingAll = true;
+                StatusText = "Loading all parcels...";
+
+                var currentUserId = Preferences.Get("CurrentUserId", 0);
+                if (currentUserId == 0)
+                {
+                    StatusText = "Please log in to view parcels";
+                    return;
+                }
+
+                // Load all pages until no more data
+                var page = 1;
+                var hasMoreData = true;
+                var allParcels = new List<Parcel>();
+
+                while (hasMoreData && page <= 100) // Safety limit: max 100 pages = 20,000 records
+                {
+                    var queryParams = new ParcelQueryParams
+                    {
+                        Page = page,
+                        PageSize = PAGE_SIZE,
+                        FromDate = FromDate,
+                        ToDate = ToDate,
+                        Destination = SelectedDestination != "All" ? SelectedDestination : null,
+                        SearchTerm = !string.IsNullOrWhiteSpace(SearchText) ? SearchText : null
+                    };
+
+                    var response = await _parcelService.GetParcelsPagedByUserAsync(currentUserId, queryParams);
+
+                    if (response?.Data != null && response.Data.Any())
+                    {
+                        allParcels.AddRange(response.Data);
+                        hasMoreData = response.HasNextPage;
+                        page++;
+                        
+                        // Update UI progressively
+                        StatusText = $"Loading parcels... {allParcels.Count} loaded";
+                    }
+                    else
+                    {
+                        hasMoreData = false;
+                    }
+                }
+
+                // Replace current parcels with all loaded parcels
+                Parcels.Clear();
+                foreach (var parcel in allParcels)
+                {
+                    Parcels.Add(parcel);
+                }
+
+                // Update pagination state
+                TotalCount = allParcels.Count;
+                TotalPages = 1; // All data is loaded, so just 1 "page"
+                HasNextPage = false;
+                HasPreviousPage = false;
+                UpdateStatusText();
+
+                _logger.LogInformation($"Loaded all {allParcels.Count} parcels");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading all parcels");
+                StatusText = "Failed to load all parcels";
+                await Application.Current.MainPage.DisplayAlert("Error", "Failed to load all parcels", "OK");
+            }
+            finally
+            {
+                IsLoadingAll = false;
+            }
         }
 
         private async Task LoadPage(bool append = false)
