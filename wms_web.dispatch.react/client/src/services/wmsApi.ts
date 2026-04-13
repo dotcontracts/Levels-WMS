@@ -499,6 +499,7 @@ class WMSApiService {
     createdByUsername?: string;
     search?: string;
     extendedTimeout?: boolean; // Add option for longer timeout
+    instanceId?: string; // Add instance ID for progressive loading isolation
   }): Promise<{
     data: Parcel[];
     page: number;
@@ -524,7 +525,9 @@ class WMSApiService {
       const url = `${API_BASE_URL}/Parcels/paged?${queryParams.toString()}`;
       
       // Enhanced request deduplication with timeout-based caching
-      const requestKey = `getParcelsPaged:${queryParams.toString()}`;
+      const requestKey = params.instanceId 
+        ? `getParcelsPaged:${params.instanceId}:${queryParams.toString()}`
+        : `getParcelsPaged:${queryParams.toString()}`;
       
       // Use longer timeout for large pages or when explicitly requested
       const timeout = params.extendedTimeout || (params.pageSize && params.pageSize > 500) 
@@ -598,7 +601,8 @@ class WMSApiService {
         ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to }),
         ...(destination && { destination }),
         ...(search && { search }),
-        extendedTimeout: true // Use extended timeout for large pages
+        extendedTimeout: true, // Use extended timeout for large pages
+        instanceId: instanceId // Pass instance ID for cache isolation
       };
 
       const firstResponse = await this.getParcelsPaged(firstPageParams);
@@ -645,7 +649,8 @@ class WMSApiService {
             ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to }),
             ...(destination && { destination }),
             ...(search && { search }),
-            extendedTimeout: true // Use extended timeout for large pages
+            extendedTimeout: true, // Use extended timeout for large pages
+            instanceId: instanceId // Pass instance ID for cache isolation
           };
           return this.getParcelsPaged(params);
         });
@@ -738,7 +743,8 @@ class WMSApiService {
           pageSize: Math.min(chunkSize * 2, 2000), // Try larger single page
           ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to }),
           ...(destination && { destination }),
-          ...(search && { search })
+          ...(search && { search }),
+          instanceId: instanceId // Pass instance ID for cache isolation
         });
         
         console.log(`[Performance] Fallback successful: ${fallbackResponse.data.length} records`);
