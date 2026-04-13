@@ -529,6 +529,8 @@ class WMSApiService {
         ? `getParcelsPaged:${params.instanceId}:${queryParams.toString()}`
         : `getParcelsPaged:${queryParams.toString()}`;
       
+      console.log(`[Debug] instanceId: ${params.instanceId}, requestKey: ${requestKey}`);
+      
       // Use longer timeout for large pages or when explicitly requested
       const timeout = params.extendedTimeout || (params.pageSize && params.pageSize > 500) 
         ? API_CONFIG.TIMEOUT * 3  // 45 seconds for large pages

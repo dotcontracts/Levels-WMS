@@ -139,7 +139,7 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
             : undefined,
           destination: filters?.destination,
           search: filters?.clerk,
-          chunkSize: 500, // Larger chunks for better streaming performance
+          chunkSize: 1200, // Larger chunks for better streaming performance with increased server limit
           fields: [
             'id', 'waybillNumber', 'senderName', 'recipientName', 
             'destination', 'totalAmount', 'paymentMethods', 'createdAt', 
