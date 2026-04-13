@@ -600,10 +600,6 @@ class WMSApiService {
       
       console.log(`[Performance] Loading ${remainingPages.length} additional pages in batches of ${PARALLEL_BATCH_SIZE}`);
       console.log(`[Performance] Total expected records: ${totalCount} across ${totalPages} pages`);
-      console.log(`[Performance] Memory info: ${JSON.stringify({ 
-        usedJSHeapSize: performance?.memory?.usedJSHeapSize, 
-        totalJSHeapSize: performance?.memory?.totalJSHeapSize 
-      })}`);
 
       // Process pages in parallel batches
       let consecutiveFailures = 0;
