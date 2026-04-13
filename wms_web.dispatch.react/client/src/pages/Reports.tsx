@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useReportsData } from '../context/ReportsDataContext';
 import { wmsApi, Parcel, Dispatch, ParcelDepositDto } from '../services/wmsApi';
 import {
   BarChart,
@@ -178,6 +179,16 @@ type ReportType =
   | 'clerk-debit';
 
 const Reports: React.FC = () => {
+  const { 
+    cachedData, 
+    loading: cacheLoading, 
+    error: cacheError, 
+    getCachedData, 
+    invalidateCache,
+    isDataFresh,
+    getDataAge 
+  } = useReportsData();
+  
   const [currentReport, setCurrentReport] = useState<ReportType>('dashboard');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1271,37 +1282,26 @@ const Reports: React.FC = () => {
   }, []);
 
   const fetchReportData = useCallback(async () => {
-    if (loading) return; // Prevent concurrent calls
+    if (loading || cacheLoading) return; // Prevent concurrent calls
 
     try {
       setLoading(true);
       setError('');
 
-      // Fetch base data with error handling
-      let parcelsData: Parcel[] = [];
-      let dispatchesData: Dispatch[] = [];
+      // Use cached data or fetch fresh data
+      const reportFilters = {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        branch: filters.branch,
+        destination: filters.destination,
+        clerk: filters.clerk
+      };
 
-      try {
-        const results = await Promise.allSettled([
-          wmsApi.getAllParcelsForReports(),
-          wmsApi.getDispatches()
-        ]);
+      const cachedResult = await getCachedData(reportFilters);
+      const parcelsData = cachedResult.parcels;
+      const dispatchesData = cachedResult.dispatches;
 
-        parcelsData = results[0].status === 'fulfilled' ? results[0].value : [];
-        dispatchesData = results[1].status === 'fulfilled' ? results[1].value : [];
-
-        if (results[0].status === 'rejected') {
-          // Fallback to empty array if parcels fail to load
-        }
-
-        if (results[1].status === 'rejected') {
-          // Fallback to empty array if dispatches fail to load
-        }
-      } catch (error) {
-        // If Promise.allSettled fails completely, use empty arrays
-        parcelsData = [];
-        dispatchesData = [];
-      }
+      console.log(`Reports: Using ${isDataFresh() ? 'fresh' : 'cached'} data (${getDataAge()})`);
 
       setParcels(parcelsData);
       setDispatches(dispatchesData);
@@ -1369,11 +1369,13 @@ const Reports: React.FC = () => {
       setReportData(data);
 
     } catch (err) {
-      setError('Failed to fetch report data');
+      const errorMessage = cacheError || 'Failed to fetch report data';
+      setError(errorMessage);
+      console.error('Reports: Error fetching data:', err);
     } finally {
       setLoading(false);
     }
-  }, [currentReport, filters, user, cashInDate, debitDateRange]); // Remove function dependencies to prevent infinite loops
+  }, [currentReport, filters, user, cashInDate, debitDateRange, getCachedData, cacheLoading, loading, isDataFresh, getDataAge]); // Updated dependencies for cache
 
   const fetchFilteredParcels = useCallback(async () => {
     if (!parcelFilters.dateFrom && !parcelFilters.dateTo && !parcelFilters.destination) {
@@ -2057,7 +2059,7 @@ const Reports: React.FC = () => {
   useEffect(() => {
     fetchReportData();
     fetchDestinations();
-  }, [currentReport, filters, user]); // Remove function dependencies to prevent infinite loops
+  }, [currentReport, filters, user, fetchReportData]); // Include fetchReportData for proper caching
 
   useEffect(() => {
     if (currentReport === 'parcel-list') {
@@ -4259,22 +4261,44 @@ const Reports: React.FC = () => {
             <Filter className="w-4 h-4 mr-2" />
             Filters
           </Button>
-          <Button
-            variant="primary"
-            onClick={fetchReportData}
-            disabled={loading}
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            {cachedData && (
+              <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                <Clock className="w-3 h-3" />
+                <span>Data: {getDataAge()}</span>
+                {isDataFresh() && (
+                  <Badge variant="success" size="sm">Fresh</Badge>
+                )}
+                {!isDataFresh() && (
+                  <Badge variant="warning" size="sm">Cached</Badge>
+                )}
+              </div>
+            )}
+            <Button
+              variant="outline"
+              onClick={invalidateCache}
+              disabled={loading || cacheLoading}
+              size="sm"
+            >
+              Clear Cache
+            </Button>
+            <Button
+              variant="primary"
+              onClick={fetchReportData}
+              disabled={loading || cacheLoading}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${(loading || cacheLoading) ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Error Message */}
-      {error && (
+      {(error || cacheError) && (
         <div className="bg-error-50 border border-error-200 text-error-800 px-4 py-3 rounded-lg flex items-center gap-2">
           <AlertCircle className="w-5 h-5" />
-          {error}
+          {error || cacheError}
         </div>
       )}
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { SidebarProvider } from './context/SidebarContext';
+import { ReportsDataProvider } from './context/ReportsDataContext';
 import { useAuth } from './context/AuthContext';
 import AppHeader from './layout/AppHeader';
 import AppSidebar from './layout/AppSidebar';
@@ -201,7 +202,9 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <ModernLayout>
-                  <Reports />
+                  <ReportsDataProvider>
+                    <Reports />
+                  </ReportsDataProvider>
                 </ModernLayout>
               </ProtectedRoute>
             }
