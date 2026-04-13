@@ -596,36 +596,18 @@ const Reports: React.FC = () => {
   // Fetch clerk debit data with date range filtering - optimized version
   const fetchClerkDebitData = useCallback(async (dateRange: { from: string; to: string }): Promise<ClerkDebitData[]> => {
     try {
-      // Use direct paginated API call with optimized parameters
-      const response = await wmsApi.getParcelsPaged({
-        page: 1,
-        pageSize: 500, // Reasonable chunk size for debit calculations
-        fromDate: dateRange.from,
-        toDate: dateRange.to
+      // Clear request cache to prevent cache interference like other report sections
+      wmsApi.clearRequestCache();
+      
+      // Use optimized progressive loading like other report sections
+      const allParcels = await wmsApi.getAllParcelsProgressively({
+        dateRange: { from: dateRange.from, to: dateRange.to },
+        chunkSize: 1200, // Use updated chunk size to match server optimizations
+        fields: [
+          'id', 'waybillNumber', 'receiver', 'totalAmount', 'status', 
+          'createdAt', 'createdById', 'paymentMethods', 'branchDeposits', 'expenses'
+        ]
       });
-      
-      let allParcels = response.data;
-      
-      // If there are more pages, load them efficiently
-      if (response.hasNextPage) {
-        const remainingPages = [];
-        for (let page = 2; page <= Math.min(response.totalPages, 10); page++) { // Limit to 10 pages max (5000 records)
-          remainingPages.push(
-            wmsApi.getParcelsPaged({
-              page,
-              pageSize: 500,
-              fromDate: dateRange.from,
-              toDate: dateRange.to
-            })
-          );
-        }
-        
-        // Load remaining pages in parallel for better performance
-        const remainingResponses = await Promise.all(remainingPages);
-        remainingResponses.forEach(resp => {
-          allParcels = allParcels.concat(resp.data);
-        });
-      }
 
       // Filter parcels by date range and paid status
       const paidParcels = allParcels.filter(parcel => {
