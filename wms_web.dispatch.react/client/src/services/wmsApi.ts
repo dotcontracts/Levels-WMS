@@ -396,6 +396,13 @@ class WMSApiService {
     return getAuthHeaders();
   }
 
+  // Public method to clear request cache
+  public clearRequestCache(): void {
+    console.log('[Deduplication] Clearing request cache');
+    this.requestCache.clear();
+    this.cacheTimeout.clear();
+  }
+
   // Request deduplication helper
   private async deduplicate<T>(key: string, requestFn: () => Promise<T>): Promise<T> {
     // Clean up expired cache entries

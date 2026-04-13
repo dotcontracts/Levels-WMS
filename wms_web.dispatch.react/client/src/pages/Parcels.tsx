@@ -542,6 +542,11 @@ const Parcels: React.FC = () => {
 
   const fetchParcels = async (forceRefresh = false, loadMore = false) => {
     try {
+      // Clear request cache to prevent stuck requests
+      if (forceRefresh) {
+        wmsApi.clearRequestCache();
+      }
+      
       if (!loadMore) {
         setLoading(true);
       } else {

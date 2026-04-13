@@ -209,6 +209,11 @@ const AdminParcelManagement: React.FC = () => {
     if (!user || (!isAdmin() && !isAccountant())) return;
     
     try {
+      // Clear request cache to prevent stuck requests
+      if (forceRefresh) {
+        wmsApi.clearRequestCache();
+      }
+      
       if (!loadMore) {
         setLoading(true);
       } else {

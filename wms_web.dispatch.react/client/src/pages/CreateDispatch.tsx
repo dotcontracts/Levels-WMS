@@ -125,6 +125,11 @@ const CreateDispatch: React.FC = () => {
 
   const fetchParcels = async (forceRefresh = false) => {
     try {
+      // Clear request cache to prevent stuck requests
+      if (forceRefresh) {
+        wmsApi.clearRequestCache();
+      }
+      
       setLoading(true);
       setError('');
       
