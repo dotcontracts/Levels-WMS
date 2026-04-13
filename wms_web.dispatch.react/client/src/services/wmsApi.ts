@@ -491,7 +491,6 @@ class WMSApiService {
     createdByUsername?: string;
     search?: string;
     extendedTimeout?: boolean; // Add option for longer timeout
-    cacheBuster?: boolean; // Force cache refresh
   }): Promise<{
     data: Parcel[];
     page: number;
@@ -513,7 +512,6 @@ class WMSApiService {
       if (params.toDate) queryParams.append('toDate', params.toDate);
       if (params.createdByUsername) queryParams.append('createdByUsername', params.createdByUsername);
       if (params.search) queryParams.append('search', params.search);
-      if (params.cacheBuster) queryParams.append('_', Date.now().toString());
 
       const url = `${API_BASE_URL}/Parcels/paged?${queryParams.toString()}`;
       
@@ -607,6 +605,11 @@ class WMSApiService {
       
       console.log(`[Performance] v2.1 - Starting parallel loading with ${remainingPages.length} pages total`);
       
+      // Clear deduplication cache to avoid stuck requests from previous attempts
+      console.log(`[Performance] Clearing request cache to avoid stuck requests`);
+      this.requestCache.clear();
+      this.cacheTimeout.clear();
+      
       for (let i = 0; i < remainingPages.length; i += PARALLEL_BATCH_SIZE) {
         const batch = remainingPages.slice(i, i + PARALLEL_BATCH_SIZE);
         
@@ -618,8 +621,7 @@ class WMSApiService {
             ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to }),
             ...(destination && { destination }),
             ...(search && { search }),
-            extendedTimeout: true, // Use extended timeout for large pages
-            cacheBuster: true // Force fresh data
+            extendedTimeout: true // Use extended timeout for large pages
           };
           return this.getParcelsPaged(params);
         });
