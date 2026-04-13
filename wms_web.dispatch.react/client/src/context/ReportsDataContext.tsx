@@ -14,6 +14,12 @@ interface CachedData {
   dispatches: Dispatch[];
   lastFetched: number;
   filters?: ReportFilters;
+  isPartial?: boolean;
+  loadProgress?: {
+    loaded: number;
+    total: number;
+    isComplete: boolean;
+  };
 }
 
 interface ReportsDataContextType {
@@ -21,9 +27,11 @@ interface ReportsDataContextType {
   loading: boolean;
   error: string;
   getCachedData: (filters?: ReportFilters) => Promise<CachedData>;
+  getStreamingData: (filters?: ReportFilters, onProgress?: (data: CachedData) => void) => Promise<CachedData>;
   invalidateCache: () => void;
   isDataFresh: () => boolean;
   getDataAge: () => string;
+  getLoadProgress: () => { loaded: number; total: number; percentage: number } | null;
 }
 
 const ReportsDataContext = createContext<ReportsDataContextType | undefined>(undefined);
@@ -54,6 +62,15 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return `${ageSeconds}s ago`;
   }, [cachedData]);
 
+  const getLoadProgress = useCallback(() => {
+    if (!cachedData?.loadProgress) return null;
+    
+    const { loaded, total } = cachedData.loadProgress;
+    const percentage = total > 0 ? Math.round((loaded / total) * 100) : 0;
+    
+    return { loaded, total, percentage };
+  }, [cachedData]);
+
   const fetchFreshData = useCallback(async (filters?: ReportFilters): Promise<CachedData> => {
     setLoading(true);
     setError('');
@@ -61,7 +78,7 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       console.log('ReportsDataContext: Fetching fresh data...');
       
-      // Fetch data in parallel
+      // Fetch data in parallel - use faster approach
       const [parcelsData, dispatchesData] = await Promise.all([
         filters 
           ? wmsApi.getAllParcelsForReports({
@@ -78,7 +95,13 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         parcels: parcelsData,
         dispatches: dispatchesData,
         lastFetched: Date.now(),
-        filters: filters
+        filters: filters,
+        isPartial: false,
+        loadProgress: {
+          loaded: parcelsData.length,
+          total: parcelsData.length,
+          isComplete: true
+        }
       };
 
       setCachedData(newCachedData);
@@ -89,6 +112,94 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch reports data';
       setError(errorMessage);
       console.error('ReportsDataContext: Error fetching data:', err);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const getStreamingData = useCallback(async (
+    filters?: ReportFilters, 
+    onProgress?: (data: CachedData) => void
+  ): Promise<CachedData> => {
+    setLoading(true);
+    setError('');
+
+    try {
+      console.log('ReportsDataContext: Starting streaming data fetch...');
+      
+      let streamingParcels: Parcel[] = [];
+      let dispatchesData: Dispatch[] = [];
+      
+      // Start both requests, but stream parcels progressively
+      const [parcelsPromise, dispatchesPromise] = [
+        wmsApi.getAllParcelsProgressively({
+          dateRange: filters?.startDate && filters?.endDate 
+            ? { from: filters.startDate, to: filters.endDate }
+            : undefined,
+          destination: filters?.destination,
+          search: filters?.clerk,
+          chunkSize: 500, // Larger chunks for better streaming performance
+          fields: [
+            'id', 'waybillNumber', 'senderName', 'recipientName', 
+            'destination', 'totalAmount', 'paymentMethods', 'createdAt', 
+            'status', 'createdById', 'createdBy', 'dispatchedAt'
+          ], // Only fetch fields needed for reports
+          onProgress: (loaded, total) => {
+            console.log(`ReportsDataContext: Streaming progress: ${loaded}/${total} parcels`);
+            
+            // Update cached data with partial results
+            const partialData: CachedData = {
+              parcels: streamingParcels.slice(), // Copy current state
+              dispatches: dispatchesData,
+              lastFetched: Date.now(),
+              filters: filters,
+              isPartial: loaded < total,
+              loadProgress: {
+                loaded,
+                total,
+                isComplete: loaded >= total
+              }
+            };
+            
+            // Update context state and notify callback
+            setCachedData(partialData);
+            onProgress?.(partialData);
+          }
+        }).then(parcels => {
+          streamingParcels = parcels;
+          return parcels;
+        }),
+        wmsApi.getDispatches().then(dispatches => {
+          dispatchesData = dispatches;
+          return dispatches;
+        })
+      ];
+
+      // Wait for both to complete
+      const [parcelsData, finalDispatchesData] = await Promise.all([parcelsPromise, dispatchesPromise]);
+
+      const finalData: CachedData = {
+        parcels: parcelsData,
+        dispatches: finalDispatchesData,
+        lastFetched: Date.now(),
+        filters: filters,
+        isPartial: false,
+        loadProgress: {
+          loaded: parcelsData.length,
+          total: parcelsData.length,
+          isComplete: true
+        }
+      };
+
+      setCachedData(finalData);
+      console.log(`ReportsDataContext: Streaming complete - ${parcelsData.length} parcels, ${finalDispatchesData.length} dispatches`);
+      
+      return finalData;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch streaming reports data';
+      setError(errorMessage);
+      console.error('ReportsDataContext: Error fetching streaming data:', err);
       throw err;
     } finally {
       setLoading(false);
@@ -142,10 +253,12 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     loading,
     error,
     getCachedData,
+    getStreamingData,
     invalidateCache,
     isDataFresh,
-    getDataAge
-  }), [cachedData, loading, error, getCachedData, invalidateCache, isDataFresh, getDataAge]);
+    getDataAge,
+    getLoadProgress
+  }), [cachedData, loading, error, getCachedData, getStreamingData, invalidateCache, isDataFresh, getDataAge, getLoadProgress]);
 
   return (
     <ReportsDataContext.Provider value={contextValue}>

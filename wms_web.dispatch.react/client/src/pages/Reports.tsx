@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useReportsData } from '../context/ReportsDataContext';
 import { wmsApi, Parcel, Dispatch, ParcelDepositDto } from '../services/wmsApi';
+import { DataLoadingState, SkeletonTable, SkeletonCard, ProgressBar } from '../components/SkeletonLoader';
 import {
   BarChart,
   LineChart,
@@ -183,10 +184,12 @@ const Reports: React.FC = () => {
     cachedData, 
     loading: cacheLoading, 
     error: cacheError, 
-    getCachedData, 
+    getCachedData,
+    getStreamingData, 
     invalidateCache,
     isDataFresh,
-    getDataAge 
+    getDataAge,
+    getLoadProgress
   } = useReportsData();
   
   const [currentReport, setCurrentReport] = useState<ReportType>('dashboard');
@@ -1281,7 +1284,7 @@ const Reports: React.FC = () => {
     };
   }, []);
 
-  const fetchReportData = useCallback(async () => {
+  const fetchReportData = useCallback(async (useStreaming: boolean = false) => {
     if (loading || cacheLoading) return; // Prevent concurrent calls
 
     try {
@@ -1297,7 +1300,34 @@ const Reports: React.FC = () => {
         clerk: filters.clerk
       };
 
-      const cachedResult = await getCachedData(reportFilters);
+      let cachedResult: any;
+      
+      if (useStreaming) {
+        // Use streaming data with progress updates
+        cachedResult = await getStreamingData(reportFilters, (progressData) => {
+          // Update parcels and dispatches as data streams in
+          setParcels(progressData.parcels);
+          setDispatches(progressData.dispatches);
+          console.log(`Reports: Streaming progress - ${progressData.loadProgress?.loaded}/${progressData.loadProgress?.total} records`);
+        });
+      } else {
+        // Check for cached data first
+        if (cachedData && isDataFresh()) {
+          const filtersMatch = !reportFilters || (
+            JSON.stringify(cachedData.filters) === JSON.stringify(reportFilters)
+          );
+          
+          if (filtersMatch) {
+            console.log('Reports: Using existing cached data');
+            cachedResult = cachedData;
+          } else {
+            cachedResult = await getCachedData(reportFilters);
+          }
+        } else {
+          cachedResult = await getCachedData(reportFilters);
+        }
+      }
+
       const parcelsData = cachedResult.parcels;
       const dispatchesData = cachedResult.dispatches;
 
@@ -1310,23 +1340,23 @@ const Reports: React.FC = () => {
       let filteredParcels = parcelsData;
 
       if (filters.startDate) {
-        filteredParcels = filteredParcels.filter(p =>
+        filteredParcels = filteredParcels.filter((p: Parcel) =>
           p.createdAt && new Date(p.createdAt) >= new Date(filters.startDate)
         );
       }
 
       if (filters.endDate) {
-        filteredParcels = filteredParcels.filter(p =>
+        filteredParcels = filteredParcels.filter((p: Parcel) =>
           p.createdAt && new Date(p.createdAt) <= new Date(filters.endDate)
         );
       }
 
       if (filters.destination) {
-        filteredParcels = filteredParcels.filter(p => p.destination === filters.destination);
+        filteredParcels = filteredParcels.filter((p: Parcel) => p.destination === filters.destination);
       }
 
       if (filters.clerk) {
-        filteredParcels = filteredParcels.filter(p =>
+        filteredParcels = filteredParcels.filter((p: Parcel) =>
           p.createdBy?.toLowerCase().includes(filters.clerk.toLowerCase())
         );
       }
@@ -1375,7 +1405,7 @@ const Reports: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentReport, filters, user, cashInDate, debitDateRange, getCachedData, cacheLoading, loading, isDataFresh, getDataAge]); // Updated dependencies for cache
+  }, [currentReport, filters, user, cashInDate, debitDateRange, getCachedData, getStreamingData, cacheLoading, loading, isDataFresh, getDataAge, cachedData]); // Updated dependencies for streaming
 
   const fetchFilteredParcels = useCallback(async () => {
     if (!parcelFilters.dateFrom && !parcelFilters.dateTo && !parcelFilters.destination) {
@@ -4283,8 +4313,17 @@ const Reports: React.FC = () => {
               Clear Cache
             </Button>
             <Button
+              variant="outline"
+              onClick={() => fetchReportData(true)}
+              disabled={loading || cacheLoading}
+              size="sm"
+              title="Load data progressively with live updates"
+            >
+              Progressive Load
+            </Button>
+            <Button
               variant="primary"
-              onClick={fetchReportData}
+              onClick={() => fetchReportData(false)}
               disabled={loading || cacheLoading}
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${(loading || cacheLoading) ? 'animate-spin' : ''}`} />
@@ -4299,6 +4338,21 @@ const Reports: React.FC = () => {
         <div className="bg-error-50 border border-error-200 text-error-800 px-4 py-3 rounded-lg flex items-center gap-2">
           <AlertCircle className="w-5 h-5" />
           {error || cacheError}
+        </div>
+      )}
+
+      {/* Loading Progress Indicator */}
+      {(loading || cacheLoading) && getLoadProgress() && (
+        <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+          <ProgressBar
+            progress={getLoadProgress()!.percentage}
+            label={`Loading data (${getLoadProgress()!.loaded.toLocaleString()} of ${getLoadProgress()!.total.toLocaleString()} records)`}
+            size="md"
+            className="mb-2"
+          />
+          <div className="text-sm text-blue-600">
+            This may take a moment for large datasets. Data will appear as it loads.
+          </div>
         </div>
       )}
 
@@ -4345,7 +4399,38 @@ const Reports: React.FC = () => {
       </Card>
 
       {/* Report Content */}
-      {renderReportContent()}
+      <DataLoadingState
+        isLoading={loading || cacheLoading}
+        hasData={parcels.length > 0 || dispatches.length > 0}
+        progress={getLoadProgress()}
+        fallback={
+          <div className="space-y-6">
+            {currentReport === 'dashboard' ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <SkeletonCard key={i} showTitle showSubtitle={false} lines={1} />
+                  ))}
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {Array.from({ length: 2 }).map((_, i) => (
+                    <SkeletonCard key={i} showTitle lines={8} />
+                  ))}
+                </div>
+              </>
+            ) : currentReport === 'parcel-list' ? (
+              <SkeletonTable rows={15} columns={8} />
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <SkeletonCard showTitle lines={6} />
+                <SkeletonTable rows={8} columns={4} />
+              </div>
+            )}
+          </div>
+        }
+      >
+        {renderReportContent()}
+      </DataLoadingState>
 
       {/* Clerk Details Modal */}
       {showClerkDetailsModal && selectedClerk && (
