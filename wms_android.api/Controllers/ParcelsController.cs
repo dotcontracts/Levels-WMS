@@ -5,6 +5,8 @@ using wms_android.shared.Services;
 using Newtonsoft.Json;
 using Microsoft.EntityFrameworkCore;
 using wms_android.shared.Data;
+using Microsoft.AspNetCore.OutputCaching;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace wms_android.api.Controllers
 {
@@ -14,11 +16,31 @@ namespace wms_android.api.Controllers
     {
         private readonly IParcelService _parcelService;
         private readonly AppDbContext _context;
+        private readonly IMemoryCache _cache;
 
-        public ParcelsController(IParcelService parcelService, AppDbContext context)
+        // Compiled queries for better performance
+        private static readonly Func<AppDbContext, string, int, int, IAsyncEnumerable<Parcel>> 
+            GetParcelsByDestinationCompiled = EF.CompileAsyncQuery(
+                (AppDbContext context, string destination, int skip, int take) =>
+                    context.Parcels.AsNoTracking()
+                        .Where(p => p.Destination == destination)
+                        .OrderByDescending(p => p.CreatedAt)
+                        .Skip(skip)
+                        .Take(take));
+
+        private static readonly Func<AppDbContext, int, int, IAsyncEnumerable<Parcel>>
+            GetParcelsPagedCompiled = EF.CompileAsyncQuery(
+                (AppDbContext context, int skip, int take) =>
+                    context.Parcels.AsNoTracking()
+                        .OrderByDescending(p => p.CreatedAt)
+                        .Skip(skip)
+                        .Take(take));
+
+        public ParcelsController(IParcelService parcelService, AppDbContext context, IMemoryCache cache)
         {
             _parcelService = parcelService;
             _context = context;
+            _cache = cache;
         }
 
         [HttpGet]
@@ -57,9 +79,10 @@ namespace wms_android.api.Controllers
         }
 
         /// <summary>
-        /// Enhanced paginated endpoint with efficient database-level filtering
+        /// Enhanced paginated endpoint with efficient database-level filtering and caching
         /// </summary>
         [HttpGet("paged")]
+        [OutputCache(PolicyName = "Parcels")]
         public async Task<IActionResult> GetParcelsPaged(
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 50,
@@ -77,7 +100,9 @@ namespace wms_android.api.Controllers
                 page = Math.Max(1, page);
                 pageSize = Math.Clamp(pageSize, 1, 500); // Max 500 items per page
 
+                // Use AsNoTracking for better performance on read-only operations
                 var query = _context.Parcels
+                    .AsNoTracking()
                     .AsQueryable();
 
                 // Apply filters at database level for optimal performance
@@ -134,15 +159,40 @@ namespace wms_android.api.Controllers
                         p.SenderTelephone.Contains(search));
                 }
 
-                // Get total count before pagination
-                var totalCount = await query.CountAsync();
+                // Generate cache key for count query to avoid repeated expensive counts
+                var countCacheKey = $"parcel_count_{destination}_{status}_{statuses}_{fromDate?.ToString("yyyyMMdd")}_{toDate?.ToString("yyyyMMdd")}_{createdByUsername}_{search}";
+                
+                // Try to get count from cache first
+                var totalCount = await _cache.GetOrCreateAsync(countCacheKey, async entry =>
+                {
+                    entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(2);
+                    entry.SetSize(1);
+                    return await query.CountAsync();
+                });
+
                 var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
 
-                // Apply pagination and ordering
+                // Apply pagination and ordering with optimized query
                 var parcels = await query
                     .OrderByDescending(p => p.CreatedAt)
                     .Skip((page - 1) * pageSize)
                     .Take(pageSize)
+                    .Select(p => new Parcel // Project only needed fields for better performance
+                    {
+                        Id = p.Id,
+                        WaybillNumber = p.WaybillNumber,
+                        Sender = p.Sender,
+                        Receiver = p.Receiver,
+                        Destination = p.Destination,
+                        Status = p.Status,
+                        TotalAmount = p.TotalAmount,
+                        CreatedAt = p.CreatedAt,
+                        CreatedById = p.CreatedById,
+                        CreatedBy = p.CreatedBy,
+                        DispatchedAt = p.DispatchedAt,
+                        SenderTelephone = p.SenderTelephone,
+                        ReceiverTelephone = p.ReceiverTelephone
+                    })
                     .ToListAsync();
 
                 var result = new
@@ -170,6 +220,7 @@ namespace wms_android.api.Controllers
         /// User-specific paginated endpoint for better performance in AllParcelsView
         /// </summary>
         [HttpGet("user/{userId}/paged")]
+        [OutputCache(PolicyName = "Parcels")]
         public async Task<IActionResult> GetParcelsPagedByUser(
             int userId,
             [FromQuery] int page = 1,
@@ -188,6 +239,7 @@ namespace wms_android.api.Controllers
                 pageSize = Math.Clamp(pageSize, 1, 500);
 
                 var query = _context.Parcels
+                    .AsNoTracking()
                     .Where(p => p.CreatedById == userId)
                     .AsQueryable();
 

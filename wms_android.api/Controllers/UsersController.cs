@@ -8,6 +8,7 @@ using wms_android.shared.Interfaces;
 using wms_android.shared.Models;
 using Microsoft.AspNetCore.Authorization;
 using System;
+using Microsoft.AspNetCore.OutputCaching;
 
 namespace wms_android.api.Controllers
 {
@@ -27,6 +28,7 @@ namespace wms_android.api.Controllers
         // GET: api/Users
         [HttpGet]
         [AllowAnonymous] // For testing; consider adding authorization in production
+        [OutputCache(PolicyName = "Users")]
         public async Task<ActionResult<IEnumerable<dynamic>>> GetUsers()
         {
             try

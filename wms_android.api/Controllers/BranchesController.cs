@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using wms_android.shared.Data;
 using wms_android.shared.Models;
+using Microsoft.AspNetCore.OutputCaching;
 
 namespace wms_android.api.Controllers
 {
@@ -20,6 +21,7 @@ namespace wms_android.api.Controllers
 
         // GET: api/Branches
         [HttpGet]
+        [OutputCache(PolicyName = "Branches")]
         public async Task<ActionResult<IEnumerable<Branch>>> GetBranches()
         {
             return await _context.Branches.AsNoTracking().ToListAsync();

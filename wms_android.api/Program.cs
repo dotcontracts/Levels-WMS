@@ -16,6 +16,8 @@ using wms_android.api.Services;
 using wms_android.api.Interfaces;
 using System.Linq;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.AspNetCore.ResponseCompression;
+using System.IO.Compression;
 public class Program
 {
     public static async Task Main(string[] args)
@@ -38,15 +40,91 @@ public class Program
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
 
-        // Add memory cache for performance optimization
+        // Add Response Compression for performance optimization
+        builder.Services.AddResponseCompression(options =>
+        {
+            options.EnableForHttps = true;
+            options.Providers.Add<GzipCompressionProvider>();
+            options.Providers.Add<BrotliCompressionProvider>();
+            
+            // Compress JSON responses and other text-based content
+            options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[]
+            {
+                "application/json",
+                "application/json; charset=utf-8",
+                "text/json",
+                "text/plain",
+                "text/css",
+                "text/javascript",
+                "application/javascript",
+                "text/html",
+                "application/xml",
+                "text/xml"
+            });
+        });
+
+        // Configure compression levels
+        builder.Services.Configure<GzipCompressionProviderOptions>(options =>
+        {
+            options.Level = CompressionLevel.Optimal; // Best compression ratio
+        });
+        
+        builder.Services.Configure<BrotliCompressionProviderOptions>(options =>
+        {
+            options.Level = CompressionLevel.Optimal; // Best compression ratio
+        });
+
+        // Add output caching for static/semi-static endpoints
+        builder.Services.AddOutputCache(options =>
+        {
+            // Default policy for all requests
+            options.DefaultExpirationTimeSpan = TimeSpan.FromMinutes(5);
+            
+            // Policy for branches - rarely change
+            options.AddPolicy("Branches", policy =>
+            {
+                policy.Expire(TimeSpan.FromHours(1));
+                policy.SetVaryByQuery("*");
+                policy.Tag("branches");
+            });
+            
+            // Policy for users - changes occasionally  
+            options.AddPolicy("Users", policy =>
+            {
+                policy.Expire(TimeSpan.FromMinutes(15));
+                policy.SetVaryByQuery("*");
+                policy.Tag("users");
+            });
+            
+            // Policy for vehicles/drivers - rarely change
+            options.AddPolicy("StaticData", policy =>
+            {
+                policy.Expire(TimeSpan.FromHours(2));
+                policy.SetVaryByQuery("*");
+                policy.Tag("static-data");
+            });
+
+            // Policy for parcel data - frequently accessed but can be cached briefly
+            options.AddPolicy("Parcels", policy =>
+            {
+                policy.Expire(TimeSpan.FromMinutes(2));
+                policy.SetVaryByQuery("*");
+                policy.Tag("parcels");
+            });
+        });
+
+        // Add enhanced memory cache for performance optimization
         builder.Services.AddMemoryCache(options =>
         {
-            options.SizeLimit = 1024; // Limit cache size to prevent memory issues
+            options.SizeLimit = 2048; // Increased cache size for better performance
+            options.CompactionPercentage = 0.25; // Remove 25% when limit reached
+            options.ExpirationScanFrequency = TimeSpan.FromMinutes(5); // Clean expired items every 5 minutes
         });
 
         // Register services
         builder.Services.AddScoped<IParcelService, ApiParcelService>();
         builder.Services.AddScoped<IDispatchSegmentService, DispatchSegmentService>();
+        builder.Services.AddScoped<wms_android.api.Services.ICacheInvalidationService, wms_android.api.Services.CacheInvalidationService>();
 
         // Configure database using connection string from appsettings or environment variables
         // Always prefer environment variables in production for security
@@ -348,6 +426,12 @@ public class Program
 
         // Middleware pipeline
         app.UseHttpsRedirection();
+        
+        // Add Response Compression early in pipeline for maximum benefit
+        app.UseResponseCompression();
+        
+        // Add Output Caching after compression
+        app.UseOutputCache();
         
         // Add CORS before path base to ensure it works for all requests
         app.UseCors("AllowWebApp");
