@@ -28,7 +28,7 @@ const getApiBaseUrl = (): string => {
  */
 const getApiTimeout = (): number => {
   const envTimeout = process.env.REACT_APP_API_TIMEOUT;
-  return envTimeout ? parseInt(envTimeout, 10) : 15000;
+  return envTimeout ? parseInt(envTimeout, 10) : 30000; // Increased to 30 seconds for better reliability
 };
 
 export const API_CONFIG = {

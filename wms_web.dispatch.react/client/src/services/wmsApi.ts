@@ -490,6 +490,7 @@ class WMSApiService {
     toDate?: string;
     createdByUsername?: string;
     search?: string;
+    extendedTimeout?: boolean; // Add option for longer timeout
   }): Promise<{
     data: Parcel[];
     page: number;
@@ -517,10 +518,15 @@ class WMSApiService {
       // Enhanced request deduplication with timeout-based caching
       const requestKey = `getParcelsPaged:${queryParams.toString()}`;
       
+      // Use longer timeout for large pages or when explicitly requested
+      const timeout = params.extendedTimeout || (params.pageSize && params.pageSize > 500) 
+        ? API_CONFIG.TIMEOUT * 3  // 45 seconds for large pages
+        : API_CONFIG.TIMEOUT;      // 15 seconds default
+      
       return await this.deduplicate(requestKey, async () => {
         const response = await fetch(url, {
           headers: this.getHeaders(),
-          signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+          signal: AbortSignal.timeout(timeout),
         });
 
         if (!response.ok) {
@@ -562,7 +568,8 @@ class WMSApiService {
         pageSize: chunkSize,
         ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to }),
         ...(destination && { destination }),
-        ...(search && { search })
+        ...(search && { search }),
+        extendedTimeout: true // Use extended timeout for large pages
       };
 
       const firstResponse = await this.getParcelsPaged(firstPageParams);
@@ -590,6 +597,7 @@ class WMSApiService {
       const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2); // Pages 2, 3, 4, ...
       
       console.log(`[Performance] Loading ${remainingPages.length} additional pages in batches of ${PARALLEL_BATCH_SIZE}`);
+      console.log(`[Performance] Total expected records: ${totalCount} across ${totalPages} pages`);
 
       // Process pages in parallel batches
       for (let i = 0; i < remainingPages.length; i += PARALLEL_BATCH_SIZE) {
@@ -602,18 +610,44 @@ class WMSApiService {
             pageSize: chunkSize,
             ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to }),
             ...(destination && { destination }),
-            ...(search && { search })
+            ...(search && { search }),
+            extendedTimeout: true // Use extended timeout for large pages
           };
           return this.getParcelsPaged(params);
         });
 
         try {
-          // Execute batch in parallel
-          const batchResults = await Promise.all(batchPromises);
+          // Execute batch in parallel with individual error handling
+          const batchResults = await Promise.allSettled(batchPromises);
           
-          // Add results to allParcels array
-          for (const result of batchResults) {
-            allParcels.push(...result.data);
+          // Process results - both fulfilled and rejected
+          for (let i = 0; i < batchResults.length; i++) {
+            const result = batchResults[i];
+            const pageNum = batch[i];
+            
+            if (result.status === 'fulfilled') {
+              allParcels.push(...result.value.data);
+            } else {
+              console.warn(`[Performance] Page ${pageNum} failed:`, result.reason);
+              
+              // Try once more with sequential approach for failed pages
+              try {
+                const params = {
+                  page: pageNum,
+                  pageSize: chunkSize,
+                  ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to }),
+                  ...(destination && { destination }),
+                  ...(search && { search }),
+                  extendedTimeout: true // Use extended timeout for retries
+                };
+                const response = await this.getParcelsPaged(params);
+                allParcels.push(...response.data);
+                console.log(`[Performance] Retry successful for page ${pageNum}`);
+              } catch (retryError) {
+                console.error(`[Performance] Retry also failed for page ${pageNum}:`, retryError);
+                // Continue with other pages
+              }
+            }
           }
 
           // Report progress after each batch
@@ -621,26 +655,7 @@ class WMSApiService {
           console.log(`[Performance] Batch complete: ${allParcels.length}/${totalCount} records (${Math.round(allParcels.length/totalCount*100)}%)`);
 
         } catch (batchError) {
-          console.warn(`[Performance] Batch failed, falling back to sequential loading:`, batchError);
-          
-          // Fallback to sequential loading for this batch
-          for (const pageNum of batch) {
-            try {
-              const params = {
-                page: pageNum,
-                pageSize: chunkSize,
-                ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to }),
-                ...(destination && { destination }),
-                ...(search && { search })
-              };
-              const response = await this.getParcelsPaged(params);
-              allParcels.push(...response.data);
-              onProgress?.(allParcels.length, totalCount);
-            } catch (pageError) {
-              console.error(`[Performance] Failed to load page ${pageNum}:`, pageError);
-              // Continue with other pages
-            }
-          }
+          console.warn(`[Performance] Unexpected batch error:`, batchError);
         }
 
         // Small delay between batches to be respectful to the server
@@ -650,6 +665,14 @@ class WMSApiService {
       }
 
       console.log(`[Performance] Parallel loading complete: ${allParcels.length} records loaded`);
+      
+      // Verify we loaded all expected records
+      if (allParcels.length < totalCount) {
+        console.warn(`[Performance] Warning: Loaded ${allParcels.length} of ${totalCount} expected records (${Math.round(allParcels.length/totalCount*100)}%)`);
+      } else {
+        console.log(`[Performance] Successfully loaded all ${totalCount} records`);
+      }
+      
       return allParcels;
 
     } catch (error) {
