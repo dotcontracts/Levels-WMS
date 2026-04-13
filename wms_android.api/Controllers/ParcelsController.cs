@@ -98,7 +98,7 @@ namespace wms_android.api.Controllers
             {
                 // Validate pagination parameters
                 page = Math.Max(1, page);
-                pageSize = Math.Clamp(pageSize, 1, 500); // Max 500 items per page
+                pageSize = Math.Clamp(pageSize, 1, 1500); // Increased limit for better performance with large datasets
 
                 // Use AsNoTracking for better performance on read-only operations
                 var query = _context.Parcels
@@ -236,7 +236,7 @@ namespace wms_android.api.Controllers
             {
                 // Validate pagination parameters
                 page = Math.Max(1, page);
-                pageSize = Math.Clamp(pageSize, 1, 500);
+                pageSize = Math.Clamp(pageSize, 1, 1500); // Increased limit for better performance with large datasets
 
                 var query = _context.Parcels
                     .AsNoTracking()
