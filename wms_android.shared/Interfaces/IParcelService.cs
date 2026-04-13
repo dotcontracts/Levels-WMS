@@ -25,7 +25,7 @@ namespace wms_android.shared.Interfaces
         Task<IEnumerable<Parcel>> GetParcelsByQRCodeAsync(string qrCode);
         Task<int> GetParcelCountForDateAsync(DateTime date);
         Task DispatchParcelAsync(Parcel parcel);
-        Task UpdateParcelStatusAsync(Guid parcelId, ParcelStatus status);
+        Task UpdateParcelStatusAsync(Guid parcelId, ParcelStatus status, int? confirmedById = null);
         
         // Dashboard methods
         Task<int> GetParcelCountAsync(DateTime date);

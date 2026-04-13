@@ -17,7 +17,7 @@
         <Frame Grid.Row="0" Padding="20" HasShadow="True" CornerRadius="10" BorderColor="#DDD">
             <VerticalStackLayout Spacing="20">
                 <!-- App Logo or Title -->
-                <Label Text="Warehouse Management System" 
+                <Label Text="Levels WMS" 
                        FontSize="24" 
                        FontAttributes="Bold"
                        HorizontalOptions="Center" 

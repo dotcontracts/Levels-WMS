@@ -637,9 +637,9 @@ namespace wms_android.shared.Services
             response.EnsureSuccessStatusCode();
         }
 
-        public async Task UpdateParcelStatusAsync(Guid parcelId, ParcelStatus status)
+        public async Task UpdateParcelStatusAsync(Guid parcelId, ParcelStatus status, int? confirmedById = null)
         {
-            var statusUpdate = new { Status = status };
+            var statusUpdate = new { Status = status, ConfirmedById = confirmedById };
             var json = JsonSerializer.Serialize(statusUpdate);
             var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
             var response = await _httpClient.PutAsync($"/api/parcels/{parcelId}/status", content);

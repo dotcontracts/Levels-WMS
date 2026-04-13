@@ -11,6 +11,10 @@ namespace wms_android.shared.Models
         public int Id { get; set; }
         public string Name { get; set; }
         public string Description { get; set; }
+        
+        // Permission flags
+        public bool CanConfirm { get; set; } = false;
+        public bool CanDispatch { get; set; } = false;
     }
 
 }

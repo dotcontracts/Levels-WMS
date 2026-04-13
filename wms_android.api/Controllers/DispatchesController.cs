@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using wms_android.shared.Models;
 using wms_android.shared.Data;
 using wms_android.api.Services;
+using System.Security.Claims;
 
 namespace wms_android.api.Controllers
 {
@@ -35,7 +36,7 @@ namespace wms_android.api.Controllers
                 if (dispatch.ParcelIds == null || dispatch.ParcelIds.Count == 0)
                     return BadRequest("At least one parcel ID is required");
 
-                // Check if parcels exist
+                // Check if parcels exist and validate their status
                 var existingParcels = await _context.Parcels
                     .Where(p => dispatch.ParcelIds.Contains(p.Id))
                     .ToListAsync();
@@ -44,6 +45,14 @@ namespace wms_android.api.Controllers
                 {
                     var missingIds = dispatch.ParcelIds.Except(existingParcels.Select(p => p.Id));
                     return BadRequest($"Some parcels not found: {string.Join(", ", missingIds)}");
+                }
+
+                // Validate that all parcels are in Confirmed status (cannot dispatch Pending parcels)
+                var invalidParcels = existingParcels.Where(p => p.Status != ParcelStatus.Confirmed).ToList();
+                if (invalidParcels.Any())
+                {
+                    var invalidWaybills = invalidParcels.Select(p => $"{p.WaybillNumber} (Status: {p.Status})");
+                    return BadRequest($"Only confirmed parcels can be dispatched. Invalid parcels: {string.Join(", ", invalidWaybills)}");
                 }
 
                 // Generate a new UUID for database ID (primary key)
@@ -57,13 +66,24 @@ namespace wms_android.api.Controllers
                 dispatch.DispatchTime = DateTime.UtcNow;
                 dispatch.Status = "in_transit";
 
+                // Get current user for audit tracking
+                var currentUserId = GetCurrentUserId();
+                
                 // Update existing parcels to InTransit status
                 foreach (var existingParcel in existingParcels)
                 {
                     existingParcel.Status = ParcelStatus.InTransit;
                     existingParcel.DispatchedAt = dispatch.DispatchTime;
                     existingParcel.DispatchTrackingCode = dispatch.DispatchCode;
-                    Console.WriteLine($"[DispatchesController] Updated parcel {existingParcel.WaybillNumber} to InTransit status");
+                    
+                    // Track who confirmed the status change
+                    if (currentUserId.HasValue)
+                    {
+                        existingParcel.ConfirmedById = currentUserId.Value;
+                        existingParcel.ConfirmedAt = DateTime.UtcNow;
+                    }
+                    
+                    Console.WriteLine($"[DispatchesController] Updated parcel {existingParcel.WaybillNumber} to InTransit status, confirmed by user {currentUserId}");
                 }
 
                 // Associate parcels with the dispatch
@@ -237,7 +257,7 @@ namespace wms_android.api.Controllers
             {
                 // Load parcels separately to avoid circular references using join table
                 var parcelIds = await _context.Database.SqlQuery<Guid>(
-                    $"SELECT \"ParcelsId\" FROM \"DispatchParcels\" WHERE \"DispatchesId\" = {dispatch.Id}")
+                    $"SELECT \"ParcelsId\" FROM \"DispatchParcels\" WHERE \"DispatchId\" = {dispatch.Id}")
                     .ToListAsync();
                     
                 dispatch.Parcels = await _context.Parcels
@@ -295,6 +315,16 @@ namespace wms_android.api.Controllers
             {
                 return StatusCode(500, new { error = "Failed to retrieve dispatches", message = ex.Message });
             }
+        }
+        
+        private int? GetCurrentUserId()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (int.TryParse(userIdClaim, out int userId))
+            {
+                return userId;
+            }
+            return null;
         }
     }
 

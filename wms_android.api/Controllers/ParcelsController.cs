@@ -598,7 +598,7 @@ namespace wms_android.api.Controllers
         {
             try
             {
-                await _parcelService.UpdateParcelStatusAsync(id, statusUpdate.Status);
+                await _parcelService.UpdateParcelStatusAsync(id, statusUpdate.Status, statusUpdate.ConfirmedById);
                 return Ok(new { message = $"Parcel status updated to {statusUpdate.Status}" });
             }
             catch (Exception ex)
@@ -1234,6 +1234,7 @@ namespace wms_android.api.Controllers
     public class ParcelStatusUpdateDto
     {
         public ParcelStatus Status { get; set; }
+        public int? ConfirmedById { get; set; }
     }
 
     public class BatchStatusUpdateDto

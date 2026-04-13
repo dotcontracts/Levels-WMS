@@ -363,5 +363,20 @@
                 HeightRequest="50"
                 CornerRadius="8"
                 Padding="15,10" />
+                
+        <!-- Message when dispatch is not ready -->
+        <Frame Grid.Row="2" 
+               IsVisible="{Binding CanCreateDispatch, Converter={StaticResource InverseBoolConverter}}"
+               BackgroundColor="LightYellow"
+               BorderColor="Orange"
+               CornerRadius="8"
+               Margin="15"
+               Padding="15">
+            <Label Text="{Binding DispatchRequirementsMessage}" 
+                   FontSize="14"
+                   TextColor="DarkOrange"
+                   HorizontalTextAlignment="Center"
+                   LineBreakMode="WordWrap" />
+        </Frame>
     </Grid>
 </ContentPage>

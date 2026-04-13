@@ -189,14 +189,14 @@
                             </Button.ImageSource>
                         </Button>
                         
-                        <!-- Dispatch button - only visible for managers and admins -->
+                        <!-- Dispatch button - only visible for users with dispatch permission -->
                         <Button Grid.Row="2" Grid.Column="1"
                                 Text="Dispatch"
                                 Command="{Binding NavigateToDispatchCommand}"
                                 BackgroundColor="{StaticResource Primary}"
                                 TextColor="White"
                                 HeightRequest="50"
-                                IsVisible="{Binding IsManagerOrAdmin}">
+                                IsVisible="{Binding CanDispatch}">
                             <Button.ImageSource>
                                 <FontImageSource FontFamily="FASolid"
                                                 Glyph="&#xf0d1;"

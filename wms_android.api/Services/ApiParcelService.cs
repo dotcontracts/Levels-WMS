@@ -560,7 +560,7 @@ namespace wms_android.api.Services
             }
         }
 
-        public async Task UpdateParcelStatusAsync(Guid parcelId, ParcelStatus status)
+        public async Task UpdateParcelStatusAsync(Guid parcelId, ParcelStatus status, int? confirmedById = null)
         {
             var parcel = await _context.Parcels.FindAsync(parcelId);
             
@@ -570,6 +570,13 @@ namespace wms_android.api.Services
             }
             
             parcel.Status = status;
+            
+            // Track who confirmed the status change and when
+            if (confirmedById.HasValue)
+            {
+                parcel.ConfirmedById = confirmedById.Value;
+                parcel.ConfirmedAt = DateTime.UtcNow;
+            }
             
             await _context.SaveChangesAsync();
         }

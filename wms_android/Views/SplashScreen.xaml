@@ -1,38 +1,52 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
              x:Class="wms_android.Views.SplashScreen"
-             BackgroundColor="#1B4332"
+             BackgroundColor="#000000"
              NavigationPage.HasNavigationBar="False">
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+        <toolkit:MediaElement x:Name="SplashVideo"
+                              Source="Levels_Splash.mp4"
+                              Aspect="AspectFill"
+                              ShouldAutoPlay="True"
+                              ShouldLoopPlayback="False"
+                              ShouldMute="True"
+                              MediaEnded="OnSplashVideoEnded"
+                              HorizontalOptions="FillAndExpand" 
+                              VerticalOptions="FillAndExpand" />
         
-        <Image 
-            Grid.Row="0"
-            Source="splash_image.png"
-            HeightRequest="300"
-            WidthRequest="300"
-            HorizontalOptions="Center" 
-            VerticalOptions="Center" />
-        
-        <Label 
-            Grid.Row="1"
-            Text="Levels"
-            FontSize="36"
-            FontAttributes="Bold"
-            TextColor="#74C69D"
-            HorizontalOptions="Center" />
-        
-        <ActivityIndicator 
-            Grid.Row="2"
-            IsRunning="True" 
-            Color="#74C69D"
-            VerticalOptions="Start"
-            HorizontalOptions="Center"
-            Margin="0,20,0,0" />
+        <!-- Fallback content shown briefly or if video fails -->
+        <Grid x:Name="FallbackContent" IsVisible="False" BackgroundColor="#1B4332">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            
+            <Image 
+                Grid.Row="0"
+                Source="splash_image.png"
+                HeightRequest="300"
+                WidthRequest="300"
+                HorizontalOptions="Center" 
+                VerticalOptions="Center" />
+            
+            <Label 
+                Grid.Row="1"
+                Text="Levels WMS"
+                FontSize="36"
+                FontAttributes="Bold"
+                TextColor="#74C69D"
+                HorizontalOptions="Center" />
+            
+            <ActivityIndicator 
+                Grid.Row="2"
+                IsRunning="True" 
+                Color="#74C69D"
+                VerticalOptions="Start"
+                HorizontalOptions="Center"
+                Margin="0,20,0,0" />
+        </Grid>
     </Grid>
 </ContentPage> 

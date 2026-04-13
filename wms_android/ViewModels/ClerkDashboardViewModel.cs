@@ -42,7 +42,7 @@ namespace wms_android.ViewModels
         private string _userRole;
 
         [ObservableProperty]
-        private bool _isManagerOrAdmin;
+        private bool _canDispatch;
         
         public ClerkDashboardViewModel(
             IParcelService parcelService, 
@@ -58,7 +58,7 @@ namespace wms_android.ViewModels
             UserName = "User";
             UserRole = "";
             // Temporarily set to true for testing - will be overridden when user data loads
-            IsManagerOrAdmin = true;
+            CanDispatch = false; // Default to false, will be set based on user permissions
         }
 
         [RelayCommand]
@@ -167,12 +167,12 @@ namespace wms_android.ViewModels
                         UserName = !string.IsNullOrWhiteSpace(user.FirstName) ? user.FirstName : user.Username;
                         UserRole = user.Role?.Name ?? "User";
                         
-                        // Set manager/admin visibility based on role
+                        // Set dispatch permission based on role permissions
                         var roleName = user.Role?.Name ?? "Unknown";
                         Debug.WriteLine($"[ClerkDashboard] Role name: '{roleName}', RoleId: {user.Role?.Id}");
-                        IsManagerOrAdmin = IsUserManagerOrAdmin(roleName);
-                        _logger.LogInformation($"User role: '{roleName}', IsManagerOrAdmin: {IsManagerOrAdmin}");
-                        Debug.WriteLine($"[ClerkDashboard] User role: '{roleName}', IsManagerOrAdmin: {IsManagerOrAdmin}");
+                        CanDispatch = user.Role?.CanDispatch ?? false;
+                        _logger.LogInformation($"User role: '{roleName}', CanDispatch: {CanDispatch}");
+                        Debug.WriteLine($"[ClerkDashboard] User role: '{roleName}', CanDispatch: {CanDispatch}");
                     }
                     else
                     {
@@ -205,38 +205,5 @@ namespace wms_android.ViewModels
             }
         }
 
-        private bool IsUserManagerOrAdmin(string roleName)
-        {
-            Debug.WriteLine($"[ClerkDashboard] IsUserManagerOrAdmin called with roleName: '{roleName}'");
-            
-            if (string.IsNullOrWhiteSpace(roleName))
-            {
-                _logger.LogInformation("Role name is null or empty, denying access");
-                Debug.WriteLine("[ClerkDashboard] Role name is null or empty, denying access");
-                return false;
-            }
-                
-            var role = roleName.ToLowerInvariant();
-            Debug.WriteLine($"[ClerkDashboard] Role converted to lowercase: '{role}'");
-            
-            var isManagerOrAdmin = role.Contains("manager") || 
-                                  role.Contains("admin") || 
-                                  role.Contains("supervisor") ||
-                                  role == "manager" ||
-                                  role == "administrator" ||
-                                  role == "admin";
-            
-            Debug.WriteLine($"[ClerkDashboard] Role checks:");
-            Debug.WriteLine($"  - contains 'manager': {role.Contains("manager")}");
-            Debug.WriteLine($"  - contains 'admin': {role.Contains("admin")}");
-            Debug.WriteLine($"  - contains 'supervisor': {role.Contains("supervisor")}");
-            Debug.WriteLine($"  - equals 'manager': {role == "manager"}");
-            Debug.WriteLine($"  - equals 'administrator': {role == "administrator"}");
-            Debug.WriteLine($"  - equals 'admin': {role == "admin"}");
-            Debug.WriteLine($"  - Final result: {isManagerOrAdmin}");
-                                  
-            _logger.LogInformation($"Role check for '{roleName}': {isManagerOrAdmin}");
-            return isManagerOrAdmin;
-        }
     }
 } 

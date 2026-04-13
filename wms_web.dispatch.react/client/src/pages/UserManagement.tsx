@@ -54,6 +54,9 @@ interface UserFormData {
   branch: string;
   phoneNumber: string;
   isActive: boolean;
+  // Role permissions
+  canConfirm: boolean;
+  canDispatch: boolean;
 }
 
 interface UserFilters {
@@ -90,7 +93,9 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({
     role: '',
     branch: '',
     phoneNumber: '',
-    isActive: true
+    isActive: true,
+    canConfirm: false,
+    canDispatch: false
   });
   
   const [showPassword, setShowPassword] = useState(false);
@@ -109,7 +114,10 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({
         role: editUser.roles?.[0] || editUser.role,
         branch: editUser.branch || '',
         phoneNumber: editUser.phoneNumber || '',
-        isActive: editUser.isActive
+        isActive: editUser.isActive,
+        // For now, set default permissions - you can enhance this to load from API
+        canConfirm: (editUser.role as any)?.canConfirm || false,
+        canDispatch: (editUser.role as any)?.canDispatch || false
       });
     } else {
       setFormData({
@@ -122,7 +130,9 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({
         role: '',
         branch: '',
         phoneNumber: '',
-        isActive: true
+        isActive: true,
+        canConfirm: false,
+        canDispatch: false
       });
     }
     setErrors({});
@@ -366,6 +376,41 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({
                     Active User
                   </label>
                 </div>
+              </div>
+
+              {/* Role Permissions */}
+              <div className="border-t border-gray-200 pt-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Role Permissions</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="canConfirm"
+                      checked={formData.canConfirm}
+                      onChange={(e) => setFormData(prev => ({ ...prev, canConfirm: e.target.checked }))}
+                      className="form-checkbox"
+                    />
+                    <label htmlFor="canConfirm" className="ml-2 text-sm text-gray-700">
+                      Can Confirm Parcels
+                    </label>
+                  </div>
+                  
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="canDispatch"
+                      checked={formData.canDispatch}
+                      onChange={(e) => setFormData(prev => ({ ...prev, canDispatch: e.target.checked }))}
+                      className="form-checkbox"
+                    />
+                    <label htmlFor="canDispatch" className="ml-2 text-sm text-gray-700">
+                      Can Dispatch Parcels
+                    </label>
+                  </div>
+                </div>
+                <p className="mt-2 text-sm text-gray-500">
+                  These permissions control what actions users can perform in the system.
+                </p>
               </div>
 
               {/* Submit Buttons */}

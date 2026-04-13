@@ -378,6 +378,14 @@ namespace wms_android.ViewModels
                     return;
                 }
 
+                // Check if the selected manager has permission to confirm parcels
+                if (SelectedManager?.Role?.CanConfirm != true)
+                {
+                    await Application.Current.MainPage.DisplayAlert("Access Denied", 
+                        $"User '{SelectedManager?.Username}' doesn't have permission to confirm parcels. Please select a user with confirmation permissions.", "OK");
+                    return;
+                }
+
                 var confirmedItems = _allConfirmationItems.Where(item => item.IsConfirmed).ToList();
                 
                 if (!confirmedItems.Any())

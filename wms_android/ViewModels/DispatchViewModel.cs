@@ -169,6 +169,9 @@ namespace wms_android.ViewModels
         private string _dispatchSummary = string.Empty;
 
         [ObservableProperty]
+        private string _dispatchRequirementsMessage = string.Empty;
+
+        [ObservableProperty]
         private bool _isDetailsTabSelected = true;
 
         [ObservableProperty]
@@ -320,6 +323,31 @@ namespace wms_android.ViewModels
             {
                 IsLoading = true;
 
+                // Check user permissions for dispatch
+                var currentUserId = Preferences.Get("CurrentUserId", 0);
+                if (currentUserId > 0)
+                {
+                    try
+                    {
+                        var userService = Application.Current.Handler?.MauiContext?.Services?.GetService<IUserService>();
+                        if (userService != null)
+                        {
+                            var currentUser = await userService.GetUserByIdAsync(currentUserId);
+                            if (currentUser?.Role?.CanDispatch != true)
+                            {
+                                await Application.Current.MainPage.DisplayAlert("Access Denied", 
+                                    "You don't have permission to create dispatches. Please contact your administrator.", "OK");
+                                return;
+                            }
+                        }
+                    }
+                    catch (Exception permEx)
+                    {
+                        _logger.LogWarning(permEx, "Could not verify user permissions, proceeding with dispatch");
+                        // Continue with dispatch if permission check fails (fallback for older versions)
+                    }
+                }
+
                 var selectedParcels = FilteredParcels.Where(p => p.IsSelected).ToList();
 
                 if (!selectedParcels.Any())
@@ -346,7 +374,6 @@ namespace wms_android.ViewModels
                 var dispatchCode = GenerateDispatchCode();
 
                 // Get current user's branch for SourceBranch
-                var currentUserId = Preferences.Get("CurrentUserId", 0);
                 var currentBranch = "Main Branch"; // Default fallback
 
                 try
@@ -367,7 +394,7 @@ namespace wms_android.ViewModels
                 var parcelsByDestination = selectedParcels.GroupBy(p => p.Destination).ToDictionary(g => g.Key, g => g.ToList());
 
                 // Determine primary destination
-                var primaryDestination = AllowMultipleDestinations
+                var primaryDestination = UseMultiDestinationMode
                     ? parcelsByDestination.Keys.FirstOrDefault() ?? SelectedDestination
                     : SelectedDestination;
 
@@ -383,7 +410,7 @@ namespace wms_android.ViewModels
                     Status = "In Transit",
                     ParcelIds = selectedParcels.Select(p => p.Id).ToList(),
                     SourceBranch = currentBranch,
-                    Destination = AllowMultipleDestinations ? null : primaryDestination // Let API handle destination grouping
+                    Destination = UseMultiDestinationMode ? null : primaryDestination // Let API handle destination grouping
                 };
 
                 // Create dispatch through API
@@ -414,7 +441,7 @@ namespace wms_android.ViewModels
                     _logger.LogInformation($"Dispatch {dispatchCode} processed with fallback approach");
                 }
 
-                var destinationText = AllowMultipleDestinations
+                var destinationText = UseMultiDestinationMode
                     ? $"{parcelsByDestination.Count} destination(s): {string.Join(", ", parcelsByDestination.Keys)}"
                     : SelectedDestination;
 
@@ -596,8 +623,28 @@ namespace wms_android.ViewModels
             var selectedParcels = FilteredParcels.Where(p => p.IsSelected).ToList();
             CanCreateDispatch = !string.IsNullOrWhiteSpace(VehicleRegistration) &&
                                !string.IsNullOrWhiteSpace(DriverName) &&
-                               (AllowMultipleDestinations || !string.IsNullOrWhiteSpace(SelectedDestination)) &&
+                               (UseMultiDestinationMode || !string.IsNullOrWhiteSpace(SelectedDestination)) &&
                                selectedParcels.Any();
+            
+            // Update requirements message
+            if (CanCreateDispatch)
+            {
+                DispatchRequirementsMessage = string.Empty;
+            }
+            else
+            {
+                var requirements = new List<string>();
+                if (string.IsNullOrWhiteSpace(VehicleRegistration))
+                    requirements.Add("vehicle registration");
+                if (string.IsNullOrWhiteSpace(DriverName))
+                    requirements.Add("driver name");
+                if (!UseMultiDestinationMode && string.IsNullOrWhiteSpace(SelectedDestination))
+                    requirements.Add("destination");
+                if (!selectedParcels.Any())
+                    requirements.Add("select parcels");
+                
+                DispatchRequirementsMessage = $"Please provide: {string.Join(", ", requirements)}";
+            }
         }
 
         private void UpdateDispatchSummary()
@@ -605,7 +652,7 @@ namespace wms_android.ViewModels
             var selectedParcels = FilteredParcels.Where(p => p.IsSelected).ToList();
             if (CanCreateDispatch)
             {
-                if (AllowMultipleDestinations)
+                if (UseMultiDestinationMode)
                 {
                     var uniqueDestinations = selectedParcels.Select(p => p.Destination).Distinct().ToList();
                     var destinationsText = uniqueDestinations.Count > 1
@@ -647,10 +694,10 @@ namespace wms_android.ViewModels
                 
                 _logger.LogInformation($"Loading parcels from API for destination {SelectedDestination}");
                 
-                // Load all parcels for dispatch (no pagination needed for 2-day range)
+                // Load only confirmed parcels for dispatch (pending parcels cannot be dispatched)
                 var parcels = await _parcelService.GetParcelsForDispatchAsync(
                     destination: SelectedDestination,
-                    statuses: new List<ParcelStatus> { ParcelStatus.Pending, ParcelStatus.Confirmed },
+                    statuses: new List<ParcelStatus> { ParcelStatus.Confirmed },
                     fromDate: FromDate,
                     toDate: ToDate,
                     createdByUsername: SelectedClerk != "All" ? SelectedClerk : null
@@ -738,10 +785,10 @@ namespace wms_android.ViewModels
                 
                 _logger.LogInformation($"Loading parcels from API for multi-destination dispatch page {CurrentPage}");
                 
-                // Load all parcels without destination constraint with pagination
+                // Load only confirmed parcels without destination constraint (pending parcels cannot be dispatched)
                 var parcels = await _parcelService.GetParcelsForDispatchAsync(
                     destination: null, // No destination constraint
-                    statuses: new List<ParcelStatus> { ParcelStatus.Pending, ParcelStatus.Confirmed },
+                    statuses: new List<ParcelStatus> { ParcelStatus.Confirmed },
                     fromDate: FromDate,
                     toDate: ToDate,
                     createdByUsername: SelectedClerk != "All" ? SelectedClerk : null

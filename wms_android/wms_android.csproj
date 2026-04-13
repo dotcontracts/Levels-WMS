@@ -64,6 +64,9 @@
 
     <!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
     <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+    
+    <!-- Splash Video -->
+    <MauiAsset Include="Resources\Splash\Levels_Splash.mp4" LogicalName="Levels_Splash.mp4" />
 
     <None Update="wms_android.deps.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
@@ -71,6 +74,7 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="CommunityToolkit.Maui" Version="5.3.0" />
+    <PackageReference Include="CommunityToolkit.Maui.MediaElement" Version="3.1.1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
     <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
     <PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="$(MauiVersion)" />

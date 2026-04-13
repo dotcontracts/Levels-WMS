@@ -70,6 +70,16 @@ namespace wms_android.shared.Models
         [JsonIgnore] // Ignore navigation property to prevent circular reference
         public virtual User? PaymentUpdatedBy { get; set; }
         
+        // Status confirmation tracking fields
+        public int? ConfirmedById { get; set; }
+        
+        [ForeignKey("ConfirmedById")]
+        [JsonIgnore] // Ignore navigation property to prevent circular reference
+        public virtual User? ConfirmedBy { get; set; }
+        
+        [Column(TypeName = "timestamp with time zone")]
+        public DateTime? ConfirmedAt { get; set; }
+        
         // Status
         public ParcelStatus Status { get; set; } = ParcelStatus.Pending;
     }

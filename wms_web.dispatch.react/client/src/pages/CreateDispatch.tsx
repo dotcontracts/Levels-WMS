@@ -53,7 +53,7 @@ const CreateDispatch: React.FC = () => {
 
   const [filters, setFilters] = useState<ParcelFilterState>({
     search: '',
-    status: '', // Show all valid statuses (Pending and Confirmed) by default
+    status: '', // Show only confirmed parcels (pending parcels cannot be dispatched)
     destination: '',
     createdBy: '',
     dateFrom: '',
@@ -140,7 +140,7 @@ const CreateDispatch: React.FC = () => {
         const data = await wmsApi.getParcelsForMultiDestDispatch({
           page: 1,
           pageSize: 500, // Larger page size for multi-destination mode
-          statuses: ['0', '1'], // Pending and Confirmed
+          statuses: ['1'], // Only confirmed parcels (pending cannot be dispatched)
           fromDate: filters.dateFrom,
           toDate: filters.dateTo,
           createdByUsername: filters.createdBy === 'all' ? undefined : filters.createdBy,
@@ -460,6 +460,12 @@ const CreateDispatch: React.FC = () => {
 
     if (!formData.allowMultipleDestinations && !formData.destination) {
       setError('Please select a destination');
+      return;
+    }
+
+    // Check user permissions for dispatch
+    if (user?.role && !(user.role as any).canDispatch) {
+      setError('You don\'t have permission to create dispatches. Please contact your administrator.');
       return;
     }
 

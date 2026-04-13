@@ -491,6 +491,7 @@ class WMSApiService {
     createdByUsername?: string;
     search?: string;
     extendedTimeout?: boolean; // Add option for longer timeout
+    cacheBuster?: boolean; // Force cache refresh
   }): Promise<{
     data: Parcel[];
     page: number;
@@ -512,6 +513,7 @@ class WMSApiService {
       if (params.toDate) queryParams.append('toDate', params.toDate);
       if (params.createdByUsername) queryParams.append('createdByUsername', params.createdByUsername);
       if (params.search) queryParams.append('search', params.search);
+      if (params.cacheBuster) queryParams.append('_', Date.now().toString());
 
       const url = `${API_BASE_URL}/Parcels/paged?${queryParams.toString()}`;
       
@@ -593,13 +595,22 @@ class WMSApiService {
       }
 
       // Define parallel batch size to avoid overwhelming the server
-      const PARALLEL_BATCH_SIZE = 8; // Load 8 pages simultaneously
+      const PARALLEL_BATCH_SIZE = 6; // Reduced from 8 to 6 for better stability
       const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2); // Pages 2, 3, 4, ...
       
       console.log(`[Performance] Loading ${remainingPages.length} additional pages in batches of ${PARALLEL_BATCH_SIZE}`);
       console.log(`[Performance] Total expected records: ${totalCount} across ${totalPages} pages`);
+      console.log(`[Performance] Memory info: ${JSON.stringify({ 
+        usedJSHeapSize: performance?.memory?.usedJSHeapSize, 
+        totalJSHeapSize: performance?.memory?.totalJSHeapSize 
+      })}`);
 
       // Process pages in parallel batches
+      let consecutiveFailures = 0;
+      const MAX_CONSECUTIVE_FAILURES = 3;
+      
+      console.log(`[Performance] v2.1 - Starting parallel loading with ${remainingPages.length} pages total`);
+      
       for (let i = 0; i < remainingPages.length; i += PARALLEL_BATCH_SIZE) {
         const batch = remainingPages.slice(i, i + PARALLEL_BATCH_SIZE);
         
@@ -611,22 +622,27 @@ class WMSApiService {
             ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to }),
             ...(destination && { destination }),
             ...(search && { search }),
-            extendedTimeout: true // Use extended timeout for large pages
+            extendedTimeout: true, // Use extended timeout for large pages
+            cacheBuster: true // Force fresh data
           };
           return this.getParcelsPaged(params);
         });
 
         try {
+          console.log(`[Performance] Starting batch ${Math.floor(i/PARALLEL_BATCH_SIZE) + 1}, pages ${batch.join(', ')}`);
+          
           // Execute batch in parallel with individual error handling
           const batchResults = await Promise.allSettled(batchPromises);
           
           // Process results - both fulfilled and rejected
+          let batchSuccessCount = 0;
           for (let i = 0; i < batchResults.length; i++) {
             const result = batchResults[i];
             const pageNum = batch[i];
             
             if (result.status === 'fulfilled') {
               allParcels.push(...result.value.data);
+              batchSuccessCount++;
             } else {
               console.warn(`[Performance] Page ${pageNum} failed:`, result.reason);
               
@@ -642,6 +658,7 @@ class WMSApiService {
                 };
                 const response = await this.getParcelsPaged(params);
                 allParcels.push(...response.data);
+                batchSuccessCount++;
                 console.log(`[Performance] Retry successful for page ${pageNum}`);
               } catch (retryError) {
                 console.error(`[Performance] Retry also failed for page ${pageNum}:`, retryError);
@@ -652,15 +669,29 @@ class WMSApiService {
 
           // Report progress after each batch
           onProgress?.(allParcels.length, totalCount);
-          console.log(`[Performance] Batch complete: ${allParcels.length}/${totalCount} records (${Math.round(allParcels.length/totalCount*100)}%)`);
+          console.log(`[Performance] Batch complete: ${batchSuccessCount}/${batch.length} pages successful, ${allParcels.length}/${totalCount} records (${Math.round(allParcels.length/totalCount*100)}%)`);
+          
+          // Check for consecutive failures
+          if (batchSuccessCount === 0) {
+            consecutiveFailures++;
+            console.error(`[Performance] Entire batch failed! Consecutive failures: ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}`);
+            
+            if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+              console.error(`[Performance] Too many consecutive failures. Stopping at ${allParcels.length} records.`);
+              break; // Stop loading if we keep failing
+            }
+          } else {
+            consecutiveFailures = 0; // Reset on success
+          }
 
         } catch (batchError) {
-          console.warn(`[Performance] Unexpected batch error:`, batchError);
+          console.error(`[Performance] Unexpected batch error:`, batchError);
         }
 
-        // Small delay between batches to be respectful to the server
+        // Longer delay between batches to reduce server load and prevent timeouts
         if (i + PARALLEL_BATCH_SIZE < remainingPages.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          console.log(`[Performance] Waiting before next batch...`);
+          await new Promise(resolve => setTimeout(resolve, 500)); // Increased from 100ms to 500ms
         }
       }
 
