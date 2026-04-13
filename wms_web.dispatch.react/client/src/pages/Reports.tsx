@@ -198,6 +198,10 @@ const Reports: React.FC = () => {
   const [parcels, setParcels] = useState<Parcel[]>([]);
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [reportData, setReportData] = useState<any>(null);
+  
+  // Tab-specific data caching
+  const [tabDataCache, setTabDataCache] = useState<{ [key: string]: { data: any; timestamp: number; filters: any } }>({});
+  const [tabLoadingStates, setTabLoadingStates] = useState<{ [key: string]: boolean }>({});
   const [showFilters, setShowFilters] = useState(false);
   const [filteredParcels, setFilteredParcels] = useState<Parcel[]>([]);
   const [parcelListLoading, setParcelListLoading] = useState(false);
@@ -1284,11 +1288,28 @@ const Reports: React.FC = () => {
     };
   }, []);
 
-  const fetchReportData = useCallback(async (useStreaming: boolean = false) => {
-    if (loading || cacheLoading) return; // Prevent concurrent calls
+  const fetchReportData = useCallback(async (useStreaming: boolean = false, forceRefresh: boolean = false) => {
+    const cacheKey = `${currentReport}-${JSON.stringify(filters)}-${cashInDate}-${JSON.stringify(debitDateRange)}`;
+    
+    // Check if we have fresh cached data for this tab
+    if (!forceRefresh && tabDataCache[cacheKey]) {
+      const cached = tabDataCache[cacheKey];
+      const age = Date.now() - cached.timestamp;
+      const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+      
+      if (age < CACHE_DURATION && JSON.stringify(cached.filters) === JSON.stringify(filters)) {
+        console.log(`Reports: Using cached data for ${currentReport} (${Math.round(age / 1000)}s old)`);
+        setReportData(cached.data);
+        setLoading(false);
+        return;
+      }
+    }
+
+    if (loading || tabLoadingStates[cacheKey]) return; // Prevent concurrent calls
 
     try {
       setLoading(true);
+      setTabLoadingStates(prev => ({ ...prev, [cacheKey]: true }));
       setError('');
 
       // Use cached data or fetch fresh data
@@ -1397,6 +1418,16 @@ const Reports: React.FC = () => {
       }
 
       setReportData(data);
+      
+      // Cache the result for this tab
+      setTabDataCache(prev => ({
+        ...prev,
+        [cacheKey]: {
+          data,
+          timestamp: Date.now(),
+          filters: reportFilters
+        }
+      }));
 
     } catch (err) {
       const errorMessage = cacheError || 'Failed to fetch report data';
@@ -1404,8 +1435,9 @@ const Reports: React.FC = () => {
       console.error('Reports: Error fetching data:', err);
     } finally {
       setLoading(false);
+      setTabLoadingStates(prev => ({ ...prev, [cacheKey]: false }));
     }
-  }, [currentReport, filters, user, cashInDate, debitDateRange, getCachedData, getStreamingData, cacheLoading, loading, isDataFresh, getDataAge, cachedData]); // Updated dependencies for streaming
+  }, [currentReport, filters, user, cashInDate, debitDateRange, getCachedData, getStreamingData, cacheLoading, tabDataCache, tabLoadingStates]); // Removed loading, isDataFresh, getDataAge, cachedData to prevent re-fetches on tab switch
 
   const fetchFilteredParcels = useCallback(async () => {
     if (!parcelFilters.dateFrom && !parcelFilters.dateTo && !parcelFilters.destination) {
@@ -2089,13 +2121,13 @@ const Reports: React.FC = () => {
   useEffect(() => {
     fetchReportData();
     fetchDestinations();
-  }, [currentReport, filters, user, fetchReportData]); // Include fetchReportData for proper caching
+  }, [filters, user, cashInDate, debitDateRange, fetchReportData]); // Removed currentReport to prevent re-fetching on tab switch
 
   useEffect(() => {
     if (currentReport === 'parcel-list') {
       fetchFilteredParcels();
     }
-  }, [parcelFilters, currentReport]); // Remove function dependency
+  }, [parcelFilters]); // Removed currentReport to prevent re-fetching on tab switch
 
   // Prefetch user data when parcels are loaded for detailed parcel list
   useEffect(() => {
@@ -2136,7 +2168,7 @@ const Reports: React.FC = () => {
       };
       loadCashInData();
     }
-  }, [currentReport, salesPerClerkTab, cashInDate, fetchClerkCashInData]);
+  }, [salesPerClerkTab, cashInDate, fetchClerkCashInData]); // Removed currentReport to prevent re-fetching on tab switch
 
   // Load daily sales data when date range changes or when on daily-sales tab
   useEffect(() => {
@@ -2154,7 +2186,7 @@ const Reports: React.FC = () => {
       };
       loadDailySalesData();
     }
-  }, [currentReport, salesPerClerkTab, dailySalesDateRange, fetchDailySalesData]);
+  }, [salesPerClerkTab, dailySalesDateRange, fetchDailySalesData]); // Removed currentReport to prevent re-fetching on tab switch
 
   const handleParcelFilterChange = (key: string, value: string | { from: string; to: string }) => {
     if (typeof value === 'string') {
@@ -2530,7 +2562,7 @@ const Reports: React.FC = () => {
                     onClick={() => {
                       // Trigger data refresh with new date
                       if (currentReport === 'sales-per-clerk') {
-                        fetchReportData();
+                        fetchReportData(false, true); // Force refresh when applying filters
                       }
                     }}
                     className="ml-2"
@@ -4323,7 +4355,7 @@ const Reports: React.FC = () => {
             </Button>
             <Button
               variant="primary"
-              onClick={() => fetchReportData(false)}
+              onClick={() => fetchReportData(false, true)} // Force refresh on manual refresh
               disabled={loading || cacheLoading}
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${(loading || cacheLoading) ? 'animate-spin' : ''}`} />
