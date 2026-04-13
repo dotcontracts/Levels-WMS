@@ -390,6 +390,7 @@ class WMSApiService {
   private requestCache: Map<string, Promise<any>> = new Map();
   private cacheTimeout: Map<string, number> = new Map();
   private readonly CACHE_DURATION = 30000; // 30 second cache for duplicate requests
+  private activeProgressiveLoads: Set<string> = new Set(); // Track active progressive loading calls
   
   private getHeaders(): Record<string, string> {
     // Use centralized auth headers from config
@@ -566,8 +567,29 @@ class WMSApiService {
       search
     } = options;
 
+    // Generate unique instance ID for this call to prevent cache interference
+    const instanceId = Math.random().toString(36).substr(2, 9);
+    const loadKey = `getAllParcelsProgressively:${JSON.stringify(options)}:${instanceId}`;
+
     try {
-      console.log(`[Performance] Starting parallel data loading with chunk size ${chunkSize}`);
+      console.log(`[Performance] Starting parallel data loading with chunk size ${chunkSize} (instance: ${instanceId})`);
+      
+      // Check if similar progressive load is already running
+      const similarActiveLoad = Array.from(this.activeProgressiveLoads).find(key => 
+        key.startsWith('getAllParcelsProgressively:') && !key.endsWith(instanceId)
+      );
+      
+      if (similarActiveLoad) {
+        console.log(`[Performance] Detected concurrent progressive load, clearing cache to prevent interference (instance: ${instanceId})`);
+      }
+      
+      // CRITICAL: Clear deduplication cache BEFORE any requests to prevent stuck cache from concurrent calls
+      console.log(`[Performance] Clearing request cache to avoid stuck requests (instance: ${instanceId})`);
+      this.requestCache.clear();
+      this.cacheTimeout.clear();
+      
+      // Register this active load
+      this.activeProgressiveLoads.add(loadKey);
       
       // First, get the first page to determine total count and show immediate results
       const firstPageParams = {
@@ -610,12 +632,7 @@ class WMSApiService {
       let consecutiveFailures = 0;
       const MAX_CONSECUTIVE_FAILURES = 3;
       
-      console.log(`[Performance] v2.1 - Starting parallel loading with ${remainingPages.length} pages total`);
-      
-      // Clear deduplication cache to avoid stuck requests from previous attempts
-      console.log(`[Performance] Clearing request cache to avoid stuck requests`);
-      this.requestCache.clear();
-      this.cacheTimeout.clear();
+      console.log(`[Performance] v2.1 - Starting parallel loading with ${remainingPages.length} pages total (instance: ${instanceId})`);
       
       for (let i = 0; i < remainingPages.length; i += PARALLEL_BATCH_SIZE) {
         const batch = remainingPages.slice(i, i + PARALLEL_BATCH_SIZE);
@@ -731,6 +748,10 @@ class WMSApiService {
       } catch (fallbackError) {
         throw new Error(`Failed to load parcels: ${error}. Fallback also failed: ${fallbackError}`);
       }
+    } finally {
+      // Always clean up active load tracking
+      this.activeProgressiveLoads.delete(loadKey);
+      console.log(`[Performance] Cleaned up active load tracking (instance: ${instanceId})`);
     }
   }
 
