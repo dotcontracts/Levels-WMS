@@ -387,9 +387,51 @@ export interface UpdateChequeStatusDto {
 }
 
 class WMSApiService {
+  private requestCache: Map<string, Promise<any>> = new Map();
+  private cacheTimeout: Map<string, number> = new Map();
+  private readonly CACHE_DURATION = 30000; // 30 second cache for duplicate requests
+  
   private getHeaders(): Record<string, string> {
     // Use centralized auth headers from config
     return getAuthHeaders();
+  }
+
+  // Request deduplication helper
+  private async deduplicate<T>(key: string, requestFn: () => Promise<T>): Promise<T> {
+    // Clean up expired cache entries
+    const now = Date.now();
+    const expiredKeys: string[] = [];
+    this.cacheTimeout.forEach((expiry, cacheKey) => {
+      if (now > expiry) {
+        expiredKeys.push(cacheKey);
+      }
+    });
+    expiredKeys.forEach(cacheKey => {
+      this.requestCache.delete(cacheKey);
+      this.cacheTimeout.delete(cacheKey);
+    });
+
+    // Check if we already have this request in flight
+    if (this.requestCache.has(key)) {
+      console.log(`[Deduplication] Reusing existing request for: ${key}`);
+      return this.requestCache.get(key) as Promise<T>;
+    }
+
+    // Create new request and cache it
+    console.log(`[Deduplication] Creating new request for: ${key}`);
+    const promise = requestFn();
+    this.requestCache.set(key, promise);
+    this.cacheTimeout.set(key, now + this.CACHE_DURATION);
+
+    // Clean up when request completes
+    promise.finally(() => {
+      setTimeout(() => {
+        this.requestCache.delete(key);
+        this.cacheTimeout.delete(key);
+      }, this.CACHE_DURATION);
+    });
+
+    return promise;
   }
 
   // Parcels API methods
@@ -472,29 +514,21 @@ class WMSApiService {
 
       const url = `${API_BASE_URL}/Parcels/paged?${queryParams.toString()}`;
       
-      // Simple request deduplication to prevent identical simultaneous calls
-      const pendingRequestsMap = (globalThis as any)._pendingWMSRequests || ((globalThis as any)._pendingWMSRequests = new Map());
+      // Enhanced request deduplication with timeout-based caching
+      const requestKey = `getParcelsPaged:${queryParams.toString()}`;
       
-      if (pendingRequestsMap.has(url)) {
-        console.log('Reusing pending request for:', url);
-        return await pendingRequestsMap.get(url);
-      }
-      
-      const requestPromise = fetch(url, {
-        headers: this.getHeaders(),
-        signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
-      }).then(async (response) => {
+      return await this.deduplicate(requestKey, async () => {
+        const response = await fetch(url, {
+          headers: this.getHeaders(),
+          signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+        });
+
         if (!response.ok) {
           throw new Error(`Failed to fetch parcels: ${response.status}`);
         }
+
         return await response.json();
-      }).finally(() => {
-        // Clear from pending map when request completes
-        pendingRequestsMap.delete(url);
       });
-      
-      pendingRequestsMap.set(url, requestPromise);
-      return await requestPromise;
       
     } catch (error) {
       throw new Error(`Failed to connect to WMS API: ${error}`);
@@ -512,7 +546,7 @@ class WMSApiService {
   } = {}): Promise<Parcel[]> {
     const {
       onProgress,
-      chunkSize = 500,
+      chunkSize = 1000, // Larger default chunk size for better performance
       dateRange,
       fields,
       destination,
@@ -520,66 +554,142 @@ class WMSApiService {
     } = options;
 
     try {
-      const allParcels: Parcel[] = [];
-      let currentPage = 1;
-      let totalCount = 0;
-      let hasMoreData = true;
+      console.log(`[Performance] Starting parallel data loading with chunk size ${chunkSize}`);
       
-      while (hasMoreData) {
-        const params = {
-          page: currentPage,
-          pageSize: chunkSize,
-          ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to }),
-          ...(destination && { destination }),
-          ...(search && { search })
-        };
+      // First, get the first page to determine total count and show immediate results
+      const firstPageParams = {
+        page: 1,
+        pageSize: chunkSize,
+        ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to }),
+        ...(destination && { destination }),
+        ...(search && { search })
+      };
 
-        const response = await this.getParcelsPaged(params);
+      const firstResponse = await this.getParcelsPaged(firstPageParams);
+      const totalCount = firstResponse.totalCount;
+      
+      if (totalCount === 0) {
+        onProgress?.(0, 0);
+        return [];
+      }
+
+      // Report immediate progress with first page
+      const allParcels: Parcel[] = [...firstResponse.data];
+      onProgress?.(allParcels.length, totalCount);
+      console.log(`[Performance] First page loaded: ${allParcels.length}/${totalCount} records`);
+
+      // Calculate remaining pages needed
+      const totalPages = Math.ceil(totalCount / chunkSize);
+      if (totalPages <= 1) {
+        console.log(`[Performance] Only one page needed, returning ${allParcels.length} records`);
+        return allParcels;
+      }
+
+      // Define parallel batch size to avoid overwhelming the server
+      const PARALLEL_BATCH_SIZE = 8; // Load 8 pages simultaneously
+      const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2); // Pages 2, 3, 4, ...
+      
+      console.log(`[Performance] Loading ${remainingPages.length} additional pages in batches of ${PARALLEL_BATCH_SIZE}`);
+
+      // Process pages in parallel batches
+      for (let i = 0; i < remainingPages.length; i += PARALLEL_BATCH_SIZE) {
+        const batch = remainingPages.slice(i, i + PARALLEL_BATCH_SIZE);
         
-        // Set total count from first response
-        if (currentPage === 1) {
-          totalCount = response.totalCount;
-          if (totalCount === 0) {
-            onProgress?.(0, 0);
-            return [];
+        // Create parallel requests for this batch
+        const batchPromises = batch.map(pageNum => {
+          const params = {
+            page: pageNum,
+            pageSize: chunkSize,
+            ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to }),
+            ...(destination && { destination }),
+            ...(search && { search })
+          };
+          return this.getParcelsPaged(params);
+        });
+
+        try {
+          // Execute batch in parallel
+          const batchResults = await Promise.all(batchPromises);
+          
+          // Add results to allParcels array
+          for (const result of batchResults) {
+            allParcels.push(...result.data);
+          }
+
+          // Report progress after each batch
+          onProgress?.(allParcels.length, totalCount);
+          console.log(`[Performance] Batch complete: ${allParcels.length}/${totalCount} records (${Math.round(allParcels.length/totalCount*100)}%)`);
+
+        } catch (batchError) {
+          console.warn(`[Performance] Batch failed, falling back to sequential loading:`, batchError);
+          
+          // Fallback to sequential loading for this batch
+          for (const pageNum of batch) {
+            try {
+              const params = {
+                page: pageNum,
+                pageSize: chunkSize,
+                ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to }),
+                ...(destination && { destination }),
+                ...(search && { search })
+              };
+              const response = await this.getParcelsPaged(params);
+              allParcels.push(...response.data);
+              onProgress?.(allParcels.length, totalCount);
+            } catch (pageError) {
+              console.error(`[Performance] Failed to load page ${pageNum}:`, pageError);
+              // Continue with other pages
+            }
           }
         }
-        
-        allParcels.push(...response.data);
-        hasMoreData = response.hasNextPage;
-        
-        // Report progress
-        onProgress?.(allParcels.length, totalCount);
-        
-        currentPage++;
-        
-        // Small delay to prevent overwhelming the server, but only between requests
-        if (hasMoreData) {
-          await new Promise(resolve => setTimeout(resolve, 50));
+
+        // Small delay between batches to be respectful to the server
+        if (i + PARALLEL_BATCH_SIZE < remainingPages.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
 
+      console.log(`[Performance] Parallel loading complete: ${allParcels.length} records loaded`);
       return allParcels;
+
     } catch (error) {
-      throw new Error(`Failed to load all parcels: ${error}`);
+      console.error(`[Performance] Parallel loading failed, attempting fallback:`, error);
+      
+      // Ultimate fallback: try to get at least some data
+      try {
+        const fallbackResponse = await this.getParcelsPaged({
+          page: 1,
+          pageSize: Math.min(chunkSize * 2, 2000), // Try larger single page
+          ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to }),
+          ...(destination && { destination }),
+          ...(search && { search })
+        });
+        
+        console.log(`[Performance] Fallback successful: ${fallbackResponse.data.length} records`);
+        onProgress?.(fallbackResponse.data.length, fallbackResponse.totalCount);
+        return fallbackResponse.data;
+        
+      } catch (fallbackError) {
+        throw new Error(`Failed to load parcels: ${error}. Fallback also failed: ${fallbackError}`);
+      }
     }
   }
 
-  // Optimized for financial calculations with smaller, faster chunks
+  // Optimized for financial calculations with larger, more efficient chunks
   async getAllParcelsForFinancial(dateRange?: { from: string; to: string }): Promise<Parcel[]> {
     try {
       return await this.getAllParcelsProgressively({
         dateRange,
-        chunkSize: 400, // Smaller chunks for faster response times
+        chunkSize: 1500, // Larger chunks for better parallel performance
         fields: ['id', 'waybillNumber', 'totalAmount', 'paymentMethods', 'createdAt', 'status', 'createdById']
       });
     } catch (error) {
       console.warn('Failed to load financial data progressively, falling back to direct pagination');
-      // Fallback to direct pagination instead of old getParcels method
+      // Fallback to direct pagination with larger page size
       try {
         const response = await this.getParcelsPaged({
           page: 1,
-          pageSize: 500,
+          pageSize: 2000, // Larger fallback page size
           ...(dateRange && { fromDate: dateRange.from, toDate: dateRange.to })
         });
         return response.data;
@@ -589,7 +699,7 @@ class WMSApiService {
     }
   }
 
-  // Optimized for reports with efficient chunk management
+  // Optimized for reports with efficient parallel chunk management
   async getAllParcelsForReports(filters: {
     startDate?: string;
     endDate?: string;
@@ -605,15 +715,15 @@ class WMSApiService {
         dateRange,
         destination: filters.destination,
         search: filters.search,
-        chunkSize: 300 // Smaller chunks for better performance
+        chunkSize: 1200 // Larger chunks for better parallel performance (60k ÷ 1200 = ~50 pages instead of 200+)
       });
     } catch (error) {
       console.warn('Failed to load reports data progressively, falling back to direct pagination');
-      // Fallback to direct pagination instead of old getParcels method
+      // Fallback to direct pagination with optimized page size
       try {
         const response = await this.getParcelsPaged({
           page: 1,
-          pageSize: 400,
+          pageSize: 2000, // Much larger fallback page size
           ...(filters.startDate && filters.endDate && { 
             fromDate: filters.startDate, 
             toDate: filters.endDate 
