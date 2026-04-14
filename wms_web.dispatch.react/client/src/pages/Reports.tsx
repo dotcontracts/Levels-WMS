@@ -600,6 +600,7 @@ const Reports: React.FC = () => {
       wmsApi.clearRequestCache();
       
       // Use optimized progressive loading like other report sections
+      console.log(`[Clerk Debit Debug] Fetching data for date range:`, dateRange);
       const allParcels = await wmsApi.getAllParcelsProgressively({
         dateRange: { from: dateRange.from, to: dateRange.to },
         chunkSize: 1200, // Use updated chunk size to match server optimizations
@@ -608,6 +609,13 @@ const Reports: React.FC = () => {
           'createdAt', 'createdById', 'paymentMethods', 'branchDeposits', 'expenses'
         ]
       });
+      
+      console.log(`[Clerk Debit Debug] Received ${allParcels.length} total parcels`);
+      console.log(`[Clerk Debit Debug] Sample parcel paymentMethods:`, allParcels.slice(0, 3).map(p => ({
+        waybill: p.waybillNumber, 
+        paymentMethods: p.paymentMethods,
+        createdAt: p.createdAt
+      })));
 
       // Filter parcels by date range and prepaid status
       // Clerk Debit Management tracks prepaid parcels where clerks collected money in advance
@@ -631,6 +639,13 @@ const Reports: React.FC = () => {
         }
         return false;
       });
+      
+      console.log(`[Clerk Debit Debug] After prepaid filtering: ${paidParcels.length} paid parcels`);
+      console.log(`[Clerk Debit Debug] Prepaid sample:`, paidParcels.slice(0, 3).map(p => ({
+        waybill: p.waybillNumber, 
+        paymentMethods: p.paymentMethods,
+        clerk: p.createdById
+      })));
 
       // Get existing deposits from database for the date range
       let existingDeposits: ParcelDepositDto[] = [];
