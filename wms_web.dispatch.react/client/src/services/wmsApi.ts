@@ -562,6 +562,7 @@ class WMSApiService {
     fields?: string[];
     destination?: string;
     search?: string;
+    cacheNamespace?: string;
   } = {}): Promise<Parcel[]> {
     const {
       onProgress,
@@ -569,11 +570,12 @@ class WMSApiService {
       dateRange,
       fields,
       destination,
-      search
+      search,
+      cacheNamespace
     } = options;
 
     // Generate unique instance ID for this call to prevent cache interference
-    const instanceId = Math.random().toString(36).substr(2, 9);
+    const instanceId = cacheNamespace || Math.random().toString(36).substr(2, 9);
     const loadKey = `getAllParcelsProgressively:${JSON.stringify(options)}:${instanceId}`;
 
     try {
@@ -588,10 +590,16 @@ class WMSApiService {
         console.log(`[Performance] Detected concurrent progressive load, clearing cache to prevent interference (instance: ${instanceId})`);
       }
       
-      // CRITICAL: Clear deduplication cache BEFORE any requests to prevent stuck cache from concurrent calls
-      console.log(`[Performance] Clearing request cache to avoid stuck requests (instance: ${instanceId})`);
-      this.requestCache.clear();
-      this.cacheTimeout.clear();
+      // Clear deduplication cache - if using cacheNamespace, only clear for this namespace
+      if (cacheNamespace) {
+        console.log(`[Performance] Using isolated cache namespace: ${instanceId}`);
+        // Don't clear global cache when using namespace - each namespace is isolated
+      } else {
+        // CRITICAL: Clear deduplication cache BEFORE any requests to prevent stuck cache from concurrent calls
+        console.log(`[Performance] Clearing request cache to avoid stuck requests (instance: ${instanceId})`);
+        this.requestCache.clear();
+        this.cacheTimeout.clear();
+      }
       
       // Register this active load
       this.activeProgressiveLoads.add(loadKey);

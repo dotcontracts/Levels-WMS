@@ -596,10 +596,7 @@ const Reports: React.FC = () => {
   // Fetch clerk debit data with date range filtering - optimized version
   const fetchClerkDebitData = useCallback(async (dateRange: { from: string; to: string }): Promise<ClerkDebitData[]> => {
     try {
-      // Clear request cache to prevent cache interference like other report sections
-      wmsApi.clearRequestCache();
-      
-      // Use optimized progressive loading like other report sections
+      // Use isolated instance for clerk debit to prevent cache interference
       console.log(`[Clerk Debit Debug] Fetching data for date range:`, dateRange);
       const allParcels = await wmsApi.getAllParcelsProgressively({
         dateRange: { from: dateRange.from, to: dateRange.to },
@@ -607,7 +604,8 @@ const Reports: React.FC = () => {
         fields: [
           'id', 'waybillNumber', 'receiver', 'totalAmount', 'status', 
           'createdAt', 'createdById', 'paymentMethods', 'branchDeposits', 'expenses'
-        ]
+        ],
+        cacheNamespace: `clerk-debit-${dateRange.from}-${dateRange.to}` // Add unique namespace
       });
       
       console.log(`[Clerk Debit Debug] Received ${allParcels.length} total parcels`);
