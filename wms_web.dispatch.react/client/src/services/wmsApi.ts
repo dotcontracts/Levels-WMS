@@ -581,20 +581,21 @@ class WMSApiService {
     try {
       console.log(`[Performance] Starting parallel data loading with chunk size ${chunkSize} (instance: ${instanceId})`);
       
-      // Check if similar progressive load is already running
-      const similarActiveLoad = Array.from(this.activeProgressiveLoads).find(key => 
-        key.startsWith('getAllParcelsProgressively:') && !key.endsWith(instanceId)
-      );
-      
-      if (similarActiveLoad) {
-        console.log(`[Performance] Detected concurrent progressive load, clearing cache to prevent interference (instance: ${instanceId})`);
-      }
-      
-      // Clear deduplication cache - if using cacheNamespace, only clear for this namespace
+      // Handle concurrent load detection and cache clearing
       if (cacheNamespace) {
         console.log(`[Performance] Using isolated cache namespace: ${instanceId}`);
-        // Don't clear global cache when using namespace - each namespace is isolated
+        // For namespaced requests, no need to detect or clear global cache
+        // Each namespace operates independently
       } else {
+        // Check if similar progressive load is already running (only for non-namespaced)
+        const similarActiveLoad = Array.from(this.activeProgressiveLoads).find(key => 
+          key.startsWith('getAllParcelsProgressively:') && !key.endsWith(instanceId)
+        );
+        
+        if (similarActiveLoad) {
+          console.log(`[Performance] Detected concurrent progressive load, clearing cache to prevent interference (instance: ${instanceId})`);
+        }
+        
         // CRITICAL: Clear deduplication cache BEFORE any requests to prevent stuck cache from concurrent calls
         console.log(`[Performance] Clearing request cache to avoid stuck requests (instance: ${instanceId})`);
         this.requestCache.clear();
