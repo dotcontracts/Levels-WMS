@@ -1332,7 +1332,26 @@ const Reports: React.FC = () => {
       // For clerk-debit, skip global data loading since it uses isolated cache
       if (currentReport === 'clerk-debit') {
         console.log('Reports: Skipping global data load for clerk-debit (using isolated cache)');
-        cachedResult = { parcels: [], dispatches: [] }; // Empty result, will be populated by fetchClerkDebitData
+        // Skip to the clerk-debit specific processing - don't load global data
+        const clerkDateRange = {
+          from: debitDateRange.from,
+          to: debitDateRange.to
+        };
+        const data: any = {};
+        data.clerkDebit = await fetchClerkDebitData(clerkDateRange);
+        setClerkDebitData(data.clerkDebit);
+        setReportData(data);
+        
+        // Cache the result for this tab
+        setTabDataCache(prev => ({
+          ...prev,
+          [cacheKey]: {
+            data,
+            timestamp: Date.now(),
+            filters: reportFilters
+          }
+        }));
+        return; // Early return - don't process global data
       } else if (useStreaming) {
         // Use streaming data with progress updates
         cachedResult = await getStreamingData(reportFilters, (progressData) => {
@@ -1413,15 +1432,6 @@ const Reports: React.FC = () => {
           const mergedData = await loadAndMergeBranchDeposits(generatedData);
           data.branchDebit = mergedData;
           setBranchDebitData(mergedData || {});
-          break;
-        case 'clerk-debit':
-          // Use the consistent date range for both initial load and refresh
-          const clerkDateRange = {
-            from: debitDateRange.from,
-            to: debitDateRange.to
-          };
-          data.clerkDebit = await fetchClerkDebitData(clerkDateRange);
-          setClerkDebitData(data.clerkDebit);
           break;
         case 'dashboard':
           data.salesPerClerk = generateSalesPerClerkData(filteredParcels);
