@@ -609,9 +609,17 @@ const Reports: React.FC = () => {
         ]
       });
 
-      // Filter parcels by date range and paid status
+      // Filter parcels by date range and prepaid status
+      // Clerk Debit Management tracks prepaid parcels where clerks collected money in advance
       const paidParcels = allParcels.filter(parcel => {
-        if (!parcel.paymentMethods?.toLowerCase().includes('paid')) return false;
+        const paymentMethod = (parcel.paymentMethods || '').toLowerCase();
+        // Include only prepaid parcels (paid/advance/prepaid) - exclude COD
+        const isPrepaid = (paymentMethod.includes('paid') || 
+                          paymentMethod.includes('advance') || 
+                          paymentMethod.includes('prepaid')) &&
+                         !paymentMethod.includes('cod');
+        
+        if (!isPrepaid) return false;
 
         if (parcel.createdAt) {
           try {
