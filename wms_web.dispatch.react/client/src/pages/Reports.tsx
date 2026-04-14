@@ -1294,7 +1294,10 @@ const Reports: React.FC = () => {
   }, []);
 
   const fetchReportData = useCallback(async (useStreaming: boolean = false, forceRefresh: boolean = false) => {
-    const cacheKey = `${currentReport}-${JSON.stringify(filters)}-${cashInDate}-${JSON.stringify(debitDateRange)}`;
+    // For clerk-debit, use a specific cache key that includes the debit date range to prevent interference
+    const cacheKey = currentReport === 'clerk-debit' 
+      ? `clerk-debit-${debitDateRange.from}-${debitDateRange.to}`
+      : `${currentReport}-${JSON.stringify(filters)}-${cashInDate}-${JSON.stringify(debitDateRange)}`;
     
     // Check if we have fresh cached data for this tab
     if (!forceRefresh && tabDataCache[cacheKey]) {
@@ -3492,7 +3495,13 @@ const Reports: React.FC = () => {
               </div>
               <Button
                 variant="primary"
-                onClick={() => fetchClerkDebitData(debitDateRange).then(setClerkDebitData)}
+                onClick={() => {
+                  console.log('[Clerk Debit Debug] Manual refresh clicked');
+                  fetchClerkDebitData(debitDateRange).then(data => {
+                    console.log('[Clerk Debit Debug] Manual refresh complete, setting data:', data.length, 'clerks');
+                    setClerkDebitData(data);
+                  });
+                }}
                 disabled={loading}
               >
                 <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
