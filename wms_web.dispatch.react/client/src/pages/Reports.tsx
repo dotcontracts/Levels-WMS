@@ -1329,7 +1329,11 @@ const Reports: React.FC = () => {
 
       let cachedResult: any;
       
-      if (useStreaming) {
+      // For clerk-debit, skip global data loading since it uses isolated cache
+      if (currentReport === 'clerk-debit') {
+        console.log('Reports: Skipping global data load for clerk-debit (using isolated cache)');
+        cachedResult = { parcels: [], dispatches: [] }; // Empty result, will be populated by fetchClerkDebitData
+      } else if (useStreaming) {
         // Use streaming data with progress updates
         cachedResult = await getStreamingData(reportFilters, (progressData) => {
           // Update parcels and dispatches as data streams in
