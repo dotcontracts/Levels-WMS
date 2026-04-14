@@ -1395,7 +1395,12 @@ const Reports: React.FC = () => {
           setBranchDebitData(mergedData || {});
           break;
         case 'clerk-debit':
-          data.clerkDebit = await fetchClerkDebitData(debitDateRange);
+          // Use the consistent date range for both initial load and refresh
+          const clerkDateRange = {
+            from: debitDateRange.from,
+            to: debitDateRange.to
+          };
+          data.clerkDebit = await fetchClerkDebitData(clerkDateRange);
           setClerkDebitData(data.clerkDebit);
           break;
         case 'dashboard':
