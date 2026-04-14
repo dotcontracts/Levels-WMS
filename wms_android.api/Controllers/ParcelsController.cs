@@ -191,7 +191,8 @@ namespace wms_android.api.Controllers
                         CreatedBy = p.CreatedBy,
                         DispatchedAt = p.DispatchedAt,
                         SenderTelephone = p.SenderTelephone,
-                        ReceiverTelephone = p.ReceiverTelephone
+                        ReceiverTelephone = p.ReceiverTelephone,
+                        PaymentMethods = p.PaymentMethods // Added for financial reports
                     })
                     .ToListAsync();
 

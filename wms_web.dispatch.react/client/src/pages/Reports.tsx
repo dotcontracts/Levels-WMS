@@ -610,12 +610,8 @@ const Reports: React.FC = () => {
       });
 
       // Filter parcels by date range and paid status
-      // Note: paymentMethods field is not returned by paged endpoint, so we'll filter by delivered/paid status
       const paidParcels = allParcels.filter(parcel => {
-        // TEMPORARY FIX: Since paymentMethods field is not available from paged endpoint,
-        // we'll include all parcels and let them be processed. The debit calculation
-        // will handle determining which are actually relevant for clerk debit tracking.
-        // TODO: Either fix API to return paymentMethods or update logic to use status values
+        if (!parcel.paymentMethods?.toLowerCase().includes('paid')) return false;
 
         if (parcel.createdAt) {
           try {
