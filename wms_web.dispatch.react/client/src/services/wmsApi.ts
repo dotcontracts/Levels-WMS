@@ -392,6 +392,27 @@ class WMSApiService {
   private readonly CACHE_DURATION = 30000; // 30 second cache for duplicate requests
   private activeProgressiveLoads: Set<string> = new Set(); // Track active progressive loading calls
   
+  // Namespace-specific caches for better isolation
+  private namespacedCaches: Map<string, Map<string, Promise<any>>> = new Map();
+  private namespacedTimeouts: Map<string, Map<string, number>> = new Map();
+  
+  // Generate cache key from filters for consistent cache sharing
+  private generateCacheKey(filters: any): string {
+    // Sort keys for consistent hash generation
+    const sortedFilters = Object.keys(filters || {})
+      .sort()
+      .reduce((result: any, key: string) => {
+        if (filters[key] !== undefined && filters[key] !== null && filters[key] !== '') {
+          result[key] = filters[key];
+        }
+        return result;
+      }, {});
+    
+    // Generate hash from sorted filters
+    const filterString = JSON.stringify(sortedFilters);
+    return btoa(filterString).replace(/[+/=]/g, '').substring(0, 16);
+  }
+  
   private getHeaders(): Record<string, string> {
     // Use centralized auth headers from config
     return getAuthHeaders();
@@ -403,8 +424,95 @@ class WMSApiService {
     this.requestCache.clear();
     this.cacheTimeout.clear();
   }
+  
+  // Namespace-specific cache management
+  private getNamespacedCache(namespace: string): Map<string, Promise<any>> {
+    if (!this.namespacedCaches.has(namespace)) {
+      this.namespacedCaches.set(namespace, new Map());
+      this.namespacedTimeouts.set(namespace, new Map());
+    }
+    return this.namespacedCaches.get(namespace)!;
+  }
+  
+  private getNamespacedTimeout(namespace: string): Map<string, number> {
+    if (!this.namespacedTimeouts.has(namespace)) {
+      this.namespacedTimeouts.set(namespace, new Map());
+    }
+    return this.namespacedTimeouts.get(namespace)!;
+  }
+  
+  public clearNamespacedCache(namespace: string): void {
+    console.log(`[Deduplication] Clearing cache for namespace: ${namespace}`);
+    this.namespacedCaches.delete(namespace);
+    this.namespacedTimeouts.delete(namespace);
+  }
+  
+  // Debug method to get cache statistics
+  public getCacheStats(): {
+    globalRequests: number;
+    namespaces: string[];
+    namespacedRequests: { [namespace: string]: number };
+    activeLoads: string[];
+  } {
+    const namespacedRequests: { [namespace: string]: number } = {};
+    this.namespacedCaches.forEach((cache, namespace) => {
+      namespacedRequests[namespace] = cache.size;
+    });
+    
+    return {
+      globalRequests: this.requestCache.size,
+      namespaces: Array.from(this.namespacedCaches.keys()),
+      namespacedRequests,
+      activeLoads: Array.from(this.activeProgressiveLoads)
+    };
+  }
 
-  // Request deduplication helper
+  // Namespace-aware deduplication helper
+  private async deduplicateNamespaced<T>(
+    namespace: string, 
+    key: string, 
+    requestFn: () => Promise<T>
+  ): Promise<T> {
+    const cache = this.getNamespacedCache(namespace);
+    const timeouts = this.getNamespacedTimeout(namespace);
+    
+    // Clean up expired cache entries for this namespace
+    const now = Date.now();
+    const expiredKeys: string[] = [];
+    timeouts.forEach((expiry, cacheKey) => {
+      if (now > expiry) {
+        expiredKeys.push(cacheKey);
+      }
+    });
+    expiredKeys.forEach(cacheKey => {
+      cache.delete(cacheKey);
+      timeouts.delete(cacheKey);
+    });
+
+    // Check if we already have this request in flight for this namespace
+    if (cache.has(key)) {
+      console.log(`[Deduplication] Reusing existing request for namespace ${namespace}: ${key}`);
+      return cache.get(key) as Promise<T>;
+    }
+
+    // Create new request and cache it in the namespace
+    console.log(`[Deduplication] Creating new request for namespace ${namespace}: ${key}`);
+    const promise = requestFn();
+    cache.set(key, promise);
+    timeouts.set(key, now + this.CACHE_DURATION);
+
+    // Clean up when request completes
+    promise.finally(() => {
+      setTimeout(() => {
+        cache.delete(key);
+        timeouts.delete(key);
+      }, this.CACHE_DURATION);
+    });
+
+    return promise;
+  }
+
+  // Request deduplication helper (legacy for backward compatibility)
   private async deduplicate<T>(key: string, requestFn: () => Promise<T>): Promise<T> {
     // Clean up expired cache entries
     const now = Date.now();
@@ -574,32 +682,40 @@ class WMSApiService {
       cacheNamespace
     } = options;
 
-    // Generate unique instance ID for this call to prevent cache interference
-    const instanceId = cacheNamespace || Math.random().toString(36).substr(2, 9);
-    const loadKey = `getAllParcelsProgressively:${JSON.stringify(options)}:${instanceId}`;
+    // Generate unique instance ID for this call, using namespace when available
+    const instanceId = cacheNamespace || `instance_${Math.random().toString(36).substr(2, 9)}`;
+    const loadKey = `getAllParcelsProgressively:${cacheNamespace ? cacheNamespace : 'legacy'}:${instanceId}`;
 
     try {
       console.log(`[Performance] Starting parallel data loading with chunk size ${chunkSize} (instance: ${instanceId})`);
       
-      // Handle concurrent load detection and cache clearing
+      // Handle concurrent load detection with improved namespace isolation
       if (cacheNamespace) {
-        console.log(`[Performance] Using isolated cache namespace: ${instanceId}`);
-        // For namespaced requests, no need to detect or clear global cache
-        // Each namespace operates independently
+        console.log(`[Performance] Using isolated cache namespace: ${cacheNamespace}`);
+        // Check for concurrent loads within the same namespace only
+        const namespaceActiveLoads = Array.from(this.activeProgressiveLoads)
+          .filter(key => key.includes(cacheNamespace));
+        
+        if (namespaceActiveLoads.length > 1) {
+          console.log(`[Performance] Multiple loads detected in namespace ${cacheNamespace}, but allowing concurrent execution`);
+        }
+        
+        // Only clear the specific namespace cache if there are issues, not global cache
+        // This prevents interference between different report modules
       } else {
-        // Check if similar progressive load is already running (only for non-namespaced)
+        // Legacy behavior for non-namespaced requests
+        console.log(`[Performance] Non-namespaced request detected, using fallback cache isolation (instance: ${instanceId})`);
+        
+        // Only clear cache if we detect interference patterns, not by default
         const similarActiveLoad = Array.from(this.activeProgressiveLoads).find(key => 
-          key.startsWith('getAllParcelsProgressively:') && !key.endsWith(instanceId)
+          key.startsWith('getAllParcelsProgressively:') && !key.endsWith(instanceId) && !key.includes('reports:')
         );
         
         if (similarActiveLoad) {
-          console.log(`[Performance] Detected concurrent progressive load, clearing cache to prevent interference (instance: ${instanceId})`);
+          console.log(`[Performance] Detected potential interference, clearing global cache (instance: ${instanceId})`);
+          this.requestCache.clear();
+          this.cacheTimeout.clear();
         }
-        
-        // CRITICAL: Clear deduplication cache BEFORE any requests to prevent stuck cache from concurrent calls
-        console.log(`[Performance] Clearing request cache to avoid stuck requests (instance: ${instanceId})`);
-        this.requestCache.clear();
-        this.cacheTimeout.clear();
       }
       
       // Register this active load
@@ -803,36 +919,49 @@ class WMSApiService {
     destination?: string;
     search?: string;
   } = {}): Promise<Parcel[]> {
-    try {
-      const dateRange = filters.startDate && filters.endDate 
-        ? { from: filters.startDate, to: filters.endDate }
-        : undefined;
-
-      return await this.getAllParcelsProgressively({
-        dateRange,
-        destination: filters.destination,
-        search: filters.search,
-        chunkSize: 1200 // Larger chunks for better parallel performance (60k ÷ 1200 = ~50 pages instead of 200+)
-      });
-    } catch (error) {
-      console.warn('Failed to load reports data progressively, falling back to direct pagination');
-      // Fallback to direct pagination with optimized page size
+    // Generate cache namespace and key based on filters
+    const cacheKey = this.generateCacheKey(filters);
+    const namespace = `reports:${cacheKey}`;
+    const requestKey = 'parcels';
+    
+    console.log(`[Cache] Using namespace: ${namespace} for reports data`);
+    
+    // Use namespaced deduplication to prevent cache interference
+    return this.deduplicateNamespaced(namespace, requestKey, async () => {
       try {
-        const response = await this.getParcelsPaged({
-          page: 1,
-          pageSize: 2000, // Much larger fallback page size
-          ...(filters.startDate && filters.endDate && { 
-            fromDate: filters.startDate, 
-            toDate: filters.endDate 
-          }),
-          ...(filters.destination && { destination: filters.destination }),
-          ...(filters.search && { search: filters.search })
+        const dateRange = filters.startDate && filters.endDate 
+          ? { from: filters.startDate, to: filters.endDate }
+          : undefined;
+
+        console.log(`[Cache] Fetching fresh data for namespace: ${namespace}`);
+        return await this.getAllParcelsProgressively({
+          dateRange,
+          destination: filters.destination,
+          search: filters.search,
+          chunkSize: 1200, // Larger chunks for better parallel performance
+          cacheNamespace: namespace // Pass namespace for progressive loading isolation
         });
-        return response.data;
-      } catch (fallbackError) {
-        throw new Error(`Failed to load reports data: ${fallbackError}`);
+      } catch (error) {
+        console.warn('Failed to load reports data progressively, falling back to direct pagination');
+        // Fallback to direct pagination with optimized page size
+        try {
+          const response = await this.getParcelsPaged({
+            page: 1,
+            pageSize: 2000, // Much larger fallback page size
+            ...(filters.startDate && filters.endDate && { 
+              fromDate: filters.startDate, 
+              toDate: filters.endDate 
+            }),
+            ...(filters.destination && { destination: filters.destination }),
+            ...(filters.search && { search: filters.search }),
+            instanceId: namespace // Use namespace as instance ID
+          });
+          return response.data;
+        } catch (fallbackError) {
+          throw new Error(`Failed to load reports data: ${fallbackError}`);
+        }
       }
-    }
+    });
   }
 
   async getParcelById(parcelId: string): Promise<Parcel | null> {
@@ -1248,7 +1377,22 @@ class WMSApiService {
   }
 
   // Dispatches API methods
-  async getDispatches(branchName?: string): Promise<Dispatch[]> {
+  async getDispatches(branchName?: string, cacheNamespace?: string): Promise<Dispatch[]> {
+    // If we have a cache namespace, use it for deduplication
+    if (cacheNamespace) {
+      const requestKey = `dispatches:${branchName || 'all'}`;
+      console.log(`[Cache] Using namespace ${cacheNamespace} for dispatches`);
+      
+      return this.deduplicateNamespaced(cacheNamespace, requestKey, async () => {
+        return this._fetchDispatches(branchName);
+      });
+    }
+    
+    // Fallback to direct fetch for backward compatibility
+    return this._fetchDispatches(branchName);
+  }
+  
+  private async _fetchDispatches(branchName?: string): Promise<Dispatch[]> {
     try {
       let url = `${API_BASE_URL}/Dispatches`;
       

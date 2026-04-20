@@ -1303,7 +1303,17 @@ const Reports: React.FC = () => {
       const age = Date.now() - cached.timestamp;
       const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
       
-      if (age < CACHE_DURATION && JSON.stringify(cached.filters) === JSON.stringify(filters)) {
+      // For clerk-debit, only validate date range since clerk filtering happens at UI level
+      let filtersMatch = false;
+      if (currentReport === 'clerk-debit') {
+        // Only check if the cached debit date range matches current debit date range
+        const cachedDebitRange = cached.filters.debitDateRange || {};
+        filtersMatch = JSON.stringify(cachedDebitRange) === JSON.stringify(debitDateRange);
+      } else {
+        filtersMatch = JSON.stringify(cached.filters) === JSON.stringify(filters);
+      }
+      
+      if (age < CACHE_DURATION && filtersMatch) {
         console.log(`Reports: Using cached data for ${currentReport} (${Math.round(age / 1000)}s old)`);
         setReportData(cached.data);
         setLoading(false);
@@ -1348,7 +1358,7 @@ const Reports: React.FC = () => {
           [cacheKey]: {
             data,
             timestamp: Date.now(),
-            filters: reportFilters
+            filters: { ...reportFilters, debitDateRange }
           }
         }));
         return; // Early return - don't process global data
@@ -4369,11 +4379,23 @@ const Reports: React.FC = () => {
             )}
             <Button
               variant="outline"
-              onClick={invalidateCache}
+              onClick={() => invalidateCache(filters)}
               disabled={loading || cacheLoading}
               size="sm"
             >
               Clear Cache
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const stats = wmsApi.getCacheStats();
+                console.log('Cache Debug Stats:', stats);
+                alert(`Cache Stats:\nGlobal: ${stats.globalRequests}\nNamespaces: ${stats.namespaces.length}\nActive Loads: ${stats.activeLoads.length}\nSee console for details.`);
+              }}
+              disabled={loading || cacheLoading}
+              size="sm"
+            >
+              Debug Cache
             </Button>
             <Button
               variant="outline"

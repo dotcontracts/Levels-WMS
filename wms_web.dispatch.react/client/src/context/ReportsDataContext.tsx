@@ -28,10 +28,11 @@ interface ReportsDataContextType {
   error: string;
   getCachedData: (filters?: ReportFilters) => Promise<CachedData>;
   getStreamingData: (filters?: ReportFilters, onProgress?: (data: CachedData) => void) => Promise<CachedData>;
-  invalidateCache: () => void;
+  invalidateCache: (filters?: ReportFilters) => void;
   isDataFresh: () => boolean;
   getDataAge: () => string;
   getLoadProgress: () => { loaded: number; total: number; percentage: number } | null;
+  hasDataInCache: (filters?: ReportFilters) => boolean;
 }
 
 const ReportsDataContext = createContext<ReportsDataContextType | undefined>(undefined);
@@ -78,17 +79,24 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       console.log('ReportsDataContext: Fetching fresh data...');
       
-      // Fetch data in parallel - use faster approach
+      // Generate consistent cache namespace for this filter combination
+      const filterParams = {
+        startDate: filters?.startDate,
+        endDate: filters?.endDate,
+        destination: filters?.destination,
+        search: filters?.clerk // Use search for clerk filtering
+      };
+      
+      // Use the same caching mechanism as the API layer for consistency
+      console.log('ReportsDataContext: Using smart cache namespace for data sharing');
+      
+      // Fetch data in parallel with namespace caching
       const [parcelsData, dispatchesData] = await Promise.all([
+        wmsApi.getAllParcelsForReports(filterParams),
+        // Pass the same namespace to dispatches for cache consistency
         filters 
-          ? wmsApi.getAllParcelsForReports({
-              startDate: filters.startDate,
-              endDate: filters.endDate,
-              destination: filters.destination,
-              search: filters.clerk // Use search for clerk filtering
-            })
-          : wmsApi.getAllParcelsForReports({}),
-        wmsApi.getDispatches()
+          ? wmsApi.getDispatches(undefined, `reports:${JSON.stringify(filterParams)}`)
+          : wmsApi.getDispatches()
       ]);
 
       const newCachedData: CachedData = {
@@ -128,10 +136,19 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       console.log('ReportsDataContext: Starting streaming data fetch...');
       
+      // Generate consistent cache namespace for streaming
+      const filterParams = {
+        startDate: filters?.startDate,
+        endDate: filters?.endDate,
+        destination: filters?.destination,
+        search: filters?.clerk
+      };
+      const cacheNamespace = `reports:streaming:${JSON.stringify(filterParams)}`;
+      
       let streamingParcels: Parcel[] = [];
       let dispatchesData: Dispatch[] = [];
       
-      // Start both requests, but stream parcels progressively
+      // Start both requests, but stream parcels progressively with namespace isolation
       const [parcelsPromise, dispatchesPromise] = [
         wmsApi.getAllParcelsProgressively({
           dateRange: filters?.startDate && filters?.endDate 
@@ -139,7 +156,8 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
             : undefined,
           destination: filters?.destination,
           search: filters?.clerk,
-          chunkSize: 1200, // Larger chunks for better streaming performance with increased server limit
+          chunkSize: 1200, // Larger chunks for better streaming performance
+          cacheNamespace: cacheNamespace, // Use namespace for isolation
           fields: [
             'id', 'waybillNumber', 'senderName', 'recipientName', 
             'destination', 'totalAmount', 'paymentMethods', 'createdAt', 
@@ -170,7 +188,7 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           streamingParcels = parcels;
           return parcels;
         }),
-        wmsApi.getDispatches().then(dispatches => {
+        wmsApi.getDispatches(undefined, cacheNamespace).then(dispatches => {
           dispatchesData = dispatches;
           return dispatches;
         })
@@ -225,11 +243,35 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return await fetchFreshData(filters);
   }, [cachedData, isDataFresh, fetchFreshData]);
 
-  const invalidateCache = useCallback(() => {
+  const invalidateCache = useCallback((filters?: ReportFilters) => {
     console.log('ReportsDataContext: Cache invalidated');
     setCachedData(null);
     setError('');
+    
+    // Also clear the corresponding API cache namespace if filters are provided
+    if (filters) {
+      const filterParams = {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        destination: filters.destination,
+        search: filters.clerk
+      };
+      const cacheNamespace = `reports:${JSON.stringify(filterParams)}`;
+      console.log(`ReportsDataContext: Clearing API cache namespace: ${cacheNamespace}`);
+      wmsApi.clearNamespacedCache(cacheNamespace);
+    }
   }, []);
+  
+  const hasDataInCache = useCallback((filters?: ReportFilters): boolean => {
+    if (!cachedData) return false;
+    
+    // Check if filters match (simple comparison for now)
+    const filtersMatch = !filters || (
+      JSON.stringify(cachedData.filters) === JSON.stringify(filters)
+    );
+    
+    return filtersMatch && isDataFresh();
+  }, [cachedData, isDataFresh]);
 
   // Auto-refresh mechanism
   React.useEffect(() => {
@@ -257,8 +299,9 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     invalidateCache,
     isDataFresh,
     getDataAge,
-    getLoadProgress
-  }), [cachedData, loading, error, getCachedData, getStreamingData, invalidateCache, isDataFresh, getDataAge, getLoadProgress]);
+    getLoadProgress,
+    hasDataInCache
+  }), [cachedData, loading, error, getCachedData, getStreamingData, invalidateCache, isDataFresh, getDataAge, getLoadProgress, hasDataInCache]);
 
   return (
     <ReportsDataContext.Provider value={contextValue}>
