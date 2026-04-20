@@ -634,9 +634,14 @@ const Parcels: React.FC = () => {
       const uniqueDestinations = Array.from(new Set(data.map(p => p.destination).filter(Boolean)));
       const uniqueClerks = Array.from(new Set(data.map(p => p.createdBy?.username).filter(Boolean)));
       const uniquePaymentMethods = Array.from(new Set(
-        data.flatMap(p => 
-          Array.isArray(p.paymentMethods) ? p.paymentMethods.map(pm => pm.method) : []
-        ).filter(Boolean)
+        data.map(p => p.paymentMethods)
+          .filter(Boolean)
+          .filter(pm => pm !== 'null' && pm !== 'undefined')
+          .flatMap(pm => {
+            // Handle comma-separated payment methods or single values
+            return typeof pm === 'string' ? pm.split(',').map(m => m.trim()) : [pm];
+          })
+          .filter(Boolean)
       ));
 
       setDestinations(prev => Array.from(new Set([...prev, ...uniqueDestinations])));
