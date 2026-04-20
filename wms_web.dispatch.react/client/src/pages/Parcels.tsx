@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Package, Search, Filter, Download, Eye, Edit, RefreshCw, Calendar, MapPin, DollarSign, User, Phone, X, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useParcelsData } from '../context/ParcelsDataContext';
 import { Card, Button, Badge, Table, FilterPanel, FilterField } from '../components/ui';
 import { VirtualScrollTable } from '../components/VirtualScrollTable';
 import { SkeletonTable } from '../components/SkeletonTable';
@@ -30,7 +31,19 @@ interface PaginationState {
 }
 
 const Parcels: React.FC = () => {
-  const [parcels, setParcels] = useState<Parcel[]>([]);
+  // Use ParcelsDataContext for caching and data management
+  const {
+    cachedData,
+    loading: cacheLoading,
+    error: cacheError,
+    getCachedParcels,
+    loadMoreParcels,
+    invalidateCache,
+    isDataFresh,
+    getDataAge,
+    hasDataInCache
+  } = useParcelsData();
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [pagination, setPagination] = useState<PaginationState>({
@@ -62,8 +75,25 @@ const Parcels: React.FC = () => {
 
   const { user, isAdmin, isBranchManager } = useAuth();
 
+  // Get parcels from cached data
+  const parcels = cachedData?.parcels || [];
+
+  // Update local pagination state when cached data changes
   useEffect(() => {
-    fetchParcels();
+    if (cachedData) {
+      setPagination({
+        currentPage: cachedData.currentPage,
+        totalPages: cachedData.totalPages,
+        totalCount: cachedData.totalCount,
+        hasMoreData: cachedData.currentPage < cachedData.totalPages,
+        isLoadingMore: false
+      });
+      setError(cacheError);
+    }
+  }, [cachedData, cacheError]);
+
+  useEffect(() => {
+    loadParcelsData();
   }, []);
 
   // Refetch data when filters change
@@ -74,7 +104,7 @@ const Parcels: React.FC = () => {
       currentPage: 1,
       isLoadingMore: false
     }));
-    fetchParcels(true);
+    loadParcelsData(true);
   }, [filters]);
 
   // Close export dropdown when clicking outside
@@ -540,178 +570,94 @@ const Parcels: React.FC = () => {
   // Legacy function for backward compatibility
   const handleExportPDF = () => handleExport('pdf');
 
-  const fetchParcels = async (forceRefresh = false, loadMore = false) => {
+  const loadParcelsData = async (forceRefresh = false) => {
     try {
-      // Clear request cache to prevent stuck requests
       if (forceRefresh) {
-        wmsApi.clearRequestCache();
+        // Invalidate cache when forcing refresh
+        invalidateCache({
+          search: filters.search,
+          status: filters.status,
+          destination: filters.destination,
+          paymentMethod: filters.paymentMethod,
+          dateRange: filters.dateRange,
+          sender: filters.sender,
+          receiver: filters.receiver,
+          clerk: filters.clerk,
+          page: 1,
+          pageSize: 200
+        });
       }
       
-      if (!loadMore) {
-        setLoading(true);
-      } else {
-        setPagination(prev => ({ ...prev, isLoadingMore: true }));
-      }
+      setLoading(true);
       setError('');
 
-      // Reset pagination if not loading more
-      const currentPage = loadMore ? pagination.currentPage + 1 : 1;
-
-      // Build search parameters from filters
-      const searchParams: any = {
-        page: currentPage,
+      // Use the context to get cached parcels
+      const result = await getCachedParcels({
+        search: filters.search,
+        status: filters.status,
+        destination: filters.destination,
+        paymentMethod: filters.paymentMethod,
+        dateRange: filters.dateRange,
+        sender: filters.sender,
+        receiver: filters.receiver,
+        clerk: filters.clerk,
+        page: 1,
         pageSize: 200
-      };
+      });
 
-      // Add filter parameters
-      if (filters.search) {
-        searchParams.search = filters.search;
-      }
-      if (filters.destination) {
-        searchParams.destination = filters.destination;
-      }
-      if (filters.status) {
-        searchParams.status = parseInt(filters.status);
-      }
-      if (filters.dateRange.from) {
-        searchParams.fromDate = filters.dateRange.from;
-      }
-      if (filters.dateRange.to) {
-        searchParams.toDate = filters.dateRange.to;
-      }
-      if (filters.clerk) {
-        searchParams.createdByUsername = filters.clerk;
-      }
-
-      // Build a comprehensive search string for fields not directly supported
-      let searchTerms = [];
-      if (filters.sender) {
-        searchTerms.push(filters.sender);
-      }
-      if (filters.receiver) {
-        searchTerms.push(filters.receiver);
-      }
-      if (filters.paymentMethod) {
-        searchTerms.push(filters.paymentMethod);
-      }
-      
-      // Combine with existing search if any
-      if (searchTerms.length > 0) {
-        const additionalSearch = searchTerms.join(' ');
-        if (searchParams.search) {
-          searchParams.search += ` ${additionalSearch}`;
-        } else {
-          searchParams.search = additionalSearch;
-        }
-      }
-
-      const result = await wmsApi.getParcelsPaged(searchParams);
-      const data = result.data;
+      const data = result.parcels;
 
       // Populate user information for parcels that don't have createdBy populated
       try {
         const users = await wmsApi.getUsers();
-
-        const updatedParcels = data.map(parcel => {
+        const userMap = new Map(users.map(u => [u.id, u]));
+        
+        data.forEach(parcel => {
           if (!parcel.createdBy && parcel.createdById) {
-            const creator = users.find(u => u.id === parcel.createdById);
-            if (creator) {
-              return {
-                ...parcel,
-                createdBy: {
-                  username: creator.firstName && creator.lastName
-                    ? `${creator.firstName} ${creator.lastName}`
-                    : creator.username
-                }
+            const user = userMap.get(parcel.createdById);
+            if (user) {
+              parcel.createdBy = {
+                id: user.id,
+                username: user.username,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                email: user.email
               };
             }
           }
-          return parcel;
         });
-
-        // Sort parcels by creation date, latest first
-        const sortedParcels = updatedParcels.sort((a, b) => {
-          const dateA = new Date(a.createdAt || 0);
-          const dateB = new Date(b.createdAt || 0);
-          return dateB.getTime() - dateA.getTime();
-        });
-
-        // Append parcels if loading more, replace if new load
-        if (loadMore) {
-          setParcels(prev => [...prev, ...sortedParcels]);
-        } else {
-          setParcels(sortedParcels);
-        }
-
-        // Update pagination state using API response
-        setPagination(prev => ({
-          ...prev,
-          totalCount: result.totalCount,
-          totalPages: result.totalPages,
-          hasMoreData: result.hasNextPage,
-          currentPage: result.page,
-          isLoadingMore: false
-        }));
-
-        // Extract unique destinations for filter dropdown
-        const destinationSet = new Set(updatedParcels.map(p => p.destination).filter(Boolean));
-        setDestinations(Array.from(destinationSet).sort());
-
-        // Extract unique clerk names for filter dropdown
-        const clerkSet = new Set(updatedParcels.map(p => p.createdBy?.username).filter(Boolean));
-        setClerks(Array.from(clerkSet).sort());
-
-        // Extract unique payment methods for filter dropdown
-        const paymentMethodSet = new Set(updatedParcels.map(p => p.paymentMethods).filter(Boolean));
-        setPaymentMethods(Array.from(paymentMethodSet).sort());
-      } catch (userErr) {
-        // Sort parcels by creation date, latest first
-        const sortedParcels = data.sort((a, b) => {
-          const dateA = new Date(a.createdAt || 0);
-          const dateB = new Date(b.createdAt || 0);
-          return dateB.getTime() - dateA.getTime();
-        });
-
-        setParcels(sortedParcels);
-
-        // Extract unique destinations even if user mapping fails
-        const destinationSet = new Set(data.map(p => p.destination).filter(Boolean));
-        setDestinations(Array.from(destinationSet).sort());
-
-        // Extract unique clerk names even if user mapping fails
-        const clerkSet = new Set(data.map(p => p.createdBy?.username).filter(Boolean));
-        setClerks(Array.from(clerkSet).sort());
-
-        // Extract unique payment methods even if user mapping fails
-        const paymentMethodSet = new Set(data.map(p => p.paymentMethods).filter(Boolean));
-        setPaymentMethods(Array.from(paymentMethodSet).sort());
-
-        // Update pagination state for fallback  
-        setPagination(prev => ({
-          ...prev,
-          totalCount: result.totalCount,
-          totalPages: result.totalPages,
-          hasMoreData: result.hasNextPage,
-          currentPage: result.page,
-          isLoadingMore: false
-        }));
+      } catch (userError) {
+        console.warn('Failed to load user data:', userError);
       }
-    } catch (err) {
-      setError('Failed to load parcels');
+
+      // Get unique values for filters from all parcels
+      const uniqueDestinations = Array.from(new Set(data.map(p => p.destination).filter(Boolean)));
+      const uniqueClerks = Array.from(new Set(data.map(p => p.createdBy?.username).filter(Boolean)));
+      const uniquePaymentMethods = Array.from(new Set(
+        data.flatMap(p => 
+          Array.isArray(p.paymentMethods) ? p.paymentMethods.map(pm => pm.method) : []
+        ).filter(Boolean)
+      ));
+
+      setDestinations(prev => Array.from(new Set([...prev, ...uniqueDestinations])));
+      setClerks(prev => Array.from(new Set([...prev, ...uniqueClerks])));
+      setPaymentMethods(prev => Array.from(new Set([...prev, ...uniquePaymentMethods])));
+
+      console.log(`Parcels: Loaded ${data.length} parcels from ${isDataFresh() ? 'cache' : 'server'} (${getDataAge()})`);
+
+    } catch (error: any) {
+      console.error('Error loading parcels:', error);
+      setError(error?.message || 'Failed to load parcels');
     } finally {
-      if (!loadMore) {
-        setLoading(false);
-      } else {
-        setPagination(prev => ({ ...prev, isLoadingMore: false }));
-      }
+      setLoading(false);
     }
   };
 
-  const handleLoadMore = useCallback(() => {
+  const handleLoadMore = useCallback(async () => {
     if (!pagination.isLoadingMore && pagination.hasMoreData) {
-      fetchParcels(false, true);
+      await loadMoreParcels();
     }
-  }, [pagination.isLoadingMore, pagination.hasMoreData]);
+  }, [pagination.isLoadingMore, pagination.hasMoreData, loadMoreParcels]);
 
   const getStatusBadge = (status: number) => {
     const statusMap = {
@@ -1060,7 +1006,7 @@ const Parcels: React.FC = () => {
           <Package className="mx-auto h-12 w-12 text-gray-400 mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Parcels</h3>
           <p className="text-gray-500 mb-4">{error}</p>
-          <Button onClick={() => fetchParcels()}>Try Again</Button>
+          <Button onClick={() => loadParcelsData()}>Try Again</Button>
         </div>
       </Card>
     );
@@ -1086,11 +1032,23 @@ const Parcels: React.FC = () => {
           </Button>
           <Button
             variant="primary"
-            onClick={() => fetchParcels(true)}
+            onClick={() => loadParcelsData(true)}
             disabled={loading}
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              const stats = wmsApi.getCacheStats();
+              console.log('Parcels Cache Debug Stats:', stats);
+              alert(`Cache Stats:\nGlobal: ${stats.globalRequests}\nNamespaces: ${stats.namespaces.length}\nActive Loads: ${stats.activeLoads.length}\nData Age: ${getDataAge()}\nSee console for details.`);
+            }}
+            disabled={loading}
+            size="sm"
+          >
+            Debug Cache
           </Button>
         </div>
       </div>

@@ -608,7 +608,7 @@ class WMSApiService {
     search?: string;
     extendedTimeout?: boolean; // Add option for longer timeout
     instanceId?: string; // Add instance ID for progressive loading isolation
-  }): Promise<{
+  }, cacheNamespace?: string): Promise<{
     data: Parcel[];
     page: number;
     pageSize: number;
@@ -616,6 +616,7 @@ class WMSApiService {
     totalPages: number;
     hasNextPage: boolean;
     hasPreviousPage: boolean;
+    currentPage: number;
   }> {
     try {
       const queryParams = new URLSearchParams();
@@ -632,34 +633,63 @@ class WMSApiService {
 
       const url = `${API_BASE_URL}/Parcels/paged?${queryParams.toString()}`;
       
-      // Enhanced request deduplication with timeout-based caching
+      // Use namespace caching if provided, otherwise fall back to legacy deduplication
+      if (cacheNamespace) {
+        const requestKey = `parcels-paged:${queryParams.toString()}`;
+        console.log(`[Cache] Using namespace ${cacheNamespace} for parcels pagination`);
+        
+        return this.deduplicateNamespaced(cacheNamespace, requestKey, async () => {
+          return this._fetchParcelsPaged(url, params);
+        });
+      }
+      
+      // Legacy deduplication for backward compatibility
       const requestKey = params.instanceId 
         ? `getParcelsPaged:${params.instanceId}:${queryParams.toString()}`
         : `getParcelsPaged:${queryParams.toString()}`;
       
       console.log(`[Debug] instanceId: ${params.instanceId}, requestKey: ${requestKey}`);
       
-      // Use longer timeout for large pages or when explicitly requested
-      const timeout = params.extendedTimeout || (params.pageSize && params.pageSize > 500) 
-        ? API_CONFIG.TIMEOUT * 3  // 45 seconds for large pages
-        : API_CONFIG.TIMEOUT;      // 15 seconds default
-      
       return await this.deduplicate(requestKey, async () => {
-        const response = await fetch(url, {
-          headers: this.getHeaders(),
-          signal: AbortSignal.timeout(timeout),
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch parcels: ${response.status}`);
-        }
-
-        return await response.json();
+        return this._fetchParcelsPaged(url, params);
       });
       
     } catch (error) {
       throw new Error(`Failed to connect to WMS API: ${error}`);
     }
+  }
+
+  private async _fetchParcelsPaged(url: string, params: any): Promise<{
+    data: Parcel[];
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+    currentPage: number;
+  }> {
+    // Use longer timeout for large pages or when explicitly requested
+    const timeout = params.extendedTimeout || (params.pageSize && params.pageSize > 500) 
+      ? API_CONFIG.TIMEOUT * 3  // 45 seconds for large pages
+      : API_CONFIG.TIMEOUT;      // 15 seconds default
+    
+    const response = await fetch(url, {
+      headers: this.getHeaders(),
+      signal: AbortSignal.timeout(timeout),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch parcels: ${response.status}`);
+    }
+
+    const result = await response.json();
+    
+    // Ensure we return currentPage for consistency with our context
+    return {
+      ...result,
+      currentPage: result.page || params.page || 1
+    };
   }
 
   // Progressive loading for complete datasets - optimized to avoid redundant count queries
