@@ -147,7 +147,7 @@ export const ParcelsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         searchParams.createdByUsername = normalizedFilters.clerk;
       }
 
-      // Build comprehensive search for additional fields
+      // Build comprehensive search for additional fields (excluding payment method)
       let searchTerms = [];
       if (normalizedFilters.sender) {
         searchTerms.push(normalizedFilters.sender);
@@ -155,10 +155,19 @@ export const ParcelsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (normalizedFilters.receiver) {
         searchTerms.push(normalizedFilters.receiver);
       }
-      if (normalizedFilters.paymentMethod) {
-        searchTerms.push(normalizedFilters.paymentMethod);
-      }
+      // Note: paymentMethod is handled separately, not as a general search term
       
+      // Handle payment method filtering specifically
+      if (normalizedFilters.paymentMethod) {
+        // For payment method, we need to search specifically in the paymentMethods field
+        const paymentMethodSearch = `paymentMethod:${normalizedFilters.paymentMethod}`;
+        if (searchParams.search) {
+          searchParams.search += ` ${paymentMethodSearch}`;
+        } else {
+          searchParams.search = paymentMethodSearch;
+        }
+      }
+
       // Combine with existing search if any
       if (searchTerms.length > 0) {
         const additionalSearch = searchTerms.join(' ');
