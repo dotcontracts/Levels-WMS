@@ -172,12 +172,9 @@ namespace wms_android.ViewModels
                     {
                         _logger.LogInformation($"Got {allSystemUsers.Count()} total users from GetAllUsersAsync");
                         
-                        // Filter for managers and admins
                         foreach (var user in allSystemUsers)
                         {
-                            var roleName = user.Role?.Name?.ToLower();
-                            if (roleName == "manager") managers.Add(user);
-                            if (roleName == "admin") adminUsers.Add(user);
+                            if (user.CanConfirm || user.Role?.CanConfirm == true) managers.Add(user);
                         }
                     }
                     else
@@ -190,8 +187,7 @@ namespace wms_android.ViewModels
                     _logger.LogError(ex, "GetAllUsersAsync failed");
                 }
                 
-                // Use the managers and adminUsers we already filtered from allSystemUsers
-                var confirmers = managers.Concat(adminUsers).ToList();
+                var confirmers = managers;
                 _logger.LogInformation($"Total confirmers from filtered users: {confirmers?.Count() ?? 0}");
                 
                 // Summary logging
@@ -379,7 +375,7 @@ namespace wms_android.ViewModels
                 }
 
                 // Check if the selected manager has permission to confirm parcels
-                if (SelectedManager?.Role?.CanConfirm != true)
+                if (SelectedManager?.CanConfirm != true && SelectedManager?.Role?.CanConfirm != true)
                 {
                     await Application.Current.MainPage.DisplayAlert("Access Denied", 
                         $"User '{SelectedManager?.Username}' doesn't have permission to confirm parcels. Please select a user with confirmation permissions.", "OK");
@@ -404,25 +400,33 @@ namespace wms_android.ViewModels
 
                 IsLoading = true;
 
-                // Update parcel status to Confirmed
+                // Update parcel status to Confirmed using the status endpoint with confirmer ID
                 foreach (var item in confirmedItems)
                 {
-                    item.Parcel.Status = ParcelStatus.Confirmed;
-                    await _parcelService.UpdateParcelAsync(item.Parcel);
+                    await _parcelService.UpdateParcelStatusAsync(item.Parcel.Id, ParcelStatus.Confirmed, SelectedManager.Id);
                 }
 
-                await Application.Current.MainPage.DisplayAlert("Success", 
-                    $"{confirmedItems.Count} parcels have been confirmed successfully by {GetUserDisplayName(SelectedManager)}", "OK");
+                var confirmerName = GetUserDisplayName(SelectedManager);
+                var confirmedCount = confirmedItems.Count;
+                _logger.LogInformation($"Confirmed {confirmedCount} parcels by verified confirmer {SelectedManager.Username}");
 
                 // Reload data to refresh the view
-                await LoadDataAsync();
+                try
+                {
+                    await LoadDataAsync();
+                }
+                catch (Exception loadEx)
+                {
+                    _logger.LogWarning(loadEx, "Failed to reload data after confirmation, but parcels were confirmed successfully");
+                }
 
-                _logger.LogInformation($"Confirmed {confirmedItems.Count} confirmed parcels by verified confirmer {SelectedManager.Username}");
+                await Application.Current.MainPage.DisplayAlert("Success",
+                    $"{confirmedCount} parcels have been confirmed successfully by {confirmerName}", "OK");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error finalizing confirmed parcels");
-                await Application.Current.MainPage.DisplayAlert("Error", "Failed to finalize parcels", "OK");
+                _logger.LogError(ex, "Error finalizing confirmed parcels: {Message}", ex.Message);
+                await Application.Current.MainPage.DisplayAlert("Error", $"Failed to finalize parcels: {ex.Message}", "OK");
             }
             finally
             {
