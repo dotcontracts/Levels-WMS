@@ -31,6 +31,7 @@ namespace wms_android.shared.Data
         public DbSet<CODCollection> CODCollections { get; set; }
         public DbSet<DailyExpense> DailyExpenses { get; set; }
         public DbSet<ChequeDeposit> ChequeDeposits { get; set; }
+        public DbSet<UserSession> UserSessions { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -683,6 +684,45 @@ namespace wms_android.shared.Data
                 entity.HasIndex(cd => cd.ChequeNumber)
                     .IsUnique()
                     .HasDatabaseName("IX_ChequeDeposits_ChequeNumber_Unique");
+            });
+
+            // Configure UserSession entity
+            modelBuilder.Entity<UserSession>(entity =>
+            {
+                entity.HasKey(e => e.SessionId);
+                entity.Property(e => e.SessionId).IsRequired().HasMaxLength(50);
+                entity.Property(e => e.Username).IsRequired().HasMaxLength(100);
+                entity.Property(e => e.DeviceInfo).IsRequired().HasMaxLength(500);
+                entity.Property(e => e.ClientType).IsRequired().HasMaxLength(20);
+                entity.Property(e => e.IPAddress).HasMaxLength(45); // IPv6 support
+                entity.Property(e => e.UserAgent).HasMaxLength(1000);
+                entity.Property(e => e.RevokedReason).HasMaxLength(200);
+                entity.Property(e => e.CreatedAt).HasColumnType("timestamp with time zone");
+                entity.Property(e => e.LastActivityAt).HasColumnType("timestamp with time zone");
+                entity.Property(e => e.ExpiresAt).HasColumnType("timestamp with time zone");
+                entity.Property(e => e.RevokedAt).HasColumnType("timestamp with time zone");
+
+                // Configure relationship with User
+                entity.HasOne(s => s.User)
+                    .WithMany()
+                    .HasForeignKey(s => s.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // Create indexes for performance
+                entity.HasIndex(s => s.UserId)
+                    .HasDatabaseName("IX_UserSessions_UserId");
+                
+                entity.HasIndex(s => s.ExpiresAt)
+                    .HasDatabaseName("IX_UserSessions_ExpiresAt");
+                
+                entity.HasIndex(s => s.IsActive)
+                    .HasDatabaseName("IX_UserSessions_IsActive");
+                
+                entity.HasIndex(s => new { s.UserId, s.IsActive })
+                    .HasDatabaseName("IX_UserSessions_UserId_IsActive");
+                
+                entity.HasIndex(s => new { s.IsActive, s.ExpiresAt })
+                    .HasDatabaseName("IX_UserSessions_IsActive_ExpiresAt");
             });
         }
 
