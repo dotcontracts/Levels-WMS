@@ -8,7 +8,9 @@ using wms_android.shared.Interfaces;
 using wms_android.shared.Models;
 using Microsoft.AspNetCore.Authorization;
 using System;
-using Microsoft.AspNetCore.OutputCaching;
+using wms_android.cache;
+using wms_android.cache.Interfaces;
+using wms_android.api.Services;
 
 namespace wms_android.api.Controllers
 {
@@ -18,89 +20,81 @@ namespace wms_android.api.Controllers
     {
         private readonly IUserService _userService;
         private readonly AppDbContext _context;
+        private readonly ICacheService _cache;
+        private readonly ICacheInvalidationService _cacheInvalidation;
 
-        public UsersController(IUserService userService, AppDbContext context)
+        public UsersController(IUserService userService, AppDbContext context, ICacheService cache, ICacheInvalidationService cacheInvalidation)
         {
             _userService = userService;
             _context = context;
+            _cache = cache;
+            _cacheInvalidation = cacheInvalidation;
         }
 
         // GET: api/Users
         [HttpGet]
-        [AllowAnonymous] // For testing; consider adding authorization in production
-        [OutputCache(PolicyName = "Users")]
-        public async Task<ActionResult<IEnumerable<dynamic>>> GetUsers()
+        [AllowAnonymous]
+        public async Task<ActionResult<IEnumerable<UserListItemDto>>> GetUsers()
         {
             try
             {
-                // Get all users with their roles and branches in a single efficient query
-                var users = await _context.Users
-                    .AsNoTracking()
-                    .Include(u => u.Role)
-                    .ToListAsync();
-                
-                // Get all branches at once to avoid N+1 queries
-                var branches = await _context.Branches
-                    .AsNoTracking()
-                    .ToDictionaryAsync(b => b.Id, b => b);
-                
-                // Format the response with branch information
-                var formattedUsers = new List<dynamic>();
-                
-                foreach (var user in users)
-                {
-                    // Get branch information from preloaded dictionary
-                    var branchInfo = new
+                var cached = await _cache.GetOrSetAsync(
+                    CacheKeys.Users.All(),
+                    async () =>
                     {
-                        Id = (int?)null,
-                        Name = (string?)null,
-                        Address = (string?)null,
-                        Phone = (string?)null,
-                        Email = (string?)null
-                    };
-                    
-                    try
-                    {
-                        // Get branch information if BranchId is set
-                        if (user.BranchId.HasValue && branches.ContainsKey(user.BranchId.Value))
-                        {
-                            var branch = branches[user.BranchId.Value];
-                            branchInfo = new
-                            {
-                                Id = (int?)branch.Id,
-                                Name = branch.Name,
-                                Address = branch.Address,
-                                Phone = branch.Phone,
-                                Email = branch.Email
-                            };
-                        }
-                    }
-                    catch (Exception branchEx)
-                    {
-                        // Log the branch error but continue with user data
-                        Console.WriteLine($"Error fetching branch for user {user.Id}: {branchEx.Message}");
-                    }
-                    
-                    formattedUsers.Add(new
-                    {
-                        user.Id,
-                        user.Username,
-                        user.Email,
-                        user.FirstName,
-                        user.LastName,
-                        user.CreatedAt,
-                        user.IsActive,
-                        Role = new
-                        {
-                            user.Role.Id,
-                            user.Role.Name,
-                            user.Role.Description
-                        },
-                        Branch = branchInfo
-                    });
-                }
+                        var users = await _context.Users
+                            .AsNoTracking()
+                            .Include(u => u.Role)
+                            .ToListAsync();
 
-                return Ok(formattedUsers);
+                        var branches = await _context.Branches
+                            .AsNoTracking()
+                            .ToDictionaryAsync(b => b.Id, b => b);
+
+                        var result = new List<UserListItemDto>();
+                        foreach (var user in users)
+                        {
+                            UserBranchDto? branchDto = null;
+                            if (user.BranchId.HasValue && branches.TryGetValue(user.BranchId.Value, out var branch))
+                            {
+                                branchDto = new UserBranchDto
+                                {
+                                    Id = branch.Id,
+                                    Name = branch.Name,
+                                    Address = branch.Address,
+                                    Phone = branch.Phone,
+                                    Email = branch.Email
+                                };
+                            }
+
+                            result.Add(new UserListItemDto
+                            {
+                                Id = user.Id,
+                                Username = user.Username,
+                                Email = user.Email,
+                                FirstName = user.FirstName,
+                                LastName = user.LastName,
+                                CreatedAt = user.CreatedAt,
+                                IsActive = user.IsActive,
+                                CanConfirm = user.CanConfirm,
+                                CanDispatch = user.CanDispatch,
+                                Role = new UserRoleDto
+                                {
+                                    Id = user.Role.Id,
+                                    Name = user.Role.Name,
+                                    Description = user.Role.Description,
+                                    CanConfirm = user.Role.CanConfirm,
+                                    CanDispatch = user.Role.CanDispatch
+                                },
+                                Branch = branchDto
+                            });
+                        }
+                        return new UserListWrapper { Users = result };
+                    },
+                    TimeSpan.FromHours(1),
+                    new[] { CacheTags.Users, CacheTags.Branches });
+
+                return Ok(cached.Users);
             }
             catch (Exception ex)
             {
@@ -171,11 +165,16 @@ namespace wms_android.api.Controllers
                     user.FirstName,
                     user.LastName,
                     user.CreatedAt,
+                    user.IsActive,
+                    user.CanConfirm,
+                    user.CanDispatch,
                     Role = new
                     {
                         user.Role.Id,
                         user.Role.Name,
-                        user.Role.Description
+                        user.Role.Description,
+                        user.Role.CanConfirm,
+                        user.Role.CanDispatch
                     },
                     Branch = branchInfo
                 };
@@ -283,92 +282,70 @@ namespace wms_android.api.Controllers
 
         // GET: api/Users/username/{username}
         [HttpGet("username/{username}")]
-        [AllowAnonymous] // For testing; consider adding authorization in production
-        public async Task<ActionResult<dynamic>> GetUserByUsername(string username)
+        [AllowAnonymous]
+        public async Task<ActionResult<UserProfileDto>> GetUserByUsername(string username)
         {
             try
             {
-                Console.WriteLine($"[UsersController] Getting user by username: '{username}'");
-                
-                // Get user by username
-                var user = await _context.Users
-                    .Include(u => u.Role)
-                    .FirstOrDefaultAsync(u => u.Username == username);
-
-                if (user == null)
-                {
-                    Console.WriteLine($"[UsersController] User '{username}' not found");
-                    return NotFound(new { message = $"User with username '{username}' not found" });
-                }
-
-                Console.WriteLine($"[UsersController] User found - ID: {user.Id}, Username: {user.Username}, RoleId: {user.RoleId}");
-                Console.WriteLine($"[UsersController] Role object: {(user.Role != null ? $"Role ID: {user.Role.Id}, Name: '{user.Role.Name}'" : "null")}");
-                
-                // If role is null but RoleId is set, there might be a database issue
-                if (user.Role == null && user.RoleId != 0)
-                {
-                    Console.WriteLine($"[UsersController] WARNING: User has RoleId {user.RoleId} but Role is null - checking database...");
-                    var roleExists = await _context.Roles.AnyAsync(r => r.Id == user.RoleId);
-                    Console.WriteLine($"[UsersController] Role with ID {user.RoleId} exists in database: {roleExists}");
-                }
-
-                // Get branch information if available
-                var branchInfo = new
-                {
-                    Id = (int?)null,
-                    Name = (string?)null,
-                    Address = (string?)null,
-                    Phone = (string?)null,
-                    Email = (string?)null
-                };
-
-                try
-                {
-                    if (user.BranchId.HasValue)
+                var cached = await _cache.GetOrSetAsync(
+                    CacheKeys.Users.ByUsername(username),
+                    async () =>
                     {
-                        var branch = await _context.Branches
-                            .FirstOrDefaultAsync(b => b.Id == user.BranchId.Value);
+                        var user = await _context.Users
+                            .AsNoTracking()
+                            .Include(u => u.Role)
+                            .FirstOrDefaultAsync(u => u.Username == username);
 
-                        if (branch != null)
+                        if (user == null)
+                            return null!;
+
+                        UserBranchDto? branchDto = null;
+                        if (user.BranchId.HasValue)
                         {
-                            branchInfo = new
-                            {
-                                Id = (int?)branch.Id,
-                                Name = branch.Name,
-                                Address = branch.Address,
-                                Phone = branch.Phone,
-                                Email = branch.Email
-                            };
+                            var branch = await _context.Branches
+                                .AsNoTracking()
+                                .FirstOrDefaultAsync(b => b.Id == user.BranchId.Value);
+                            if (branch != null)
+                                branchDto = new UserBranchDto
+                                {
+                                    Id = branch.Id,
+                                    Name = branch.Name,
+                                    Address = branch.Address,
+                                    Phone = branch.Phone,
+                                    Email = branch.Email
+                                };
                         }
-                    }
-                }
-                catch
-                {
-                    // Ignore branch lookup errors
-                }
 
-                // Format the response - match the User model structure expected by the client
-                var result = new
-                {
-                    id = user.Id,
-                    username = user.Username,
-                    firstName = user.FirstName,
-                    lastName = user.LastName,
-                    email = user.Email,
-                    isActive = user.IsActive,
-                    roleId = user.RoleId,
-                    role = user.Role != null ? new
-                    {
-                        id = user.Role.Id,
-                        name = user.Role.Name,
-                        description = user.Role.Description
-                    } : null,
-                    branchId = user.BranchId,
-                    branch = branchInfo
-                };
+                        return new UserProfileDto
+                        {
+                            Id = user.Id,
+                            Username = user.Username,
+                            FirstName = user.FirstName,
+                            LastName = user.LastName,
+                            Email = user.Email,
+                            IsActive = user.IsActive,
+                            CanConfirm = user.CanConfirm,
+                            CanDispatch = user.CanDispatch,
+                            RoleId = user.RoleId,
+                            BranchId = user.BranchId,
+                            Role = user.Role != null ? new UserRoleDto
+                            {
+                                Id = user.Role.Id,
+                                Name = user.Role.Name,
+                                Description = user.Role.Description,
+                                CanConfirm = user.Role.CanConfirm,
+                                CanDispatch = user.Role.CanDispatch
+                            } : null,
+                            Branch = branchDto
+                        };
+                    },
+                    TimeSpan.FromHours(1),
+                    new[] { CacheTags.Users });
 
-                Console.WriteLine($"[UsersController] Returning result with role: {(result.role != null ? $"ID: {result.role.id}, Name: '{result.role.name}'" : "null")}");
-                return Ok(result);
+                if (cached == null)
+                    return NotFound(new { message = $"User with username '{username}' not found" });
+
+                return Ok(cached);
             }
             catch (Exception ex)
             {
@@ -555,6 +532,7 @@ namespace wms_android.api.Controllers
 
                 await _context.Users.AddAsync(user);
                 await _context.SaveChangesAsync();
+                await _cacheInvalidation.InvalidateUsersCache();
 
                 return CreatedAtAction(nameof(GetUser), new { id = user.Id }, user);
             }
@@ -588,8 +566,10 @@ namespace wms_android.api.Controllers
                 existingUser.FirstName = userDto.FirstName;
                 existingUser.LastName = userDto.LastName;
                 existingUser.RoleId = userDto.RoleId;
-                existingUser.BranchId = userDto.BranchId > 0 ? userDto.BranchId : (int?)null; // Update branch assignment
+                existingUser.BranchId = userDto.BranchId > 0 ? userDto.BranchId : (int?)null;
                 existingUser.IsActive = userDto.IsActive;
+                existingUser.CanConfirm = userDto.CanConfirm;
+                existingUser.CanDispatch = userDto.CanDispatch;
 
                 // If password is provided, update it
                 if (!string.IsNullOrEmpty(userDto.Password))
@@ -601,6 +581,7 @@ namespace wms_android.api.Controllers
                 }
 
                 await _userService.UpdateUserAsync(existingUser);
+                await _cacheInvalidation.InvalidateUsersCache();
                 return NoContent();
             }
             catch (Exception ex)
@@ -754,10 +735,66 @@ namespace wms_android.api.Controllers
         public int RoleId { get; set; }
         public int BranchId { get; set; }
         public bool IsActive { get; set; } = true;
+        public bool CanConfirm { get; set; } = false;
+        public bool CanDispatch { get; set; } = false;
     }
 
     public class ChangePasswordDto
     {
         public string? NewPassword { get; set; }
+    }
+
+    public class UserRoleDto
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public bool CanConfirm { get; set; }
+        public bool CanDispatch { get; set; }
+    }
+
+    public class UserBranchDto
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string? Address { get; set; }
+        public string? Phone { get; set; }
+        public string? Email { get; set; }
+    }
+
+    public class UserListItemDto
+    {
+        public int Id { get; set; }
+        public string Username { get; set; } = string.Empty;
+        public string? Email { get; set; }
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public bool IsActive { get; set; }
+        public bool CanConfirm { get; set; }
+        public bool CanDispatch { get; set; }
+        public UserRoleDto Role { get; set; } = new();
+        public UserBranchDto? Branch { get; set; }
+    }
+
+    public class UserListWrapper
+    {
+        public List<UserListItemDto> Users { get; set; } = new();
+    }
+
+    public class UserProfileDto
+    {
+        public int Id { get; set; }
+        public string Username { get; set; } = string.Empty;
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Email { get; set; }
+        public bool IsActive { get; set; }
+        public bool CanConfirm { get; set; }
+        public bool CanDispatch { get; set; }
+        public int RoleId { get; set; }
+        public int? BranchId { get; set; }
+        public UserRoleDto? Role { get; set; }
+        public UserBranchDto? Branch { get; set; }
     }
 } 
