@@ -38,6 +38,8 @@ interface User {
   roles: string[];
   branch?: string;
   isActive: boolean;
+  canConfirm: boolean;
+  canDispatch: boolean;
   lastLogin?: string;
   dateJoined?: string;
   phoneNumber?: string;
@@ -115,9 +117,8 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({
         branch: editUser.branch || '',
         phoneNumber: editUser.phoneNumber || '',
         isActive: editUser.isActive,
-        // For now, set default permissions - you can enhance this to load from API
-        canConfirm: (editUser.role as any)?.canConfirm || false,
-        canDispatch: (editUser.role as any)?.canDispatch || false
+        canConfirm: editUser.canConfirm || false,
+        canDispatch: editUser.canDispatch || false
       });
     } else {
       setFormData({
@@ -482,6 +483,8 @@ const UserManagement: React.FC = () => {
         roles: ['Admin'],
         branch: '',
         isActive: true,
+        canConfirm: false,
+        canDispatch: false,
         lastLogin: new Date().toISOString(),
         dateJoined: '2023-01-01T00:00:00Z',
         phoneNumber: '+254700000001'
@@ -496,6 +499,8 @@ const UserManagement: React.FC = () => {
         roles: ['Manager'],
         branch: 'Nairobi',
         isActive: true,
+        canConfirm: false,
+        canDispatch: false,
         lastLogin: new Date(Date.now() - 86400000).toISOString(),
         dateJoined: '2023-02-15T00:00:00Z',
         phoneNumber: '+254700000002'
@@ -510,6 +515,8 @@ const UserManagement: React.FC = () => {
         roles: ['Manager'],
         branch: 'Mombasa',
         isActive: true,
+        canConfirm: false,
+        canDispatch: false,
         lastLogin: new Date(Date.now() - 172800000).toISOString(),
         dateJoined: '2023-03-01T00:00:00Z',
         phoneNumber: '+254700000003'
@@ -524,6 +531,8 @@ const UserManagement: React.FC = () => {
         roles: ['Clerk'],
         branch: 'Nairobi',
         isActive: true,
+        canConfirm: false,
+        canDispatch: false,
         lastLogin: new Date(Date.now() - 43200000).toISOString(),
         dateJoined: '2023-04-10T00:00:00Z',
         phoneNumber: '+254700000004'
@@ -538,6 +547,8 @@ const UserManagement: React.FC = () => {
         roles: ['Driver'],
         branch: 'Mombasa',
         isActive: false,
+        canConfirm: false,
+        canDispatch: false,
         lastLogin: new Date(Date.now() - 604800000).toISOString(),
         dateJoined: '2023-05-20T00:00:00Z',
         phoneNumber: '+254700000005'
@@ -578,10 +589,12 @@ const UserManagement: React.FC = () => {
         lastName: user.lastName,
         role: user.roles?.[0] || user.role?.name || 'Employee',
         roles: user.roles || (user.role?.name ? [user.role.name] : ['Employee']),
-        branch: typeof user.branch === 'string' ? user.branch : user.branch?.name || undefined, // Use branch name from API
-        isActive: user.isActive !== undefined ? user.isActive : true, // Use backend isActive value
+        branch: typeof user.branch === 'string' ? user.branch : user.branch?.name || undefined,
+        isActive: user.isActive !== undefined ? user.isActive : true,
+        canConfirm: user.canConfirm || user.role?.canConfirm || false,
+        canDispatch: user.canDispatch || user.role?.canDispatch || false,
         dateJoined: user.createdAt || new Date().toISOString(),
-        lastLogin: undefined // API doesn't provide this
+        lastLogin: undefined
       }));
       
       setUsers(transformedUsers);
@@ -631,7 +644,9 @@ const UserManagement: React.FC = () => {
           lastName: formData.lastName,
           roleId: getRoleId(formData.role),
           branchId: getBranchId(formData.branch),
-          isActive: formData.isActive
+          isActive: formData.isActive,
+          canConfirm: formData.canConfirm,
+          canDispatch: formData.canDispatch
         });
         setSuccessMessage('User updated successfully');
       } else {

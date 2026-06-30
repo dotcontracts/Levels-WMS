@@ -74,6 +74,8 @@ export interface User {
   role?: {
     id: number;
     name: string;
+    canConfirm?: boolean;
+    canDispatch?: boolean;
   };
   branch?: {
     id: number;
@@ -83,6 +85,8 @@ export interface User {
   branchId?: number;
   roleId?: number;
   isActive?: boolean;
+  canConfirm?: boolean;
+  canDispatch?: boolean;
 }
 
 export interface ParcelDepositDto {
@@ -390,11 +394,7 @@ class WMSApiService {
   private requestCache: Map<string, Promise<any>> = new Map();
   private cacheTimeout: Map<string, number> = new Map();
   private readonly CACHE_DURATION = 30000; // 30 second cache for duplicate requests
-  private activeProgressiveLoads: Set<string> = new Set(); // Track active progressive loading calls
-  
-  // Namespace-specific caches for better isolation
-  private namespacedCaches: Map<string, Map<string, Promise<any>>> = new Map();
-  private namespacedTimeouts: Map<string, Map<string, number>> = new Map();
+  private activeProgressiveLoads: Set<string> = new Set();
   
   // Generate cache key from filters for consistent cache sharing
   private generateCacheKey(filters: any): string {
@@ -418,101 +418,12 @@ class WMSApiService {
     return getAuthHeaders();
   }
 
-  // Public method to clear request cache
   public clearRequestCache(): void {
-    console.log('[Deduplication] Clearing request cache');
     this.requestCache.clear();
     this.cacheTimeout.clear();
   }
-  
-  // Namespace-specific cache management
-  private getNamespacedCache(namespace: string): Map<string, Promise<any>> {
-    if (!this.namespacedCaches.has(namespace)) {
-      this.namespacedCaches.set(namespace, new Map());
-      this.namespacedTimeouts.set(namespace, new Map());
-    }
-    return this.namespacedCaches.get(namespace)!;
-  }
-  
-  private getNamespacedTimeout(namespace: string): Map<string, number> {
-    if (!this.namespacedTimeouts.has(namespace)) {
-      this.namespacedTimeouts.set(namespace, new Map());
-    }
-    return this.namespacedTimeouts.get(namespace)!;
-  }
-  
-  public clearNamespacedCache(namespace: string): void {
-    console.log(`[Deduplication] Clearing cache for namespace: ${namespace}`);
-    this.namespacedCaches.delete(namespace);
-    this.namespacedTimeouts.delete(namespace);
-  }
-  
-  // Debug method to get cache statistics
-  public getCacheStats(): {
-    globalRequests: number;
-    namespaces: string[];
-    namespacedRequests: { [namespace: string]: number };
-    activeLoads: string[];
-  } {
-    const namespacedRequests: { [namespace: string]: number } = {};
-    this.namespacedCaches.forEach((cache, namespace) => {
-      namespacedRequests[namespace] = cache.size;
-    });
-    
-    return {
-      globalRequests: this.requestCache.size,
-      namespaces: Array.from(this.namespacedCaches.keys()),
-      namespacedRequests,
-      activeLoads: Array.from(this.activeProgressiveLoads)
-    };
-  }
 
-  // Namespace-aware deduplication helper
-  private async deduplicateNamespaced<T>(
-    namespace: string, 
-    key: string, 
-    requestFn: () => Promise<T>
-  ): Promise<T> {
-    const cache = this.getNamespacedCache(namespace);
-    const timeouts = this.getNamespacedTimeout(namespace);
-    
-    // Clean up expired cache entries for this namespace
-    const now = Date.now();
-    const expiredKeys: string[] = [];
-    timeouts.forEach((expiry, cacheKey) => {
-      if (now > expiry) {
-        expiredKeys.push(cacheKey);
-      }
-    });
-    expiredKeys.forEach(cacheKey => {
-      cache.delete(cacheKey);
-      timeouts.delete(cacheKey);
-    });
-
-    // Check if we already have this request in flight for this namespace
-    if (cache.has(key)) {
-      console.log(`[Deduplication] Reusing existing request for namespace ${namespace}: ${key}`);
-      return cache.get(key) as Promise<T>;
-    }
-
-    // Create new request and cache it in the namespace
-    console.log(`[Deduplication] Creating new request for namespace ${namespace}: ${key}`);
-    const promise = requestFn();
-    cache.set(key, promise);
-    timeouts.set(key, now + this.CACHE_DURATION);
-
-    // Clean up when request completes
-    promise.finally(() => {
-      setTimeout(() => {
-        cache.delete(key);
-        timeouts.delete(key);
-      }, this.CACHE_DURATION);
-    });
-
-    return promise;
-  }
-
-  // Request deduplication helper (legacy for backward compatibility)
+  // Request deduplication helper
   private async deduplicate<T>(key: string, requestFn: () => Promise<T>): Promise<T> {
     // Clean up expired cache entries
     const now = Date.now();
@@ -608,7 +519,7 @@ class WMSApiService {
     search?: string;
     extendedTimeout?: boolean; // Add option for longer timeout
     instanceId?: string; // Add instance ID for progressive loading isolation
-  }, cacheNamespace?: string): Promise<{
+  }): Promise<{
     data: Parcel[];
     page: number;
     pageSize: number;
@@ -633,22 +544,9 @@ class WMSApiService {
 
       const url = `${API_BASE_URL}/Parcels/paged?${queryParams.toString()}`;
       
-      // Use namespace caching if provided, otherwise fall back to legacy deduplication
-      if (cacheNamespace) {
-        const requestKey = `parcels-paged:${queryParams.toString()}`;
-        console.log(`[Cache] Using namespace ${cacheNamespace} for parcels pagination`);
-        
-        return this.deduplicateNamespaced(cacheNamespace, requestKey, async () => {
-          return this._fetchParcelsPaged(url, params);
-        });
-      }
-      
-      // Legacy deduplication for backward compatibility
       const requestKey = params.instanceId 
         ? `getParcelsPaged:${params.instanceId}:${queryParams.toString()}`
         : `getParcelsPaged:${queryParams.toString()}`;
-      
-      console.log(`[Debug] instanceId: ${params.instanceId}, requestKey: ${requestKey}`);
       
       return await this.deduplicate(requestKey, async () => {
         return this._fetchParcelsPaged(url, params);
@@ -700,53 +598,21 @@ class WMSApiService {
     fields?: string[];
     destination?: string;
     search?: string;
-    cacheNamespace?: string;
   } = {}): Promise<Parcel[]> {
     const {
       onProgress,
-      chunkSize = 1000, // Larger default chunk size for better performance
+      chunkSize = 1000,
       dateRange,
       fields,
       destination,
       search,
-      cacheNamespace
     } = options;
 
-    // Generate unique instance ID for this call, using namespace when available
-    const instanceId = cacheNamespace || `instance_${Math.random().toString(36).substr(2, 9)}`;
-    const loadKey = `getAllParcelsProgressively:${cacheNamespace ? cacheNamespace : 'legacy'}:${instanceId}`;
+    const instanceId = `instance_${Math.random().toString(36).substr(2, 9)}`;
+    const loadKey = `getAllParcelsProgressively:${instanceId}`;
 
     try {
       console.log(`[Performance] Starting parallel data loading with chunk size ${chunkSize} (instance: ${instanceId})`);
-      
-      // Handle concurrent load detection with improved namespace isolation
-      if (cacheNamespace) {
-        console.log(`[Performance] Using isolated cache namespace: ${cacheNamespace}`);
-        // Check for concurrent loads within the same namespace only
-        const namespaceActiveLoads = Array.from(this.activeProgressiveLoads)
-          .filter(key => key.includes(cacheNamespace));
-        
-        if (namespaceActiveLoads.length > 1) {
-          console.log(`[Performance] Multiple loads detected in namespace ${cacheNamespace}, but allowing concurrent execution`);
-        }
-        
-        // Only clear the specific namespace cache if there are issues, not global cache
-        // This prevents interference between different report modules
-      } else {
-        // Legacy behavior for non-namespaced requests
-        console.log(`[Performance] Non-namespaced request detected, using fallback cache isolation (instance: ${instanceId})`);
-        
-        // Only clear cache if we detect interference patterns, not by default
-        const similarActiveLoad = Array.from(this.activeProgressiveLoads).find(key => 
-          key.startsWith('getAllParcelsProgressively:') && !key.endsWith(instanceId) && !key.includes('reports:')
-        );
-        
-        if (similarActiveLoad) {
-          console.log(`[Performance] Detected potential interference, clearing global cache (instance: ${instanceId})`);
-          this.requestCache.clear();
-          this.cacheTimeout.clear();
-        }
-      }
       
       // Register this active load
       this.activeProgressiveLoads.add(loadKey);
@@ -949,42 +815,33 @@ class WMSApiService {
     destination?: string;
     search?: string;
   } = {}): Promise<Parcel[]> {
-    // Generate cache namespace and key based on filters
     const cacheKey = this.generateCacheKey(filters);
-    const namespace = `reports:${cacheKey}`;
-    const requestKey = 'parcels';
-    
-    console.log(`[Cache] Using namespace: ${namespace} for reports data`);
-    
-    // Use namespaced deduplication to prevent cache interference
-    return this.deduplicateNamespaced(namespace, requestKey, async () => {
+    const requestKey = `reports:parcels:${cacheKey}`;
+
+    return this.deduplicate(requestKey, async () => {
       try {
         const dateRange = filters.startDate && filters.endDate 
           ? { from: filters.startDate, to: filters.endDate }
           : undefined;
 
-        console.log(`[Cache] Fetching fresh data for namespace: ${namespace}`);
         return await this.getAllParcelsProgressively({
           dateRange,
           destination: filters.destination,
           search: filters.search,
-          chunkSize: 1200, // Larger chunks for better parallel performance
-          cacheNamespace: namespace // Pass namespace for progressive loading isolation
+          chunkSize: 1200,
         });
       } catch (error) {
         console.warn('Failed to load reports data progressively, falling back to direct pagination');
-        // Fallback to direct pagination with optimized page size
         try {
           const response = await this.getParcelsPaged({
             page: 1,
-            pageSize: 2000, // Much larger fallback page size
+            pageSize: 2000,
             ...(filters.startDate && filters.endDate && { 
               fromDate: filters.startDate, 
               toDate: filters.endDate 
             }),
             ...(filters.destination && { destination: filters.destination }),
             ...(filters.search && { search: filters.search }),
-            instanceId: namespace // Use namespace as instance ID
           });
           return response.data;
         } catch (fallbackError) {
@@ -1407,18 +1264,7 @@ class WMSApiService {
   }
 
   // Dispatches API methods
-  async getDispatches(branchName?: string, cacheNamespace?: string): Promise<Dispatch[]> {
-    // If we have a cache namespace, use it for deduplication
-    if (cacheNamespace) {
-      const requestKey = `dispatches:${branchName || 'all'}`;
-      console.log(`[Cache] Using namespace ${cacheNamespace} for dispatches`);
-      
-      return this.deduplicateNamespaced(cacheNamespace, requestKey, async () => {
-        return this._fetchDispatches(branchName);
-      });
-    }
-    
-    // Fallback to direct fetch for backward compatibility
+  async getDispatches(branchName?: string): Promise<Dispatch[]> {
     return this._fetchDispatches(branchName);
   }
   
@@ -1577,7 +1423,7 @@ class WMSApiService {
       // Transform API data to match our User interface
       const transformedUsers = users.map((user: any) => {
         const transformedUser = {
-          id: user.id, // Use lowercase id from API
+          id: user.id,
           username: user.username || '',
           email: user.email,
           firstName: user.firstName,
@@ -1585,8 +1431,10 @@ class WMSApiService {
           roles: user.role?.name ? [user.role.name] : ['User'],
           role: user.role ? {
             id: user.role.id,
-            name: user.role.name
-          } : { id: 0, name: 'User' },
+            name: user.role.name,
+            canConfirm: user.role.canConfirm || false,
+            canDispatch: user.role.canDispatch || false
+          } : { id: 0, name: 'User', canConfirm: false, canDispatch: false },
           branch: user.branch ? {
             id: user.branch.id,
             name: user.branch.name
@@ -1594,7 +1442,9 @@ class WMSApiService {
           branchId: user.branch?.id,
           roleId: user.role?.id,
           createdAt: user.createdAt,
-          isActive: user.isActive !== undefined ? user.isActive : true // Use backend isActive value
+          isActive: user.isActive !== undefined ? user.isActive : true,
+          canConfirm: user.canConfirm || false,
+          canDispatch: user.canDispatch || false
         };
         
         console.log(`getUsers - Transformed user ${user.id}:`, transformedUser);
@@ -1645,6 +1495,8 @@ class WMSApiService {
     roleId?: number;
     branchId?: number;
     isActive?: boolean;
+    canConfirm?: boolean;
+    canDispatch?: boolean;
   }): Promise<void> {
     try {
       const response = await fetch(`${API_BASE_URL}/Users/${userId}`, {
