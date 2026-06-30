@@ -5,8 +5,9 @@ using wms_android.shared.Services;
 using Newtonsoft.Json;
 using Microsoft.EntityFrameworkCore;
 using wms_android.shared.Data;
-using Microsoft.AspNetCore.OutputCaching;
-using Microsoft.Extensions.Caching.Memory;
+using wms_android.cache;
+using wms_android.cache.Interfaces;
+using wms_android.api.Services;
 
 namespace wms_android.api.Controllers
 {
@@ -16,7 +17,8 @@ namespace wms_android.api.Controllers
     {
         private readonly IParcelService _parcelService;
         private readonly AppDbContext _context;
-        private readonly IMemoryCache _cache;
+        private readonly ICacheService _cache;
+        private readonly ICacheInvalidationService _cacheInvalidation;
 
         // Compiled queries for better performance
         private static readonly Func<AppDbContext, string, int, int, IAsyncEnumerable<Parcel>> 
@@ -36,11 +38,12 @@ namespace wms_android.api.Controllers
                         .Skip(skip)
                         .Take(take));
 
-        public ParcelsController(IParcelService parcelService, AppDbContext context, IMemoryCache cache)
+        public ParcelsController(IParcelService parcelService, AppDbContext context, ICacheService cache, ICacheInvalidationService cacheInvalidation)
         {
             _parcelService = parcelService;
             _context = context;
             _cache = cache;
+            _cacheInvalidation = cacheInvalidation;
         }
 
         [HttpGet]
@@ -82,7 +85,6 @@ namespace wms_android.api.Controllers
         /// Enhanced paginated endpoint with efficient database-level filtering and caching
         /// </summary>
         [HttpGet("paged")]
-        [OutputCache(PolicyName = "Parcels")]
         public async Task<IActionResult> GetParcelsPaged(
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 50,
@@ -159,55 +161,56 @@ namespace wms_android.api.Controllers
                         p.SenderTelephone.Contains(search));
                 }
 
-                // Generate cache key for count query to avoid repeated expensive counts
-                var countCacheKey = $"parcel_count_{destination}_{status}_{statuses}_{fromDate?.ToString("yyyyMMdd")}_{toDate?.ToString("yyyyMMdd")}_{createdByUsername}_{search}";
-                
-                // Try to get count from cache first
-                var totalCount = await _cache.GetOrCreateAsync(countCacheKey, async entry =>
+                var pageCacheKey = CacheKeys.Parcels.Paged(page, pageSize, destination, (int?)status, search, fromDate?.ToString("yyyyMMdd"), toDate?.ToString("yyyyMMdd"), createdByUsername);
+                var countCacheKey = pageCacheKey + ":count";
+
+                var totalCount = await _cache.GetOrSetAsync(countCacheKey, async () =>
                 {
-                    entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(2);
-                    entry.SetSize(1);
-                    return await query.CountAsync();
-                });
+                    var c = await query.CountAsync();
+                    return new CountWrapper { Value = c };
+                }, TimeSpan.FromMinutes(5), new[] { CacheTags.Parcels });
+                var totalCountValue = totalCount.Value;
 
-                var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+                var totalPages = (int)Math.Ceiling((double)totalCountValue / pageSize);
 
-                // Apply pagination and ordering with optimized query
-                var parcels = await query
-                    .OrderByDescending(p => p.CreatedAt)
-                    .Skip((page - 1) * pageSize)
-                    .Take(pageSize)
-                    .Select(p => new Parcel // Project only needed fields for better performance
-                    {
-                        Id = p.Id,
-                        WaybillNumber = p.WaybillNumber,
-                        Sender = p.Sender,
-                        Receiver = p.Receiver,
-                        Destination = p.Destination,
-                        Status = p.Status,
-                        TotalAmount = p.TotalAmount,
-                        CreatedAt = p.CreatedAt,
-                        CreatedById = p.CreatedById,
-                        CreatedBy = p.CreatedBy,
-                        DispatchedAt = p.DispatchedAt,
-                        SenderTelephone = p.SenderTelephone,
-                        ReceiverTelephone = p.ReceiverTelephone,
-                        PaymentMethods = p.PaymentMethods // Added for financial reports
-                    })
-                    .ToListAsync();
+                var pagedResult = await _cache.GetOrSetAsync(pageCacheKey, async () =>
+                {
+                    var parcels = await query
+                        .OrderByDescending(p => p.CreatedAt)
+                        .Skip((page - 1) * pageSize)
+                        .Take(pageSize)
+                        .Select(p => new Parcel
+                        {
+                            Id = p.Id,
+                            WaybillNumber = p.WaybillNumber,
+                            Sender = p.Sender,
+                            Receiver = p.Receiver,
+                            Destination = p.Destination,
+                            Status = p.Status,
+                            TotalAmount = p.TotalAmount,
+                            CreatedAt = p.CreatedAt,
+                            CreatedById = p.CreatedById,
+                            CreatedBy = p.CreatedBy,
+                            DispatchedAt = p.DispatchedAt,
+                            SenderTelephone = p.SenderTelephone,
+                            ReceiverTelephone = p.ReceiverTelephone,
+                            PaymentMethods = p.PaymentMethods
+                        })
+                        .ToListAsync();
+                    return new ParcelPageWrapper { Parcels = parcels };
+                }, TimeSpan.FromMinutes(5), new[] { CacheTags.Parcels });
 
                 var result = new
                 {
-                    Data = parcels,
+                    Data = pagedResult.Parcels,
                     Page = page,
                     PageSize = pageSize,
-                    TotalCount = totalCount,
+                    TotalCount = totalCountValue,
                     TotalPages = totalPages,
                     HasNextPage = page < totalPages,
                     HasPreviousPage = page > 1
                 };
 
-                System.Diagnostics.Debug.WriteLine($"Retrieved page {page} with {parcels.Count} parcels out of {totalCount} total");
                 return Ok(result);
             }
             catch (Exception ex)
@@ -221,7 +224,6 @@ namespace wms_android.api.Controllers
         /// User-specific paginated endpoint for better performance in AllParcelsView
         /// </summary>
         [HttpGet("user/{userId}/paged")]
-        [OutputCache(PolicyName = "Parcels")]
         public async Task<IActionResult> GetParcelsPagedByUser(
             int userId,
             [FromQuery] int page = 1,
@@ -566,6 +568,9 @@ namespace wms_android.api.Controllers
                     Console.WriteLine("=== CONTROLLER: Parcel creation completed successfully ===");
                     
                     // Return success without accessing the created object properties
+                    await _cacheInvalidation.InvalidateParcelsCache();
+                    if (created.CreatedById.HasValue)
+                        await _cacheInvalidation.InvalidateUserDashboardCache(created.CreatedById.Value);
                     return Ok(new { Message = "Parcel created successfully" });
                 }
                 catch (Exception serviceEx)
@@ -688,8 +693,12 @@ namespace wms_android.api.Controllers
         {
             try
             {
-                var amountOwed = await _parcelService.GetAmountOwedByUserAsync(userId, date);
-                return Ok(amountOwed);
+                var cached = await _cache.GetOrSetAsync(
+                    CacheKeys.UserDashboard.AmountOwed(userId, date.ToString("yyyyMMdd")),
+                    async () => new DoubleWrapper { Value = await _parcelService.GetAmountOwedByUserAsync(userId, date) },
+                    TimeSpan.FromMinutes(5),
+                    new[] { CacheKeys.UserDashboard.UserTag(userId) });
+                return Ok(cached.Value);
             }
             catch (Exception ex)
             {
@@ -703,8 +712,12 @@ namespace wms_android.api.Controllers
         {
             try
             {
-                var cashIn = await _parcelService.GetCashInByUserAsync(userId, date);
-                return Ok(cashIn);
+                var cached = await _cache.GetOrSetAsync(
+                    CacheKeys.UserDashboard.CashIn(userId, date.ToString("yyyyMMdd")),
+                    async () => new DoubleWrapper { Value = await _parcelService.GetCashInByUserAsync(userId, date) },
+                    TimeSpan.FromMinutes(5),
+                    new[] { CacheKeys.UserDashboard.UserTag(userId) });
+                return Ok(cached.Value);
             }
             catch (Exception ex)
             {
@@ -718,8 +731,12 @@ namespace wms_android.api.Controllers
         {
             try
             {
-                var dailySales = await _parcelService.GetDailySalesByUserAsync(userId, date);
-                return Ok(dailySales);
+                var cached = await _cache.GetOrSetAsync(
+                    CacheKeys.UserDashboard.DailySales(userId, date.ToString("yyyyMMdd")),
+                    async () => new DoubleWrapper { Value = await _parcelService.GetDailySalesByUserAsync(userId, date) },
+                    TimeSpan.FromMinutes(5),
+                    new[] { CacheKeys.UserDashboard.UserTag(userId) });
+                return Ok(cached.Value);
             }
             catch (Exception ex)
             {
@@ -733,8 +750,12 @@ namespace wms_android.api.Controllers
         {
             try
             {
-                var monthlySales = await _parcelService.GetMonthlySalesByUserAsync(userId, date);
-                return Ok(monthlySales);
+                var cached = await _cache.GetOrSetAsync(
+                    CacheKeys.UserDashboard.MonthlySales(userId, date.ToString("yyyyMM")),
+                    async () => new DoubleWrapper { Value = await _parcelService.GetMonthlySalesByUserAsync(userId, date) },
+                    TimeSpan.FromMinutes(5),
+                    new[] { CacheKeys.UserDashboard.UserTag(userId) });
+                return Ok(cached.Value);
             }
             catch (Exception ex)
             {
@@ -757,6 +778,7 @@ namespace wms_android.api.Controllers
                 pageSize = Math.Clamp(pageSize, 1, 500);
 
                 var query = _context.Parcels
+                    .Include(p => p.CreatedBy)
                     .AsQueryable();
 
                 // Apply filters
@@ -1140,8 +1162,10 @@ namespace wms_android.api.Controllers
 
                 // Save changes
                 await _context.SaveChangesAsync();
+                await _cacheInvalidation.InvalidateParcelsCache();
+                if (existingParcel.CreatedById.HasValue)
+                    await _cacheInvalidation.InvalidateUserDashboardCache(existingParcel.CreatedById.Value);
 
-                // Log success
                 System.Diagnostics.Debug.WriteLine($"Successfully updated parcel {id}");
 
                 return Ok(existingParcel);
@@ -1194,8 +1218,10 @@ namespace wms_android.api.Controllers
 
                 // Save changes
                 await _context.SaveChangesAsync();
+                await _cacheInvalidation.InvalidateParcelsCache();
+                if (existingParcel.CreatedById.HasValue)
+                    await _cacheInvalidation.InvalidateUserDashboardCache(existingParcel.CreatedById.Value);
 
-                // Log success
                 System.Diagnostics.Debug.WriteLine($"Successfully updated payment for parcel {id}");
 
                 return Ok(new { 
@@ -1252,10 +1278,13 @@ namespace wms_android.api.Controllers
                 }
 
                 // Remove the parcel
+                var deletedUserId = existingParcel.CreatedById;
                 _context.Parcels.Remove(existingParcel);
                 await _context.SaveChangesAsync();
+                await _cacheInvalidation.InvalidateParcelsCache();
+                if (deletedUserId.HasValue)
+                    await _cacheInvalidation.InvalidateUserDashboardCache(deletedUserId.Value);
 
-                // Log success
                 System.Diagnostics.Debug.WriteLine($"Successfully deleted parcel {id}");
 
                 return Ok(new { 
@@ -1378,5 +1407,20 @@ namespace wms_android.api.Controllers
     {
         public DateTime From { get; set; }
         public DateTime To { get; set; }
+    }
+
+    public class CountWrapper
+    {
+        public int Value { get; set; }
+    }
+
+    public class ParcelPageWrapper
+    {
+        public List<Parcel> Parcels { get; set; } = new();
+    }
+
+    public class DoubleWrapper
+    {
+        public double Value { get; set; }
     }
 } 
