@@ -36,9 +36,9 @@ namespace wms_android.Services
         {
             try
             {
-                Debug.WriteLine($"ApiUserService: Authenticating {username} via API at {_httpClient.BaseAddress}api/auth/login");
-                var credentials = new Credentials { Username = username, Password = password };
-                var response = await _httpClient.PostAsJsonAsync("api/auth/login", credentials);
+                Debug.WriteLine($"ApiUserService: Verifying password for {username} via API at {_httpClient.BaseAddress}api/auth/verify-password");
+                var credentials = new { Username = username, Password = password, ClientType = "Android" };
+                var response = await _httpClient.PostAsJsonAsync("api/auth/verify-password", credentials);
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -207,10 +207,17 @@ namespace wms_android.Services
                                     {
                                         Id = roleElement.GetProperty("id").GetInt32(),
                                         Name = roleElement.GetProperty("name").GetString() ?? "",
-                                        Description = roleElement.TryGetProperty("description", out var desc) ? desc.GetString() ?? "" : ""
+                                        Description = roleElement.TryGetProperty("description", out var desc) ? desc.GetString() ?? "" : "",
+                                        CanConfirm = roleElement.TryGetProperty("canConfirm", out var roleCanConfirm) && roleCanConfirm.GetBoolean(),
+                                        CanDispatch = roleElement.TryGetProperty("canDispatch", out var roleCanDispatch) && roleCanDispatch.GetBoolean()
                                     };
                                     user.RoleId = user.Role.Id;
                                 }
+                                
+                                if (dynamicUser.TryGetProperty("canConfirm", out var userCanConfirm))
+                                    user.CanConfirm = userCanConfirm.GetBoolean();
+                                if (dynamicUser.TryGetProperty("canDispatch", out var userCanDispatch))
+                                    user.CanDispatch = userCanDispatch.GetBoolean();
                                 
                                 users.Add(user);
                                 Debug.WriteLine($"Parsed user: {user.Username}, Role: {user.Role?.Name ?? "null"}");
