@@ -7,6 +7,8 @@ interface User {
   role: string;
   roleId?: number;
   branchId?: number;
+  canConfirm?: boolean;
+  canDispatch?: boolean;
   branch?: {
     id: number;
     name: string;
@@ -19,6 +21,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   token: string | null;
+  sessionId: string | null;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
@@ -33,6 +36,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [sessionId, setSessionId] = useState<string | null>(localStorage.getItem('sessionId'));
 
   useEffect(() => {
     if (token) {
@@ -45,12 +49,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (username: string, password: string) => {
     try {
-      const response = await fetch(buildApiUrl('Auth/login'), {
+      // Use new session-based login endpoint
+      const loginRequest = {
+        username: username,
+        password: password,
+        clientType: 'Web',
+        deviceInfo: navigator.userAgent
+      };
+
+      const response = await fetch(buildApiUrl('auth/login'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ Username: username, Password: password }),
+        body: JSON.stringify(loginRequest),
       });
 
       if (!response.ok) {
@@ -79,8 +91,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const token = data.Token || data.token;
+      const newSessionId = data.SessionId || data.sessionId;
+      const sessionExpiresAt = data.SessionExpiresAt || data.sessionExpiresAt;
+
+      // Store token and session information
       setToken(token);
+      setSessionId(newSessionId);
       localStorage.setItem('token', token);
+      localStorage.setItem('sessionId', newSessionId);
+      localStorage.setItem('userId', (data.UserId || data.userId || data.id || '').toString());
+      localStorage.setItem('sessionExpiresAt', sessionExpiresAt);
+
+      console.log('Login successful - Session created:', {
+        sessionId: newSessionId,
+        expiresAt: sessionExpiresAt,
+        userId: data.UserId || data.userId || data.id
+      });
 
       // Fetch complete user information including branch details
       try {
@@ -88,6 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
+            'X-Session-ID': newSessionId,
           },
         });
 
@@ -136,15 +163,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               id: currentUserId,
               username: data.Username || data.username || '',
               role: roleValue,
-              roleId: userDetails.role?.id, // Changed from Role?.Id to role?.id
-              branchId: userDetails.branch?.id, // Changed from Branch?.Id to branch?.id
+              roleId: userDetails.role?.id,
+              branchId: userDetails.branch?.id,
+              canConfirm: userDetails.canConfirm || userDetails.role?.canConfirm || false,
+              canDispatch: userDetails.canDispatch || userDetails.role?.canDispatch || false,
               branch: userDetails.branch && userDetails.branch.id ? {
-                id: userDetails.branch.id, // Changed from Branch.Id to branch.id
-                name: userDetails.branch.name // Changed from Branch.Name to branch.name
+                id: userDetails.branch.id,
+                name: userDetails.branch.name
               } : undefined,
-              firstName: userDetails.firstName, // Changed from FirstName to firstName
-              lastName: userDetails.lastName, // Changed from LastName to lastName
-              email: userDetails.email, // Changed from Email to email
+              firstName: userDetails.firstName,
+              lastName: userDetails.lastName,
+              email: userDetails.email
             };
 
             console.log('Login - Final user data:', userData);
@@ -172,11 +201,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    // Revoke session if we have one
+    const currentSessionId = sessionId || localStorage.getItem('sessionId');
+    if (currentSessionId) {
+      try {
+        await fetch(buildApiUrl('auth/logout'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Session-ID': currentSessionId,
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            sessionId: currentSessionId,
+            reason: 'User logout'
+          })
+        });
+      } catch (error) {
+        console.warn('Failed to revoke session on server:', error);
+      }
+    }
+
+    // Clear local state and storage
     setToken(null);
     setUser(null);
+    setSessionId(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem('sessionId');
+    localStorage.removeItem('userId');
+    localStorage.removeItem('sessionExpiresAt');
   };
 
   // Helper functions for role-based access control
@@ -249,6 +304,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         token,
+        sessionId,
         login,
         logout,
         isAuthenticated: !!token,
