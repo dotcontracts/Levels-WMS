@@ -48,6 +48,10 @@ namespace wms_android.shared.Models
         // User activation status
         public bool IsActive { get; set; } = true;
 
+        // Per-user permission overrides
+        public bool CanConfirm { get; set; } = false;
+        public bool CanDispatch { get; set; } = false;
+
         // Override ToString for proper dropdown display
         public override string ToString()
         {

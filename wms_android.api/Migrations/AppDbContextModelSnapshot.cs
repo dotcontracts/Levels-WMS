@@ -710,7 +710,7 @@ namespace wms_android.api.Migrations
                     b.HasData(
                         new
                         {
-                            Id = new Guid("caecb4f6-a3b5-41a3-adec-48d8a4d25ae0"),
+                            Id = new Guid("89712a85-3ce4-4044-95e8-c8df9662fc1e"),
                             FirstName = "John",
                             Initials = "JN",
                             LastName = "Njuguna",
@@ -718,7 +718,7 @@ namespace wms_android.api.Migrations
                         },
                         new
                         {
-                            Id = new Guid("1f1d55fe-5d56-4779-aed4-f5b05a1e95df"),
+                            Id = new Guid("efce749a-5292-4596-8443-0fe363f4faa7"),
                             FirstName = "Robert",
                             Initials = "RN",
                             LastName = "Njuguna",
@@ -726,7 +726,7 @@ namespace wms_android.api.Migrations
                         },
                         new
                         {
-                            Id = new Guid("53751b4a-7551-4b6d-824d-f372e90595ae"),
+                            Id = new Guid("d513c897-3a41-4782-8be9-aa50fa38259e"),
                             FirstName = "John",
                             Initials = "JM",
                             LastName = "Mwai",
@@ -734,7 +734,7 @@ namespace wms_android.api.Migrations
                         },
                         new
                         {
-                            Id = new Guid("778f0188-44f8-4c97-9f5d-1539d8f49c53"),
+                            Id = new Guid("95fc4e0a-f45e-4afd-a738-3f2506b493a0"),
                             FirstName = "David",
                             Initials = "DM",
                             LastName = "Mwangi",
@@ -742,7 +742,7 @@ namespace wms_android.api.Migrations
                         },
                         new
                         {
-                            Id = new Guid("0618ed00-dca0-47ed-b4cd-c65301eb64a2"),
+                            Id = new Guid("2c0bcd1b-1f19-4e71-8e38-c99500e21ec6"),
                             FirstName = "David",
                             Initials = "DK",
                             LastName = "Kibet",
@@ -750,7 +750,7 @@ namespace wms_android.api.Migrations
                         },
                         new
                         {
-                            Id = new Guid("5280e83f-c600-4de0-8b23-f457b36fec81"),
+                            Id = new Guid("ca03f44b-b77f-49cf-9ce9-a7fa8aa37aee"),
                             FirstName = "Erastus",
                             Initials = "EK",
                             LastName = "Kagwa",
@@ -758,7 +758,7 @@ namespace wms_android.api.Migrations
                         },
                         new
                         {
-                            Id = new Guid("89181e2d-a072-409c-add3-9c1afc424a37"),
+                            Id = new Guid("9ba33fa5-1773-4cf1-9894-5d64c31d7910"),
                             FirstName = "Julius",
                             Initials = "JK",
                             LastName = "Kamula",
@@ -766,7 +766,7 @@ namespace wms_android.api.Migrations
                         },
                         new
                         {
-                            Id = new Guid("1507290d-18e4-4ed9-bac5-0217f351f58a"),
+                            Id = new Guid("7eeda2bb-6b9f-4e63-b772-bce08e8b883b"),
                             FirstName = "Stephen",
                             Initials = "SK",
                             LastName = "Kimuyu",
@@ -774,7 +774,7 @@ namespace wms_android.api.Migrations
                         },
                         new
                         {
-                            Id = new Guid("6eb4a017-7591-463e-b7d1-865ec9001223"),
+                            Id = new Guid("b15ea148-6b3f-4061-b049-f9ef33523750"),
                             FirstName = "Charles",
                             Initials = "CM",
                             LastName = "Maina",
@@ -782,7 +782,7 @@ namespace wms_android.api.Migrations
                         },
                         new
                         {
-                            Id = new Guid("3b45e80f-7d87-4b67-81e7-7c66571a3347"),
+                            Id = new Guid("6df25cda-ced8-4e10-8b48-980af0cd0565"),
                             FirstName = "James",
                             Initials = "JG",
                             LastName = "Gichohi",
@@ -928,6 +928,12 @@ namespace wms_android.api.Migrations
                     b.Property<decimal?>("AmountPaid")
                         .HasColumnType("numeric");
 
+                    b.Property<DateTime?>("ConfirmedAt")
+                        .HasColumnType("timestamp without time zone");
+
+                    b.Property<int?>("ConfirmedById")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1005,6 +1011,8 @@ namespace wms_android.api.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ConfirmedById");
 
                     b.HasIndex("CreatedAt")
                         .HasDatabaseName("IX_Parcels_CreatedAt");
@@ -1103,6 +1111,12 @@ namespace wms_android.api.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<bool>("CanConfirm")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("CanDispatch")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasColumnType("text")
@@ -1121,24 +1135,32 @@ namespace wms_android.api.Migrations
                         new
                         {
                             Id = 1,
+                            CanConfirm = false,
+                            CanDispatch = false,
                             Description = "Administrator",
                             Name = "Admin"
                         },
                         new
                         {
                             Id = 2,
+                            CanConfirm = false,
+                            CanDispatch = false,
                             Description = "Manager",
                             Name = "Manager"
                         },
                         new
                         {
                             Id = 3,
+                            CanConfirm = false,
+                            CanDispatch = false,
                             Description = "Regular User",
                             Name = "Clerk"
                         },
                         new
                         {
                             Id = 4,
+                            CanConfirm = false,
+                            CanDispatch = false,
                             Description = "Client User",
                             Name = "Client"
                         });
@@ -1185,6 +1207,12 @@ namespace wms_android.api.Migrations
                     b.Property<int?>("BranchId")
                         .HasColumnType("integer");
 
+                    b.Property<bool>("CanConfirm")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("CanDispatch")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp without time zone");
 
@@ -1228,78 +1256,90 @@ namespace wms_android.api.Migrations
                         new
                         {
                             Id = 1,
+                            CanConfirm = false,
+                            CanDispatch = false,
                             CreatedAt = new DateTime(2023, 1, 1, 0, 0, 0, 0, DateTimeKind.Local),
                             Email = "admin@example.com",
                             FirstName = "Admin",
                             IsActive = true,
                             LastName = "User",
-                            PasswordHash = new byte[] { 31, 84, 107, 231, 78, 158, 35, 213, 98, 215, 173, 237, 245, 234, 123, 105, 171, 113, 27, 240, 229, 148, 59, 218, 203, 172, 163, 10, 43, 155, 185, 91, 215, 24, 200, 49, 26, 150, 178, 244, 224, 36, 219, 43, 91, 101, 140, 129, 103, 195, 168, 208, 248, 228, 208, 1, 174, 77, 164, 76, 130, 227, 255, 122 },
-                            PasswordSalt = new byte[] { 57, 59, 146, 33, 134, 153, 222, 237, 224, 2, 76, 79, 14, 165, 55, 200, 154, 13, 29, 97, 243, 23, 119, 107, 89, 251, 226, 89, 1, 20, 69, 233, 35, 92, 79, 128, 33, 98, 140, 236, 241, 177, 142, 130, 163, 188, 84, 235, 26, 136, 61, 54, 67, 69, 162, 150, 100, 239, 121, 96, 106, 146, 32, 228, 202, 85, 102, 213, 7, 89, 207, 89, 226, 184, 66, 162, 114, 198, 14, 28, 242, 132, 167, 222, 55, 66, 150, 37, 48, 179, 84, 122, 10, 233, 226, 127, 108, 253, 122, 14, 154, 53, 21, 234, 47, 84, 27, 73, 54, 159, 111, 62, 241, 68, 158, 84, 207, 4, 179, 111, 115, 140, 57, 47, 105, 69, 140, 7 },
+                            PasswordHash = new byte[] { 195, 63, 107, 145, 247, 146, 130, 55, 84, 211, 101, 206, 74, 56, 190, 161, 89, 212, 199, 94, 213, 82, 154, 8, 229, 195, 103, 81, 10, 42, 206, 137, 139, 3, 232, 29, 22, 110, 74, 30, 38, 139, 29, 23, 176, 191, 16, 97, 30, 2, 255, 114, 111, 169, 120, 119, 229, 253, 37, 126, 149, 164, 221, 6 },
+                            PasswordSalt = new byte[] { 117, 74, 220, 225, 122, 223, 184, 119, 124, 245, 186, 3, 3, 228, 183, 71, 67, 91, 129, 251, 122, 202, 195, 5, 128, 246, 95, 36, 54, 77, 38, 88, 250, 205, 72, 235, 138, 107, 218, 220, 114, 29, 79, 225, 85, 223, 59, 184, 159, 214, 155, 47, 192, 4, 194, 210, 147, 131, 34, 48, 158, 158, 176, 87, 27, 168, 207, 24, 80, 189, 186, 82, 51, 96, 181, 216, 172, 47, 161, 236, 248, 252, 245, 26, 18, 194, 132, 144, 63, 160, 20, 155, 48, 85, 226, 183, 242, 58, 216, 180, 180, 6, 21, 104, 74, 80, 95, 12, 1, 129, 235, 238, 85, 54, 194, 4, 202, 223, 228, 124, 212, 181, 12, 11, 53, 93, 215, 98 },
                             RoleId = 1,
                             Username = "admin"
                         },
                         new
                         {
                             Id = 2,
+                            CanConfirm = false,
+                            CanDispatch = false,
                             CreatedAt = new DateTime(2023, 1, 1, 0, 0, 0, 0, DateTimeKind.Local),
                             Email = "manager@example.com",
                             FirstName = "Manager",
                             IsActive = true,
                             LastName = "Person",
-                            PasswordHash = new byte[] { 31, 84, 107, 231, 78, 158, 35, 213, 98, 215, 173, 237, 245, 234, 123, 105, 171, 113, 27, 240, 229, 148, 59, 218, 203, 172, 163, 10, 43, 155, 185, 91, 215, 24, 200, 49, 26, 150, 178, 244, 224, 36, 219, 43, 91, 101, 140, 129, 103, 195, 168, 208, 248, 228, 208, 1, 174, 77, 164, 76, 130, 227, 255, 122 },
-                            PasswordSalt = new byte[] { 57, 59, 146, 33, 134, 153, 222, 237, 224, 2, 76, 79, 14, 165, 55, 200, 154, 13, 29, 97, 243, 23, 119, 107, 89, 251, 226, 89, 1, 20, 69, 233, 35, 92, 79, 128, 33, 98, 140, 236, 241, 177, 142, 130, 163, 188, 84, 235, 26, 136, 61, 54, 67, 69, 162, 150, 100, 239, 121, 96, 106, 146, 32, 228, 202, 85, 102, 213, 7, 89, 207, 89, 226, 184, 66, 162, 114, 198, 14, 28, 242, 132, 167, 222, 55, 66, 150, 37, 48, 179, 84, 122, 10, 233, 226, 127, 108, 253, 122, 14, 154, 53, 21, 234, 47, 84, 27, 73, 54, 159, 111, 62, 241, 68, 158, 84, 207, 4, 179, 111, 115, 140, 57, 47, 105, 69, 140, 7 },
+                            PasswordHash = new byte[] { 195, 63, 107, 145, 247, 146, 130, 55, 84, 211, 101, 206, 74, 56, 190, 161, 89, 212, 199, 94, 213, 82, 154, 8, 229, 195, 103, 81, 10, 42, 206, 137, 139, 3, 232, 29, 22, 110, 74, 30, 38, 139, 29, 23, 176, 191, 16, 97, 30, 2, 255, 114, 111, 169, 120, 119, 229, 253, 37, 126, 149, 164, 221, 6 },
+                            PasswordSalt = new byte[] { 117, 74, 220, 225, 122, 223, 184, 119, 124, 245, 186, 3, 3, 228, 183, 71, 67, 91, 129, 251, 122, 202, 195, 5, 128, 246, 95, 36, 54, 77, 38, 88, 250, 205, 72, 235, 138, 107, 218, 220, 114, 29, 79, 225, 85, 223, 59, 184, 159, 214, 155, 47, 192, 4, 194, 210, 147, 131, 34, 48, 158, 158, 176, 87, 27, 168, 207, 24, 80, 189, 186, 82, 51, 96, 181, 216, 172, 47, 161, 236, 248, 252, 245, 26, 18, 194, 132, 144, 63, 160, 20, 155, 48, 85, 226, 183, 242, 58, 216, 180, 180, 6, 21, 104, 74, 80, 95, 12, 1, 129, 235, 238, 85, 54, 194, 4, 202, 223, 228, 124, 212, 181, 12, 11, 53, 93, 215, 98 },
                             RoleId = 2,
                             Username = "manager"
                         },
                         new
                         {
                             Id = 3,
+                            CanConfirm = false,
+                            CanDispatch = false,
                             CreatedAt = new DateTime(2023, 1, 1, 0, 0, 0, 0, DateTimeKind.Local),
                             Email = "clerk1@example.com",
                             FirstName = "Clerk",
                             IsActive = true,
                             LastName = "One",
-                            PasswordHash = new byte[] { 31, 84, 107, 231, 78, 158, 35, 213, 98, 215, 173, 237, 245, 234, 123, 105, 171, 113, 27, 240, 229, 148, 59, 218, 203, 172, 163, 10, 43, 155, 185, 91, 215, 24, 200, 49, 26, 150, 178, 244, 224, 36, 219, 43, 91, 101, 140, 129, 103, 195, 168, 208, 248, 228, 208, 1, 174, 77, 164, 76, 130, 227, 255, 122 },
-                            PasswordSalt = new byte[] { 57, 59, 146, 33, 134, 153, 222, 237, 224, 2, 76, 79, 14, 165, 55, 200, 154, 13, 29, 97, 243, 23, 119, 107, 89, 251, 226, 89, 1, 20, 69, 233, 35, 92, 79, 128, 33, 98, 140, 236, 241, 177, 142, 130, 163, 188, 84, 235, 26, 136, 61, 54, 67, 69, 162, 150, 100, 239, 121, 96, 106, 146, 32, 228, 202, 85, 102, 213, 7, 89, 207, 89, 226, 184, 66, 162, 114, 198, 14, 28, 242, 132, 167, 222, 55, 66, 150, 37, 48, 179, 84, 122, 10, 233, 226, 127, 108, 253, 122, 14, 154, 53, 21, 234, 47, 84, 27, 73, 54, 159, 111, 62, 241, 68, 158, 84, 207, 4, 179, 111, 115, 140, 57, 47, 105, 69, 140, 7 },
+                            PasswordHash = new byte[] { 195, 63, 107, 145, 247, 146, 130, 55, 84, 211, 101, 206, 74, 56, 190, 161, 89, 212, 199, 94, 213, 82, 154, 8, 229, 195, 103, 81, 10, 42, 206, 137, 139, 3, 232, 29, 22, 110, 74, 30, 38, 139, 29, 23, 176, 191, 16, 97, 30, 2, 255, 114, 111, 169, 120, 119, 229, 253, 37, 126, 149, 164, 221, 6 },
+                            PasswordSalt = new byte[] { 117, 74, 220, 225, 122, 223, 184, 119, 124, 245, 186, 3, 3, 228, 183, 71, 67, 91, 129, 251, 122, 202, 195, 5, 128, 246, 95, 36, 54, 77, 38, 88, 250, 205, 72, 235, 138, 107, 218, 220, 114, 29, 79, 225, 85, 223, 59, 184, 159, 214, 155, 47, 192, 4, 194, 210, 147, 131, 34, 48, 158, 158, 176, 87, 27, 168, 207, 24, 80, 189, 186, 82, 51, 96, 181, 216, 172, 47, 161, 236, 248, 252, 245, 26, 18, 194, 132, 144, 63, 160, 20, 155, 48, 85, 226, 183, 242, 58, 216, 180, 180, 6, 21, 104, 74, 80, 95, 12, 1, 129, 235, 238, 85, 54, 194, 4, 202, 223, 228, 124, 212, 181, 12, 11, 53, 93, 215, 98 },
                             RoleId = 3,
                             Username = "clerk1"
                         },
                         new
                         {
                             Id = 4,
+                            CanConfirm = false,
+                            CanDispatch = false,
                             CreatedAt = new DateTime(2023, 1, 1, 0, 0, 0, 0, DateTimeKind.Local),
                             Email = "clerk2@example.com",
                             FirstName = "Clerk",
                             IsActive = true,
                             LastName = "Two",
-                            PasswordHash = new byte[] { 31, 84, 107, 231, 78, 158, 35, 213, 98, 215, 173, 237, 245, 234, 123, 105, 171, 113, 27, 240, 229, 148, 59, 218, 203, 172, 163, 10, 43, 155, 185, 91, 215, 24, 200, 49, 26, 150, 178, 244, 224, 36, 219, 43, 91, 101, 140, 129, 103, 195, 168, 208, 248, 228, 208, 1, 174, 77, 164, 76, 130, 227, 255, 122 },
-                            PasswordSalt = new byte[] { 57, 59, 146, 33, 134, 153, 222, 237, 224, 2, 76, 79, 14, 165, 55, 200, 154, 13, 29, 97, 243, 23, 119, 107, 89, 251, 226, 89, 1, 20, 69, 233, 35, 92, 79, 128, 33, 98, 140, 236, 241, 177, 142, 130, 163, 188, 84, 235, 26, 136, 61, 54, 67, 69, 162, 150, 100, 239, 121, 96, 106, 146, 32, 228, 202, 85, 102, 213, 7, 89, 207, 89, 226, 184, 66, 162, 114, 198, 14, 28, 242, 132, 167, 222, 55, 66, 150, 37, 48, 179, 84, 122, 10, 233, 226, 127, 108, 253, 122, 14, 154, 53, 21, 234, 47, 84, 27, 73, 54, 159, 111, 62, 241, 68, 158, 84, 207, 4, 179, 111, 115, 140, 57, 47, 105, 69, 140, 7 },
+                            PasswordHash = new byte[] { 195, 63, 107, 145, 247, 146, 130, 55, 84, 211, 101, 206, 74, 56, 190, 161, 89, 212, 199, 94, 213, 82, 154, 8, 229, 195, 103, 81, 10, 42, 206, 137, 139, 3, 232, 29, 22, 110, 74, 30, 38, 139, 29, 23, 176, 191, 16, 97, 30, 2, 255, 114, 111, 169, 120, 119, 229, 253, 37, 126, 149, 164, 221, 6 },
+                            PasswordSalt = new byte[] { 117, 74, 220, 225, 122, 223, 184, 119, 124, 245, 186, 3, 3, 228, 183, 71, 67, 91, 129, 251, 122, 202, 195, 5, 128, 246, 95, 36, 54, 77, 38, 88, 250, 205, 72, 235, 138, 107, 218, 220, 114, 29, 79, 225, 85, 223, 59, 184, 159, 214, 155, 47, 192, 4, 194, 210, 147, 131, 34, 48, 158, 158, 176, 87, 27, 168, 207, 24, 80, 189, 186, 82, 51, 96, 181, 216, 172, 47, 161, 236, 248, 252, 245, 26, 18, 194, 132, 144, 63, 160, 20, 155, 48, 85, 226, 183, 242, 58, 216, 180, 180, 6, 21, 104, 74, 80, 95, 12, 1, 129, 235, 238, 85, 54, 194, 4, 202, 223, 228, 124, 212, 181, 12, 11, 53, 93, 215, 98 },
                             RoleId = 3,
                             Username = "clerk2"
                         },
                         new
                         {
                             Id = 5,
+                            CanConfirm = false,
+                            CanDispatch = false,
                             CreatedAt = new DateTime(2023, 1, 1, 0, 0, 0, 0, DateTimeKind.Local),
                             Email = "client@example.com",
                             FirstName = "Client",
                             IsActive = true,
                             LastName = "User",
-                            PasswordHash = new byte[] { 31, 84, 107, 231, 78, 158, 35, 213, 98, 215, 173, 237, 245, 234, 123, 105, 171, 113, 27, 240, 229, 148, 59, 218, 203, 172, 163, 10, 43, 155, 185, 91, 215, 24, 200, 49, 26, 150, 178, 244, 224, 36, 219, 43, 91, 101, 140, 129, 103, 195, 168, 208, 248, 228, 208, 1, 174, 77, 164, 76, 130, 227, 255, 122 },
-                            PasswordSalt = new byte[] { 57, 59, 146, 33, 134, 153, 222, 237, 224, 2, 76, 79, 14, 165, 55, 200, 154, 13, 29, 97, 243, 23, 119, 107, 89, 251, 226, 89, 1, 20, 69, 233, 35, 92, 79, 128, 33, 98, 140, 236, 241, 177, 142, 130, 163, 188, 84, 235, 26, 136, 61, 54, 67, 69, 162, 150, 100, 239, 121, 96, 106, 146, 32, 228, 202, 85, 102, 213, 7, 89, 207, 89, 226, 184, 66, 162, 114, 198, 14, 28, 242, 132, 167, 222, 55, 66, 150, 37, 48, 179, 84, 122, 10, 233, 226, 127, 108, 253, 122, 14, 154, 53, 21, 234, 47, 84, 27, 73, 54, 159, 111, 62, 241, 68, 158, 84, 207, 4, 179, 111, 115, 140, 57, 47, 105, 69, 140, 7 },
+                            PasswordHash = new byte[] { 195, 63, 107, 145, 247, 146, 130, 55, 84, 211, 101, 206, 74, 56, 190, 161, 89, 212, 199, 94, 213, 82, 154, 8, 229, 195, 103, 81, 10, 42, 206, 137, 139, 3, 232, 29, 22, 110, 74, 30, 38, 139, 29, 23, 176, 191, 16, 97, 30, 2, 255, 114, 111, 169, 120, 119, 229, 253, 37, 126, 149, 164, 221, 6 },
+                            PasswordSalt = new byte[] { 117, 74, 220, 225, 122, 223, 184, 119, 124, 245, 186, 3, 3, 228, 183, 71, 67, 91, 129, 251, 122, 202, 195, 5, 128, 246, 95, 36, 54, 77, 38, 88, 250, 205, 72, 235, 138, 107, 218, 220, 114, 29, 79, 225, 85, 223, 59, 184, 159, 214, 155, 47, 192, 4, 194, 210, 147, 131, 34, 48, 158, 158, 176, 87, 27, 168, 207, 24, 80, 189, 186, 82, 51, 96, 181, 216, 172, 47, 161, 236, 248, 252, 245, 26, 18, 194, 132, 144, 63, 160, 20, 155, 48, 85, 226, 183, 242, 58, 216, 180, 180, 6, 21, 104, 74, 80, 95, 12, 1, 129, 235, 238, 85, 54, 194, 4, 202, 223, 228, 124, 212, 181, 12, 11, 53, 93, 215, 98 },
                             RoleId = 4,
                             Username = "client"
                         },
                         new
                         {
                             Id = 6,
+                            CanConfirm = false,
+                            CanDispatch = false,
                             CreatedAt = new DateTime(2023, 1, 1, 0, 0, 0, 0, DateTimeKind.Local),
                             Email = "client2@example.com",
                             FirstName = "Client",
                             IsActive = true,
                             LastName = "UserTwo",
-                            PasswordHash = new byte[] { 31, 84, 107, 231, 78, 158, 35, 213, 98, 215, 173, 237, 245, 234, 123, 105, 171, 113, 27, 240, 229, 148, 59, 218, 203, 172, 163, 10, 43, 155, 185, 91, 215, 24, 200, 49, 26, 150, 178, 244, 224, 36, 219, 43, 91, 101, 140, 129, 103, 195, 168, 208, 248, 228, 208, 1, 174, 77, 164, 76, 130, 227, 255, 122 },
-                            PasswordSalt = new byte[] { 57, 59, 146, 33, 134, 153, 222, 237, 224, 2, 76, 79, 14, 165, 55, 200, 154, 13, 29, 97, 243, 23, 119, 107, 89, 251, 226, 89, 1, 20, 69, 233, 35, 92, 79, 128, 33, 98, 140, 236, 241, 177, 142, 130, 163, 188, 84, 235, 26, 136, 61, 54, 67, 69, 162, 150, 100, 239, 121, 96, 106, 146, 32, 228, 202, 85, 102, 213, 7, 89, 207, 89, 226, 184, 66, 162, 114, 198, 14, 28, 242, 132, 167, 222, 55, 66, 150, 37, 48, 179, 84, 122, 10, 233, 226, 127, 108, 253, 122, 14, 154, 53, 21, 234, 47, 84, 27, 73, 54, 159, 111, 62, 241, 68, 158, 84, 207, 4, 179, 111, 115, 140, 57, 47, 105, 69, 140, 7 },
+                            PasswordHash = new byte[] { 195, 63, 107, 145, 247, 146, 130, 55, 84, 211, 101, 206, 74, 56, 190, 161, 89, 212, 199, 94, 213, 82, 154, 8, 229, 195, 103, 81, 10, 42, 206, 137, 139, 3, 232, 29, 22, 110, 74, 30, 38, 139, 29, 23, 176, 191, 16, 97, 30, 2, 255, 114, 111, 169, 120, 119, 229, 253, 37, 126, 149, 164, 221, 6 },
+                            PasswordSalt = new byte[] { 117, 74, 220, 225, 122, 223, 184, 119, 124, 245, 186, 3, 3, 228, 183, 71, 67, 91, 129, 251, 122, 202, 195, 5, 128, 246, 95, 36, 54, 77, 38, 88, 250, 205, 72, 235, 138, 107, 218, 220, 114, 29, 79, 225, 85, 223, 59, 184, 159, 214, 155, 47, 192, 4, 194, 210, 147, 131, 34, 48, 158, 158, 176, 87, 27, 168, 207, 24, 80, 189, 186, 82, 51, 96, 181, 216, 172, 47, 161, 236, 248, 252, 245, 26, 18, 194, 132, 144, 63, 160, 20, 155, 48, 85, 226, 183, 242, 58, 216, 180, 180, 6, 21, 104, 74, 80, 95, 12, 1, 129, 235, 238, 85, 54, 194, 4, 202, 223, 228, 124, 212, 181, 12, 11, 53, 93, 215, 98 },
                             RoleId = 4,
                             Username = "client2"
                         });
@@ -1344,6 +1384,77 @@ namespace wms_android.api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("wms_android.shared.Models.UserSession", b =>
+                {
+                    b.Property<string>("SessionId")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("ClientType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeviceInfo")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IPAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("LastActivityAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RevokedReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("SessionId");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("IX_UserSessions_ExpiresAt");
+
+                    b.HasIndex("IsActive")
+                        .HasDatabaseName("IX_UserSessions_IsActive");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("IX_UserSessions_UserId");
+
+                    b.HasIndex("IsActive", "ExpiresAt")
+                        .HasDatabaseName("IX_UserSessions_IsActive_ExpiresAt");
+
+                    b.HasIndex("UserId", "IsActive")
+                        .HasDatabaseName("IX_UserSessions_UserId_IsActive");
+
+                    b.ToTable("UserSessions");
+                });
+
             modelBuilder.Entity("wms_android.shared.Models.Vehicle", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1365,43 +1476,43 @@ namespace wms_android.api.Migrations
                     b.HasData(
                         new
                         {
-                            Id = new Guid("41eb4491-48f3-4000-b225-be5726589178"),
+                            Id = new Guid("c48cabd1-556b-48c9-8915-6cc75b7761ed"),
                             BodyType = "Truck",
                             VehicleRegistrationNumber = "KDL 085M"
                         },
                         new
                         {
-                            Id = new Guid("f75fc171-d918-425f-9ce4-4eb72f3193d0"),
+                            Id = new Guid("ea8f57e6-7928-4057-a859-dfe9ff109d7c"),
                             BodyType = "Truck",
                             VehicleRegistrationNumber = "KCY 067A"
                         },
                         new
                         {
-                            Id = new Guid("103cc7fc-5ee5-4550-8054-7c39508e205a"),
+                            Id = new Guid("a2c426be-4da7-4292-9d92-422e96e9b32f"),
                             BodyType = "Truck",
                             VehicleRegistrationNumber = "KCZ 595L"
                         },
                         new
                         {
-                            Id = new Guid("557c3972-9d58-42f3-a37f-34cf50becfbe"),
+                            Id = new Guid("02f2ed27-c8bb-45fe-88d4-3d492eb8f402"),
                             BodyType = "Truck",
                             VehicleRegistrationNumber = "KDB 387Q"
                         },
                         new
                         {
-                            Id = new Guid("21e3faeb-c997-42b5-877c-94849b7e60ad"),
+                            Id = new Guid("cb7fedc8-4ce8-4736-b76b-d7c1c64f2940"),
                             BodyType = "Truck",
                             VehicleRegistrationNumber = "KDE 228S"
                         },
                         new
                         {
-                            Id = new Guid("514eabce-b25b-435a-b392-da82132e22de"),
+                            Id = new Guid("055b1412-f96f-4357-ba74-e44423c3dc0d"),
                             BodyType = "Van",
                             VehicleRegistrationNumber = "KAY 215H"
                         },
                         new
                         {
-                            Id = new Guid("33550007-7d8a-4ef3-b2ff-f5ac03722d1a"),
+                            Id = new Guid("9f2ab65c-2e4b-413f-ab41-f8eaa8a07dbd"),
                             BodyType = "Van",
                             VehicleRegistrationNumber = "KBF 462A"
                         });
@@ -1606,6 +1717,10 @@ namespace wms_android.api.Migrations
 
             modelBuilder.Entity("wms_android.shared.Models.Parcel", b =>
                 {
+                    b.HasOne("wms_android.shared.Models.User", "ConfirmedBy")
+                        .WithMany()
+                        .HasForeignKey("ConfirmedById");
+
                     b.HasOne("wms_android.shared.Models.User", "CreatedBy")
                         .WithMany()
                         .HasForeignKey("CreatedById")
@@ -1619,6 +1734,8 @@ namespace wms_android.api.Migrations
                         .WithMany("Parcels")
                         .HasForeignKey("ShipmentId")
                         .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("ConfirmedBy");
 
                     b.Navigation("CreatedBy");
 
@@ -1695,6 +1812,17 @@ namespace wms_android.api.Migrations
                         .IsRequired();
 
                     b.Navigation("Branch");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("wms_android.shared.Models.UserSession", b =>
+                {
+                    b.HasOne("wms_android.shared.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("User");
                 });
