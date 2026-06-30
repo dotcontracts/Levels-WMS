@@ -16,7 +16,6 @@ namespace wms_android.ViewModels
     {
         private readonly IParcelService _parcelService;
         private readonly ILogger<DispatchViewModel> _logger;
-        private readonly ParcelCacheService _cacheService;
 
         [ObservableProperty]
         private bool _isLoading;
@@ -206,11 +205,10 @@ namespace wms_android.ViewModels
         public ObservableCollection<string> DestinationOptions { get; } = new();
         public ObservableCollection<string> ClerkOptions { get; } = new() { "All" };
 
-        public DispatchViewModel(IParcelService parcelService, ILogger<DispatchViewModel> logger, ParcelCacheService cacheService)
+        public DispatchViewModel(IParcelService parcelService, ILogger<DispatchViewModel> logger)
         {
             _parcelService = parcelService;
             _logger = logger;
-            _cacheService = cacheService;
             
             // Subscribe to property changes to update CanCreateDispatch
             PropertyChanged += OnPropertyChanged;
@@ -333,7 +331,7 @@ namespace wms_android.ViewModels
                         if (userService != null)
                         {
                             var currentUser = await userService.GetUserByIdAsync(currentUserId);
-                            if (currentUser?.Role?.CanDispatch != true)
+                            if (currentUser?.CanDispatch != true && currentUser?.Role?.CanDispatch != true)
                             {
                                 await Application.Current.MainPage.DisplayAlert("Access Denied", 
                                     "You don't have permission to create dispatches. Please contact your administrator.", "OK");

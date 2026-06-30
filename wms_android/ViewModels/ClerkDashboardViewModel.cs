@@ -170,8 +170,8 @@ namespace wms_android.ViewModels
                         // Set dispatch permission based on role permissions
                         var roleName = user.Role?.Name ?? "Unknown";
                         Debug.WriteLine($"[ClerkDashboard] Role name: '{roleName}', RoleId: {user.Role?.Id}");
-                        CanDispatch = user.Role?.CanDispatch ?? false;
-                        _logger.LogInformation($"User role: '{roleName}', CanDispatch: {CanDispatch}");
+                        CanDispatch = user.CanDispatch || (user.Role?.CanDispatch ?? false);
+                        _logger.LogInformation($"User role: '{roleName}', CanDispatch: {CanDispatch} (user-level: {user.CanDispatch}, role-level: {user.Role?.CanDispatch})");
                         Debug.WriteLine($"[ClerkDashboard] User role: '{roleName}', CanDispatch: {CanDispatch}");
                     }
                     else
