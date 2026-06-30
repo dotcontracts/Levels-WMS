@@ -1,11 +1,9 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Package, Search, Filter, Download, Eye, Edit, RefreshCw, Calendar, MapPin, DollarSign, User, Phone, X, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Package, Search, Filter, Download, Eye, RefreshCw, Calendar, MapPin, DollarSign, User, Phone, X, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useParcelsData } from '../context/ParcelsDataContext';
-import { Card, Button, Badge, Table, FilterPanel, FilterField } from '../components/ui';
+import { Card, Button, Badge, FilterPanel, FilterField } from '../components/ui';
 import { VirtualScrollTable } from '../components/VirtualScrollTable';
-import { SkeletonTable } from '../components/SkeletonTable';
-import { SMSButton } from '../components/SMSButton';
 import { wmsApi, Parcel } from '../services/wmsApi';
 import { generateQRCode } from '../utils/qrCode';
 import { exportParcelsToPDF, generateFilterSummary } from '../utils/pdfExport';
@@ -34,17 +32,15 @@ const Parcels: React.FC = () => {
   // Use ParcelsDataContext for caching and data management
   const {
     cachedData,
-    loading: cacheLoading,
     error: cacheError,
     getCachedParcels,
     loadMoreParcels,
-    invalidateCache,
     isDataFresh,
     getDataAge,
-    hasDataInCache
   } = useParcelsData();
   
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
   const [error, setError] = useState('');
   const [pagination, setPagination] = useState<PaginationState>({
     currentPage: 1,
@@ -61,6 +57,7 @@ const Parcels: React.FC = () => {
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   const [isExporting, setIsExporting] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const usersByIdRef = useRef<Map<number, any> | null>(null);
 
   const [filters, setFilters] = useState<ParcelFilterState>({
     search: '',
@@ -73,7 +70,7 @@ const Parcels: React.FC = () => {
     clerk: ''
   });
 
-  const { user, isAdmin, isBranchManager } = useAuth();
+  useAuth();
 
   // Get parcels from cached data
   const parcels = cachedData?.parcels || [];
@@ -93,7 +90,7 @@ const Parcels: React.FC = () => {
   }, [cachedData, cacheError]);
 
   useEffect(() => {
-    loadParcelsData();
+    loadParcelsData({ isManualRefresh: false, showBlockingLoader: true });
   }, []);
 
   // Refetch data when filters change
@@ -104,7 +101,7 @@ const Parcels: React.FC = () => {
       currentPage: 1,
       isLoadingMore: false
     }));
-    loadParcelsData(true);
+    loadParcelsData({ isManualRefresh: false, showBlockingLoader: false });
   }, [filters]);
 
   // Close export dropdown when clicking outside
@@ -524,12 +521,19 @@ const Parcels: React.FC = () => {
       setIsExporting(true);
       setShowExportDropdown(false);
 
+      // Load all remaining pages before exporting
+      let latestData = cachedData;
+      while (latestData && latestData.currentPage < latestData.totalPages) {
+        const result = await loadMoreParcels();
+        if (!result) break;
+        latestData = result;
+      }
+
+      const allParcels = latestData?.parcels ?? parcels;
+
       const filterSummary = generateExportFilterSummary(filters);
       const exportDate = new Date().toISOString().split('T')[0];
       const baseFilename = `parcels-export-${exportDate}`;
-
-      // Add a small delay to show loading state for large datasets
-      await new Promise(resolve => setTimeout(resolve, 100));
 
       const exportOptions = {
         title: 'Parcels Export Report',
@@ -539,20 +543,20 @@ const Parcels: React.FC = () => {
 
       switch (format) {
         case 'pdf':
-          exportParcelsToPDF(filteredParcels, {
+          exportParcelsToPDF(allParcels, {
             ...exportOptions,
             filename: `${baseFilename}.pdf`,
-            filterSummary: generateFilterSummary(filters) // Use original function for PDF
+            filterSummary: generateFilterSummary(filters)
           });
           break;
         case 'csv':
-          exportParcelsToCSV(filteredParcels, {
+          exportParcelsToCSV(allParcels, {
             ...exportOptions,
             filename: `${baseFilename}.csv`
           });
           break;
         case 'xlsx':
-          exportParcelsToXLSX(filteredParcels, {
+          exportParcelsToXLSX(allParcels, {
             ...exportOptions,
             filename: `${baseFilename}.xlsx`
           });
@@ -567,14 +571,33 @@ const Parcels: React.FC = () => {
     }
   };
 
-  // Legacy function for backward compatibility
-  const handleExportPDF = () => handleExport('pdf');
+  const ensureUsersCache = useCallback(async () => {
+    if (usersByIdRef.current) {
+      return usersByIdRef.current;
+    }
 
-  const loadParcelsData = async (forceRefresh = false) => {
+    const users = await wmsApi.getUsers();
+    usersByIdRef.current = new Map(users.map(u => [u.id, u]));
+    return usersByIdRef.current;
+  }, []);
+
+  const loadParcelsData = useCallback(async ({
+    isManualRefresh = false,
+    showBlockingLoader = false
+  }: {
+    isManualRefresh?: boolean;
+    showBlockingLoader?: boolean;
+  } = {}) => {
     try {
-      if (forceRefresh) {
-        // Invalidate cache when forcing refresh
-        invalidateCache({
+      if (showBlockingLoader) {
+        setInitialLoading(true);
+      }
+      setIsFetching(true);
+      setError('');
+
+      // Use the context to get cached parcels
+      const result = await getCachedParcels(
+        {
           search: filters.search,
           status: filters.status,
           destination: filters.destination,
@@ -585,33 +608,16 @@ const Parcels: React.FC = () => {
           clerk: filters.clerk,
           page: 1,
           pageSize: 200
-        });
-      }
-      
-      setLoading(true);
-      setError('');
-
-      // Use the context to get cached parcels
-      const result = await getCachedParcels({
-        search: filters.search,
-        status: filters.status,
-        destination: filters.destination,
-        paymentMethod: filters.paymentMethod,
-        dateRange: filters.dateRange,
-        sender: filters.sender,
-        receiver: filters.receiver,
-        clerk: filters.clerk,
-        page: 1,
-        pageSize: 200
-      });
+        },
+        { forceRefresh: isManualRefresh }
+      );
 
       const data = result.parcels;
 
       // Populate user information for parcels that don't have createdBy populated
       try {
-        const users = await wmsApi.getUsers();
-        const userMap = new Map(users.map(u => [u.id, u]));
-        
+        const userMap = await ensureUsersCache();
+
         data.forEach(parcel => {
           if (!parcel.createdBy && parcel.createdById) {
             const user = userMap.get(parcel.createdById);
@@ -654,9 +660,10 @@ const Parcels: React.FC = () => {
       console.error('Error loading parcels:', error);
       setError(error?.message || 'Failed to load parcels');
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
+      setIsFetching(false);
     }
-  };
+  }, [ensureUsersCache, filters, getCachedParcels, getDataAge, isDataFresh]);
 
   const handleLoadMore = useCallback(async () => {
     if (!pagination.isLoadingMore && pagination.hasMoreData) {
@@ -996,7 +1003,7 @@ const Parcels: React.FC = () => {
     }
   ];
 
-  if (loading) {
+  if (initialLoading && parcels.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-96">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-500"></div>
@@ -1037,23 +1044,11 @@ const Parcels: React.FC = () => {
           </Button>
           <Button
             variant="primary"
-            onClick={() => loadParcelsData(true)}
-            disabled={loading}
+            onClick={() => loadParcelsData({ isManualRefresh: true, showBlockingLoader: false })}
+            disabled={isFetching}
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
             Refresh
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => {
-              const stats = wmsApi.getCacheStats();
-              console.log('Parcels Cache Debug Stats:', stats);
-              alert(`Cache Stats:\nGlobal: ${stats.globalRequests}\nNamespaces: ${stats.namespaces.length}\nActive Loads: ${stats.activeLoads.length}\nData Age: ${getDataAge()}\nSee console for details.`);
-            }}
-            disabled={loading}
-            size="sm"
-          >
-            Debug Cache
           </Button>
         </div>
       </div>
@@ -1140,7 +1135,7 @@ const Parcels: React.FC = () => {
           columns={columns}
           rowHeight={72}
           containerHeight={600}
-          loading={loading}
+          loading={isFetching && filteredParcels.length === 0}
           hasMoreData={pagination.hasMoreData}
           isLoadingMore={pagination.isLoadingMore}
           onLoadMore={handleLoadMore}

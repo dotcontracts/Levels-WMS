@@ -33,7 +33,10 @@ interface ParcelsDataContextType {
   cachedData: CachedParcelData | null;
   loading: boolean;
   error: string;
-  getCachedParcels: (filters?: Partial<ParcelFilters>) => Promise<CachedParcelData>;
+  getCachedParcels: (
+    filters?: Partial<ParcelFilters>,
+    options?: { forceRefresh?: boolean }
+  ) => Promise<CachedParcelData>;
   getStreamingParcels: (filters?: Partial<ParcelFilters>, onProgress?: (data: CachedParcelData) => void) => Promise<CachedParcelData>;
   loadMoreParcels: () => Promise<CachedParcelData | null>;
   invalidateCache: (filters?: Partial<ParcelFilters>) => void;
@@ -157,16 +160,8 @@ export const ParcelsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
       // Note: paymentMethod is handled separately, not as a general search term
       
-      // Handle payment method filtering specifically
-      if (normalizedFilters.paymentMethod) {
-        // For payment method, we need to search specifically in the paymentMethods field
-        const paymentMethodSearch = `paymentMethod:${normalizedFilters.paymentMethod}`;
-        if (searchParams.search) {
-          searchParams.search += ` ${paymentMethodSearch}`;
-        } else {
-          searchParams.search = paymentMethodSearch;
-        }
-      }
+      // Note: Payment method filtering will be handled client-side after fetching data
+      // since the backend API doesn't support field-specific search for payment methods
 
       // Combine with existing search if any
       if (searchTerms.length > 0) {
@@ -179,25 +174,39 @@ export const ParcelsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
 
       // Use the namespace-aware API call
-      const result = await wmsApi.getParcelsPaged(searchParams, `parcels:${JSON.stringify(filterParams)}`);
+      const result = await wmsApi.getParcelsPaged(searchParams);
+
+      // Apply client-side payment method filtering if specified
+      let filteredParcels = result.data;
+      let filteredTotalCount = result.totalCount;
+      
+      if (normalizedFilters.paymentMethod) {
+        console.log(`ParcelsDataContext: Applying client-side payment method filter: ${normalizedFilters.paymentMethod}`);
+        filteredParcels = result.data.filter(parcel => {
+          const paymentMethod = parcel.paymentMethods;
+          return paymentMethod === normalizedFilters.paymentMethod;
+        });
+        filteredTotalCount = filteredParcels.length;
+        console.log(`ParcelsDataContext: Payment method filter applied. Filtered ${filteredParcels.length} from ${result.data.length} parcels`);
+      }
 
       const newCachedData: CachedParcelData = {
-        parcels: result.data,
-        totalCount: result.totalCount,
-        totalPages: result.totalPages,
+        parcels: filteredParcels,
+        totalCount: filteredTotalCount,
+        totalPages: Math.ceil(filteredTotalCount / normalizedFilters.pageSize),
         currentPage: result.currentPage,
         lastFetched: Date.now(),
         filters: normalizedFilters,
         isPartial: false,
         loadProgress: {
-          loaded: result.data.length,
-          total: result.totalCount,
+          loaded: filteredParcels.length,
+          total: filteredTotalCount,
           isComplete: true
         }
       };
 
       setCachedData(newCachedData);
-      console.log(`ParcelsDataContext: Cached ${result.data.length} parcels (page ${result.currentPage}/${result.totalPages})`);
+      console.log(`ParcelsDataContext: Cached ${filteredParcels.length} parcels (filtered from ${result.data.length}, page ${result.currentPage}/${result.totalPages})`);
       
       return newCachedData;
     } catch (err) {
@@ -221,22 +230,8 @@ export const ParcelsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const normalizedFilters = normalizeFilters(filters);
       console.log('ParcelsDataContext: Starting streaming parcels fetch...');
       
-      // Generate consistent cache namespace for streaming
-      const filterParams = {
-        search: normalizedFilters.search,
-        status: normalizedFilters.status,
-        destination: normalizedFilters.destination,
-        paymentMethod: normalizedFilters.paymentMethod,
-        dateRange: normalizedFilters.dateRange,
-        sender: normalizedFilters.sender,
-        receiver: normalizedFilters.receiver,
-        clerk: normalizedFilters.clerk
-      };
-      const cacheNamespace = `parcels:streaming:${JSON.stringify(filterParams)}`;
-      
       let streamingParcels: Parcel[] = [];
       
-      // Use progressive loading with namespace isolation
       const parcelsData = await wmsApi.getAllParcelsProgressively({
         dateRange: normalizedFilters.dateRange.from && normalizedFilters.dateRange.to 
           ? { from: normalizedFilters.dateRange.from, to: normalizedFilters.dateRange.to }
@@ -244,7 +239,6 @@ export const ParcelsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         destination: normalizedFilters.destination,
         search: normalizedFilters.search,
         chunkSize: normalizedFilters.pageSize,
-        cacheNamespace: cacheNamespace,
         fields: [
           'id', 'waybillNumber', 'senderName', 'recipientName', 
           'destination', 'totalAmount', 'paymentMethods', 'createdAt', 
@@ -253,17 +247,26 @@ export const ParcelsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         onProgress: (loaded, total) => {
           console.log(`ParcelsDataContext: Streaming progress: ${loaded}/${total} parcels`);
           
+          // Apply payment method filtering to progress data if specified
+          let filteredProgressParcels = streamingParcels.slice();
+          if (normalizedFilters.paymentMethod) {
+            filteredProgressParcels = streamingParcels.filter(parcel => {
+              const paymentMethod = parcel.paymentMethods;
+              return paymentMethod === normalizedFilters.paymentMethod;
+            });
+          }
+          
           const partialData: CachedParcelData = {
-            parcels: streamingParcels.slice(),
-            totalCount: total,
-            totalPages: Math.ceil(total / normalizedFilters.pageSize),
+            parcels: filteredProgressParcels,
+            totalCount: normalizedFilters.paymentMethod ? filteredProgressParcels.length : total,
+            totalPages: Math.ceil((normalizedFilters.paymentMethod ? filteredProgressParcels.length : total) / normalizedFilters.pageSize),
             currentPage: 1,
             lastFetched: Date.now(),
             filters: normalizedFilters,
             isPartial: loaded < total,
             loadProgress: {
-              loaded,
-              total,
+              loaded: normalizedFilters.paymentMethod ? filteredProgressParcels.length : loaded,
+              total: normalizedFilters.paymentMethod ? filteredProgressParcels.length : total,
               isComplete: loaded >= total
             }
           };
@@ -275,23 +278,34 @@ export const ParcelsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
       streamingParcels = parcelsData;
 
+      // Apply client-side payment method filtering to streaming data if specified
+      let filteredStreamingParcels = parcelsData;
+      if (normalizedFilters.paymentMethod) {
+        console.log(`ParcelsDataContext: Applying client-side payment method filter to streaming data: ${normalizedFilters.paymentMethod}`);
+        filteredStreamingParcels = parcelsData.filter(parcel => {
+          const paymentMethod = parcel.paymentMethods;
+          return paymentMethod === normalizedFilters.paymentMethod;
+        });
+        console.log(`ParcelsDataContext: Streaming payment method filter applied. Filtered ${filteredStreamingParcels.length} from ${parcelsData.length} parcels`);
+      }
+
       const finalData: CachedParcelData = {
-        parcels: parcelsData,
-        totalCount: parcelsData.length,
-        totalPages: Math.ceil(parcelsData.length / normalizedFilters.pageSize),
+        parcels: filteredStreamingParcels,
+        totalCount: filteredStreamingParcels.length,
+        totalPages: Math.ceil(filteredStreamingParcels.length / normalizedFilters.pageSize),
         currentPage: 1,
         lastFetched: Date.now(),
         filters: normalizedFilters,
         isPartial: false,
         loadProgress: {
-          loaded: parcelsData.length,
-          total: parcelsData.length,
+          loaded: filteredStreamingParcels.length,
+          total: filteredStreamingParcels.length,
           isComplete: true
         }
       };
 
       setCachedData(finalData);
-      console.log(`ParcelsDataContext: Streaming complete - ${parcelsData.length} parcels`);
+      console.log(`ParcelsDataContext: Streaming complete - ${filteredStreamingParcels.length} parcels (filtered from ${parcelsData.length})`);
       
       return finalData;
     } catch (err) {
@@ -304,8 +318,17 @@ export const ParcelsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [normalizeFilters]);
 
-  const getCachedParcels = useCallback(async (filters?: Partial<ParcelFilters>): Promise<CachedParcelData> => {
+  const getCachedParcels = useCallback(async (
+    filters?: Partial<ParcelFilters>,
+    options?: { forceRefresh?: boolean }
+  ): Promise<CachedParcelData> => {
     const normalizedFilters = normalizeFilters(filters);
+    const forceRefresh = options?.forceRefresh === true;
+
+    if (forceRefresh) {
+      console.log('ParcelsDataContext: Force refresh requested, fetching fresh data');
+      return await fetchParcelData(normalizedFilters);
+    }
     
     // Check if we have fresh cached data with matching filters
     if (cachedData && isDataFresh()) {
@@ -382,21 +405,7 @@ export const ParcelsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     // Also clear the corresponding API cache namespace if filters are provided
     if (filters) {
       const normalizedFilters = normalizeFilters(filters);
-      const filterParams = {
-        search: normalizedFilters.search,
-        status: normalizedFilters.status,
-        destination: normalizedFilters.destination,
-        paymentMethod: normalizedFilters.paymentMethod,
-        dateRange: normalizedFilters.dateRange,
-        sender: normalizedFilters.sender,
-        receiver: normalizedFilters.receiver,
-        clerk: normalizedFilters.clerk,
-        page: normalizedFilters.page,
-        pageSize: normalizedFilters.pageSize
-      };
-      const cacheNamespace = `parcels:${JSON.stringify(filterParams)}`;
-      console.log(`ParcelsDataContext: Clearing API cache namespace: ${cacheNamespace}`);
-      wmsApi.clearNamespacedCache(cacheNamespace);
+      wmsApi.clearRequestCache();
     }
   }, [normalizeFilters]);
   

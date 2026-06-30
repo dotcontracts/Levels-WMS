@@ -605,7 +605,6 @@ const Reports: React.FC = () => {
           'id', 'waybillNumber', 'receiver', 'totalAmount', 'status', 
           'createdAt', 'createdById', 'paymentMethods', 'branchDeposits', 'expenses'
         ],
-        cacheNamespace: `clerk-debit-${dateRange.from}-${dateRange.to}` // Add unique namespace
       });
       
       console.log(`[Clerk Debit Debug] Received ${allParcels.length} total parcels`);
@@ -4384,18 +4383,6 @@ const Reports: React.FC = () => {
               size="sm"
             >
               Clear Cache
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                const stats = wmsApi.getCacheStats();
-                console.log('Cache Debug Stats:', stats);
-                alert(`Cache Stats:\nGlobal: ${stats.globalRequests}\nNamespaces: ${stats.namespaces.length}\nActive Loads: ${stats.activeLoads.length}\nSee console for details.`);
-              }}
-              disabled={loading || cacheLoading}
-              size="sm"
-            >
-              Debug Cache
             </Button>
             <Button
               variant="outline"

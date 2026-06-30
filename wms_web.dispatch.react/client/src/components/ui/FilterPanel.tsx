@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   Filter, 
   X, 
@@ -60,6 +60,20 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [searchDraft, setSearchDraft] = useState((filters.search as string) || '');
+  const searchDebounceRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setSearchDraft((filters.search as string) || '');
+  }, [filters.search]);
+
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current !== null) {
+        window.clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, []);
 
   const basicFields = fields.slice(0, 3);
   const advancedFields = fields.slice(3);
@@ -69,6 +83,28 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
 
     switch (field.type) {
       case 'text':
+        if (field.key === 'search') {
+          return (
+            <Input
+              key={field.key}
+              label={field.label}
+              placeholder={field.placeholder}
+              value={searchDraft}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                const nextValue = e.target.value;
+                setSearchDraft(nextValue);
+                if (searchDebounceRef.current !== null) {
+                  window.clearTimeout(searchDebounceRef.current);
+                }
+                searchDebounceRef.current = window.setTimeout(() => {
+                  onFilterChange(field.key, nextValue);
+                }, 400);
+              }}
+              icon={field.icon}
+              size="sm"
+            />
+          );
+        }
         return (
           <Input
             key={field.key}

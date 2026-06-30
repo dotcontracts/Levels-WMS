@@ -469,7 +469,7 @@ const CreateDispatch: React.FC = () => {
     }
 
     // Check user permissions for dispatch
-    if (user?.role && !(user.role as any).canDispatch) {
+    if (user?.role && !user.canDispatch && !(user.role as any).canDispatch) {
       setError('You don\'t have permission to create dispatches. Please contact your administrator.');
       return;
     }

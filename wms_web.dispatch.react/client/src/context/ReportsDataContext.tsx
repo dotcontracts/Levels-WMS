@@ -93,10 +93,7 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
       // Fetch data in parallel with namespace caching
       const [parcelsData, dispatchesData] = await Promise.all([
         wmsApi.getAllParcelsForReports(filterParams),
-        // Pass the same namespace to dispatches for cache consistency
-        filters 
-          ? wmsApi.getDispatches(undefined, `reports:${JSON.stringify(filterParams)}`)
-          : wmsApi.getDispatches()
+        wmsApi.getDispatches()
       ]);
 
       const newCachedData: CachedData = {
@@ -136,19 +133,9 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       console.log('ReportsDataContext: Starting streaming data fetch...');
       
-      // Generate consistent cache namespace for streaming
-      const filterParams = {
-        startDate: filters?.startDate,
-        endDate: filters?.endDate,
-        destination: filters?.destination,
-        search: filters?.clerk
-      };
-      const cacheNamespace = `reports:streaming:${JSON.stringify(filterParams)}`;
-      
       let streamingParcels: Parcel[] = [];
       let dispatchesData: Dispatch[] = [];
       
-      // Start both requests, but stream parcels progressively with namespace isolation
       const [parcelsPromise, dispatchesPromise] = [
         wmsApi.getAllParcelsProgressively({
           dateRange: filters?.startDate && filters?.endDate 
@@ -156,8 +143,7 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
             : undefined,
           destination: filters?.destination,
           search: filters?.clerk,
-          chunkSize: 1200, // Larger chunks for better streaming performance
-          cacheNamespace: cacheNamespace, // Use namespace for isolation
+          chunkSize: 1200,
           fields: [
             'id', 'waybillNumber', 'senderName', 'recipientName', 
             'destination', 'totalAmount', 'paymentMethods', 'createdAt', 
@@ -188,7 +174,7 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
           streamingParcels = parcels;
           return parcels;
         }),
-        wmsApi.getDispatches(undefined, cacheNamespace).then(dispatches => {
+        wmsApi.getDispatches(undefined).then(dispatches => {
           dispatchesData = dispatches;
           return dispatches;
         })
@@ -248,17 +234,8 @@ export const ReportsDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setCachedData(null);
     setError('');
     
-    // Also clear the corresponding API cache namespace if filters are provided
     if (filters) {
-      const filterParams = {
-        startDate: filters.startDate,
-        endDate: filters.endDate,
-        destination: filters.destination,
-        search: filters.clerk
-      };
-      const cacheNamespace = `reports:${JSON.stringify(filterParams)}`;
-      console.log(`ReportsDataContext: Clearing API cache namespace: ${cacheNamespace}`);
-      wmsApi.clearNamespacedCache(cacheNamespace);
+      wmsApi.clearRequestCache();
     }
   }, []);
   
