@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { SessionProvider } from './context/SessionContext';
 import { SidebarProvider } from './context/SidebarContext';
 import { ReportsDataProvider } from './context/ReportsDataContext';
 import { ParcelsDataProvider } from './context/ParcelsDataContext';
 import { useAuth } from './context/AuthContext';
 import AppHeader from './layout/AppHeader';
 import AppSidebar from './layout/AppSidebar';
-import SessionManager from './components/SessionManager';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Parcels from './pages/Parcels';
@@ -81,7 +81,7 @@ const ModernLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <SessionManager>
+      <SessionProvider>
         <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
           {/* Login page without layout */}
@@ -256,7 +256,7 @@ const App: React.FC = () => {
           <Route path="*" element={<NotFound />} />
           </Routes>
         </Router>
-      </SessionManager>
+      </SessionProvider>
     </AuthProvider>
   );
 };

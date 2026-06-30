@@ -58,13 +58,15 @@ export const buildApiUrl = (endpoint: string): string => {
 };
 
 /**
- * Get headers with authentication token if available
- * @returns Headers object with Content-Type, Accept, and Authorization (if token exists)
+ * Get headers with authentication token and session ID if available
+ * @returns Headers object with Content-Type, Accept, Authorization, and X-Session-ID
  */
 export const getAuthHeaders = (): Record<string, string> => {
   const token = localStorage.getItem('token') || 
                 localStorage.getItem('auth_token') || 
                 sessionStorage.getItem('auth_token');
+  
+  const sessionId = localStorage.getItem('sessionId');
   
   const headers: Record<string, string> = { ...API_CONFIG.HEADERS };
   
@@ -72,6 +74,70 @@ export const getAuthHeaders = (): Record<string, string> => {
     headers['Authorization'] = `Bearer ${token}`;
   }
   
+  if (sessionId) {
+    headers['X-Session-ID'] = sessionId;
+  }
+  
   return headers;
+};
+
+/**
+ * Check if endpoints should skip session validation
+ * @param endpoint - API endpoint to check
+ * @returns true if endpoint is public and doesn't need session headers
+ */
+export const isPublicEndpoint = (endpoint: string): boolean => {
+  const publicEndpoints = [
+    'auth/login',
+    'session/create',
+    'health',
+    'swagger'
+  ];
+  
+  const normalizedEndpoint = endpoint.toLowerCase();
+  return publicEndpoints.some(pub => normalizedEndpoint.includes(pub));
+};
+
+/**
+ * Create fetch wrapper that automatically handles sessions and retries on 401
+ * @param url - Request URL
+ * @param options - Fetch options
+ * @returns Promise with fetch response
+ */
+export const sessionAwareFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
+  // Add session headers for authenticated endpoints
+  const headers: Record<string, string> = {
+    ...getAuthHeaders(),
+    ...(options.headers as Record<string, string> || {})
+  };
+
+  // Don't add session header for public endpoints
+  if (isPublicEndpoint(url)) {
+    delete headers['X-Session-ID'];
+  }
+
+  const fetchOptions: RequestInit = {
+    ...options,
+    headers
+  };
+
+  const response = await fetch(url, fetchOptions);
+  
+  // Handle session expiry
+  if (response.status === 401 && !isPublicEndpoint(url)) {
+    console.warn('Session expired - redirecting to login');
+    
+    // Clear session data
+    localStorage.removeItem('token');
+    localStorage.removeItem('sessionId');
+    localStorage.removeItem('userId');
+    localStorage.removeItem('user');
+    localStorage.removeItem('sessionExpiresAt');
+    
+    // Redirect to login
+    window.location.href = '/login';
+  }
+
+  return response;
 };
 
