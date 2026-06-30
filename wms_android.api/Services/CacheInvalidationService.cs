@@ -1,5 +1,6 @@
-using Microsoft.AspNetCore.OutputCaching;
-using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
+using wms_android.cache;
+using wms_android.cache.Interfaces;
 
 namespace wms_android.api.Services
 {
@@ -9,43 +10,55 @@ namespace wms_android.api.Services
         Task InvalidateBranchesCache();
         Task InvalidateUsersCache();
         Task InvalidateStaticDataCache();
-        void InvalidateMemoryCache(string key);
+        Task InvalidateDispatchesCache();
+        Task InvalidateUserDashboardCache(int userId);
     }
 
     public class CacheInvalidationService : ICacheInvalidationService
     {
-        private readonly IOutputCacheStore _outputCacheStore;
-        private readonly IMemoryCache _memoryCache;
+        private readonly ICacheService _cache;
+        private readonly ILogger<CacheInvalidationService> _logger;
 
-        public CacheInvalidationService(IOutputCacheStore outputCacheStore, IMemoryCache memoryCache)
+        public CacheInvalidationService(ICacheService cache, ILogger<CacheInvalidationService> logger)
         {
-            _outputCacheStore = outputCacheStore;
-            _memoryCache = memoryCache;
+            _cache = cache;
+            _logger = logger;
         }
 
         public async Task InvalidateParcelsCache()
         {
-            await _outputCacheStore.EvictByTagAsync("parcels", CancellationToken.None);
+            await _cache.RemoveByTagAsync(CacheTags.Parcels);
+            _logger.LogInformation("Parcels cache invalidated");
         }
 
         public async Task InvalidateBranchesCache()
         {
-            await _outputCacheStore.EvictByTagAsync("branches", CancellationToken.None);
+            await _cache.RemoveByTagAsync(CacheTags.Branches);
+            _logger.LogInformation("Branches cache invalidated");
         }
 
         public async Task InvalidateUsersCache()
         {
-            await _outputCacheStore.EvictByTagAsync("users", CancellationToken.None);
+            await _cache.RemoveByTagAsync(CacheTags.Users);
+            _logger.LogInformation("Users cache invalidated");
         }
 
         public async Task InvalidateStaticDataCache()
         {
-            await _outputCacheStore.EvictByTagAsync("static-data", CancellationToken.None);
+            await _cache.RemoveByTagAsync(CacheTags.StaticData);
+            _logger.LogInformation("Static data cache invalidated");
         }
 
-        public void InvalidateMemoryCache(string key)
+        public async Task InvalidateDispatchesCache()
         {
-            _memoryCache.Remove(key);
+            await _cache.RemoveByTagAsync(CacheTags.Dispatches);
+            _logger.LogInformation("Dispatches cache invalidated");
+        }
+
+        public async Task InvalidateUserDashboardCache(int userId)
+        {
+            await _cache.RemoveByTagAsync(CacheKeys.UserDashboard.UserTag(userId));
+            _logger.LogInformation("Dashboard cache invalidated for user {UserId}", userId);
         }
     }
 }

@@ -6,6 +6,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "wms_android.api", "wms_andr
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "wms_android.shared", "..\wms_android.shared\wms_android.shared.csproj", "{8BD1E3DE-FC7D-4C34-8C42-9B843A53FA3E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "wms_android.cache", "..\wms_android.cache\wms_android.cache.csproj", "{C7D2A4F1-8E3B-4A56-9C1D-B2E5F6A07C33}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -20,6 +22,10 @@ Global
 		{8BD1E3DE-FC7D-4C34-8C42-9B843A53FA3E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8BD1E3DE-FC7D-4C34-8C42-9B843A53FA3E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8BD1E3DE-FC7D-4C34-8C42-9B843A53FA3E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C7D2A4F1-8E3B-4A56-9C1D-B2E5F6A07C33}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C7D2A4F1-8E3B-4A56-9C1D-B2E5F6A07C33}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C7D2A4F1-8E3B-4A56-9C1D-B2E5F6A07C33}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C7D2A4F1-8E3B-4A56-9C1D-B2E5F6A07C33}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

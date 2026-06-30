@@ -1,5 +1,7 @@
 using wms_android.shared.Data;
 using wms_android.shared.Interfaces;
+using wms_android.api.Middleware;
+using wms_android.api.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -15,8 +17,9 @@ using Microsoft.Extensions.Options;
 using wms_android.api.Services;
 using wms_android.api.Interfaces;
 using System.Linq;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.AspNetCore.ResponseCompression;
+using wms_android.cache.Extensions;
+using wms_android.cache.Interfaces;
 using System.IO.Compression;
 public class Program
 {
@@ -74,52 +77,8 @@ public class Program
             options.Level = CompressionLevel.Optimal; // Best compression ratio
         });
 
-        // Add output caching for static/semi-static endpoints
-        builder.Services.AddOutputCache(options =>
-        {
-            // Default policy for all requests
-            options.DefaultExpirationTimeSpan = TimeSpan.FromMinutes(5);
-            
-            // Policy for branches - rarely change
-            options.AddPolicy("Branches", policy =>
-            {
-                policy.Expire(TimeSpan.FromHours(1));
-                policy.SetVaryByQuery("*");
-                policy.Tag("branches");
-            });
-            
-            // Policy for users - changes occasionally  
-            options.AddPolicy("Users", policy =>
-            {
-                policy.Expire(TimeSpan.FromMinutes(15));
-                policy.SetVaryByQuery("*");
-                policy.Tag("users");
-            });
-            
-            // Policy for vehicles/drivers - rarely change
-            options.AddPolicy("StaticData", policy =>
-            {
-                policy.Expire(TimeSpan.FromHours(2));
-                policy.SetVaryByQuery("*");
-                policy.Tag("static-data");
-            });
-
-            // Policy for parcel data - frequently accessed but can be cached briefly
-            options.AddPolicy("Parcels", policy =>
-            {
-                policy.Expire(TimeSpan.FromMinutes(2));
-                policy.SetVaryByQuery("*");
-                policy.Tag("parcels");
-            });
-        });
-
-        // Add enhanced memory cache for performance optimization
-        builder.Services.AddMemoryCache(options =>
-        {
-            options.SizeLimit = 2048; // Increased cache size for better performance
-            options.CompactionPercentage = 0.25; // Remove 25% when limit reached
-            options.ExpirationScanFrequency = TimeSpan.FromMinutes(5); // Clean expired items every 5 minutes
-        });
+        // Add production-grade caching layer (Redis with in-memory fallback)
+        builder.Services.AddWmsCaching(builder.Configuration);
 
         // Register services
         builder.Services.AddScoped<IParcelService, ApiParcelService>();
@@ -246,7 +205,6 @@ public class Program
         });
 
         // Register services
-        builder.Services.AddMemoryCache();
         builder.Services.AddHttpClient();
         builder.Services.AddScoped<IUserService, wms_android.shared.Services.UserService>();
         builder.Services.AddScoped<IVehicleService, VehicleService>();
@@ -254,6 +212,10 @@ public class Program
         builder.Services.AddScoped<ISmsService, wms_android.shared.Services.SmsService>();
         builder.Services.AddScoped<wms_android.api.Interfaces.ITokenService, wms_android.api.Services.TokenService>();
         builder.Services.AddScoped<wms_android.api.Services.IDispatchSegmentService, wms_android.api.Services.DispatchSegmentService>();
+        builder.Services.AddScoped<ISessionService, wms_android.shared.Services.SessionService>();
+        
+        // Add background service for session cleanup
+        builder.Services.AddHostedService<SessionCleanupBackgroundService>();
 
         var app = builder.Build();
 
@@ -430,14 +392,15 @@ public class Program
         // Add Response Compression early in pipeline for maximum benefit
         app.UseResponseCompression();
         
-        // Add Output Caching after compression
-        app.UseOutputCache();
-        
         // Add CORS before path base to ensure it works for all requests
         app.UseCors("AllowWebApp");
         
         app.UseAuthentication();
         app.UseAuthorization();
+        
+        // Add session validation middleware after authentication but before controllers
+        app.UseSessionValidation();
+        
         app.MapControllers();
         
         // Map health checks endpoint last

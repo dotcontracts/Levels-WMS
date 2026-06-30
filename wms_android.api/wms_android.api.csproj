@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\wms_android.shared\wms_android.shared.csproj" />
+    <ProjectReference Include="..\wms_android.cache\wms_android.cache.csproj" />
   </ItemGroup>
 
   <ItemGroup>

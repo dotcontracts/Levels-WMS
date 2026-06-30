@@ -1,7 +1,8 @@
 using wms_android.shared.Models;
 using wms_android.shared.Data;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
+using wms_android.cache.Interfaces;
+using wms_android.cache;
 
 namespace wms_android.api.Services
 {
@@ -17,10 +18,10 @@ namespace wms_android.api.Services
     public class DispatchSegmentService : IDispatchSegmentService
     {
         private readonly AppDbContext _context;
-        private readonly IMemoryCache _cache;
+        private readonly ICacheService _cache;
         private readonly TimeSpan _cacheDuration = TimeSpan.FromMinutes(30);
 
-        public DispatchSegmentService(AppDbContext context, IMemoryCache cache)
+        public DispatchSegmentService(AppDbContext context, ICacheService cache)
         {
             _context = context;
             _cache = cache;
@@ -88,27 +89,12 @@ namespace wms_android.api.Services
         {
             string cacheKey = $"dispatch_segments_{dispatchId}";
 
-            // Try to get from cache first
-            if (_cache.TryGetValue(cacheKey, out List<DispatchSegment>? cachedSegments))
-            {
-                System.Diagnostics.Debug.WriteLine($"Retrieved segments for dispatch {dispatchId} from cache");
-                return cachedSegments;
-            }
-
-            // If not in cache, load from database
-            System.Diagnostics.Debug.WriteLine($"Loading segments for dispatch {dispatchId} from database");
-            var segments = await GetSegmentsByDispatchIdAsync(dispatchId);
-
-            // Store in cache
-            var cacheOptions = new MemoryCacheEntryOptions
-            {
-                AbsoluteExpirationRelativeToNow = _cacheDuration,
-                SlidingExpiration = TimeSpan.FromMinutes(10) // Extend cache on access
-            };
-
-            _cache.Set(cacheKey, segments, cacheOptions);
-
-            return segments;
+            return await _cache.GetOrSetAsync(
+                cacheKey,
+                () => GetSegmentsByDispatchIdAsync(dispatchId),
+                _cacheDuration,
+                new[] { CacheTags.Dispatches }
+            );
         }
 
         public async Task UpdateSegmentTotalsAsync(Guid segmentId)
@@ -141,8 +127,7 @@ namespace wms_android.api.Services
         public void InvalidateDispatchCache(Guid dispatchId)
         {
             string cacheKey = $"dispatch_segments_{dispatchId}";
-            _cache.Remove(cacheKey);
-            System.Diagnostics.Debug.WriteLine($"Invalidated cache for dispatch {dispatchId}");
+            _ = _cache.RemoveAsync(cacheKey);
         }
 
         private async Task<int> GetNextSequenceNumberAsync(Guid dispatchId)

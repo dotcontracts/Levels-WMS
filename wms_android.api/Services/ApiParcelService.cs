@@ -635,13 +635,14 @@ namespace wms_android.api.Services
         
         public async Task<double> GetAmountOwedByUserAsync(int userId, DateTime date)
         {
-            // Get total amount of parcels that have been paid on the current day by the logged-in clerk
+            var startOfDay = date.Date.ToUniversalTime();
+            var endOfDay = startOfDay.AddDays(1);
             var total = await _context.Parcels
-                .Where(p => p.CreatedById == userId && 
-                           p.CreatedAt.Date == date.Date && 
+                .Where(p => p.CreatedById == userId &&
+                           p.CreatedAt >= startOfDay &&
+                           p.CreatedAt < endOfDay &&
                            p.PaymentMethods.ToLower().Contains("paid"))
                 .SumAsync(p => (double)p.TotalAmount);
-            
             return total;
         }
         
@@ -692,24 +693,25 @@ namespace wms_android.api.Services
         
         public async Task<double> GetDailySalesByUserAsync(int userId, DateTime date)
         {
+            var startOfDay = date.Date.ToUniversalTime();
+            var endOfDay = startOfDay.AddDays(1);
             var total = await _context.Parcels
-                .Where(p => p.CreatedById == userId && p.CreatedAt.Date == date.Date)
+                .Where(p => p.CreatedById == userId &&
+                           p.CreatedAt >= startOfDay &&
+                           p.CreatedAt < endOfDay)
                 .SumAsync(p => (double)p.TotalAmount);
-            
             return total;
         }
         
         public async Task<double> GetMonthlySalesByUserAsync(int userId, DateTime date)
         {
-            var startOfMonth = new DateTime(date.Year, date.Month, 1);
-            var endOfMonth = startOfMonth.AddMonths(1).AddDays(-1);
-            
+            var startOfMonth = new DateTime(date.Year, date.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var endOfMonth = startOfMonth.AddMonths(1);
             var total = await _context.Parcels
-                .Where(p => p.CreatedById == userId && 
-                           p.CreatedAt.Date >= startOfMonth && 
-                           p.CreatedAt.Date <= endOfMonth)
+                .Where(p => p.CreatedById == userId &&
+                           p.CreatedAt >= startOfMonth &&
+                           p.CreatedAt < endOfMonth)
                 .SumAsync(p => (double)p.TotalAmount);
-            
             return total;
         }
 
