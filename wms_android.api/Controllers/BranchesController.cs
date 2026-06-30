@@ -4,7 +4,9 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using wms_android.shared.Data;
 using wms_android.shared.Models;
-using Microsoft.AspNetCore.OutputCaching;
+using wms_android.cache;
+using wms_android.cache.Interfaces;
+using wms_android.api.Services;
 
 namespace wms_android.api.Controllers
 {
@@ -13,18 +15,25 @@ namespace wms_android.api.Controllers
     public class BranchesController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly ICacheService _cache;
+        private readonly ICacheInvalidationService _cacheInvalidation;
 
-        public BranchesController(AppDbContext context)
+        public BranchesController(AppDbContext context, ICacheService cache, ICacheInvalidationService cacheInvalidation)
         {
             _context = context;
+            _cache = cache;
+            _cacheInvalidation = cacheInvalidation;
         }
 
-        // GET: api/Branches
         [HttpGet]
-        [OutputCache(PolicyName = "Branches")]
         public async Task<ActionResult<IEnumerable<Branch>>> GetBranches()
         {
-            return await _context.Branches.AsNoTracking().ToListAsync();
+            var branches = await _cache.GetOrSetAsync(
+                CacheKeys.Branches.All(),
+                async () => await _context.Branches.AsNoTracking().OrderBy(b => b.Name).ToListAsync(),
+                TimeSpan.FromHours(1),
+                new[] { CacheTags.Branches });
+            return Ok(branches);
         }
     }
 } 
