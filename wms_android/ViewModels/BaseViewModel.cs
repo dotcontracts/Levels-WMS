@@ -12,11 +12,25 @@ namespace wms_android.ViewModels
     {
         private string _title;
         private bool _isBusy;
-        protected readonly ISessionTimeoutService _sessionTimeout;
+        protected ISessionManager? SessionManager { get; private set; }
 
-        public BaseViewModel(ISessionTimeoutService sessionTimeout = null)
+        public BaseViewModel()
         {
-            _sessionTimeout = sessionTimeout;
+        }
+
+        public BaseViewModel(ISessionManager sessionManager) : this()
+        {
+            SessionManager = sessionManager;
+        }
+
+        protected async Task RefreshSessionActivity()
+        {
+            try
+            {
+                if (SessionManager != null)
+                    await SessionManager.UpdateActivityAsync();
+            }
+            catch { }
         }
 
         public string Title
@@ -31,22 +45,5 @@ namespace wms_android.ViewModels
             set => SetProperty(ref _isBusy, value);
         }
 
-        protected new bool SetProperty<T>(ref T storage, T value, string propertyName = null)
-        {
-            var changed = base.SetProperty(ref storage, value, propertyName);
-            if (changed)
-            {
-                OnUserActivity();
-            }
-            return changed;
-        }
-
-        /// <summary>
-        /// Call this method to indicate user activity and reset the session timeout
-        /// </summary>
-        protected virtual void OnUserActivity()
-        {
-            _sessionTimeout?.ResetSession();
-        }
     }
 }

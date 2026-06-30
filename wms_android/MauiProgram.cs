@@ -77,7 +77,7 @@ namespace wms_android
                 var apiBaseUrl = "https://levelsapi-82i8a.ondigitalocean.app/";
             #endif
 
-            // Create HttpClient for API access
+            // Create basic HttpClient first (without session awareness to avoid circular dependency)
             builder.Services.AddTransient<HttpClient>(sp => {
                 var client = new HttpClient();
 
@@ -132,9 +132,6 @@ namespace wms_android
             });
             builder.Services.AddTransient<wms_android.shared.Interfaces.IAuthService, wms_android.shared.Services.AuthService>();
             
-            // Register caching service
-            builder.Services.AddSingleton<wms_android.Services.ParcelCacheService>();
-            
             // Register device-specific services
             builder.Services.AddSingleton<wms_android.Interfaces.IDeviceDetectionService, wms_android.Services.DeviceDetectionService>();
             builder.Services.AddSingleton<wms_android.Interfaces.IPrinterServiceFactory, wms_android.Services.PrinterServiceFactory>();
@@ -167,8 +164,8 @@ namespace wms_android
             builder.Services.AddSingleton<wms_android.Interfaces.IUpdateService, wms_android.Services.UpdateService>();
             builder.Services.AddSingleton<wms_android.Services.UpdateManager>();
             
-            // Register session timeout service
-            builder.Services.AddSingleton<wms_android.Interfaces.ISessionTimeoutService, wms_android.Services.SessionTimeoutService>();
+            // Register session manager
+            builder.Services.AddSingleton<wms_android.Interfaces.ISessionManager, wms_android.Services.SessionManager>();
             
             // Register loading service (using its singleton instance)
             builder.Services.AddSingleton<wms_android.Services.LoadingService>(sp => wms_android.Services.LoadingService.Instance);

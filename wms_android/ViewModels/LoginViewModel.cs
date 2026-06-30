@@ -22,6 +22,7 @@ namespace wms_android.ViewModels
         private readonly INavigation _navigation;
         private readonly HttpClient _httpClient; // Add HttpClient field
         private readonly INotificationService _notificationService;
+        private readonly ISessionManager _sessionManager;
 
         [ObservableProperty]
         [NotifyCanExecuteChangedFor(nameof(LoginCommand))]
@@ -40,12 +41,13 @@ namespace wms_android.ViewModels
         [ObservableProperty]
         private bool _hasError;
 
-        // Updated Constructor: Inject HttpClient, remove IAuthService
-        public LoginViewModel(HttpClient httpClient, IUserService userService, INotificationService notificationService, INavigation navigation = null)
+        // Updated Constructor: Inject HttpClient, ISessionManager, remove IAuthService
+        public LoginViewModel(HttpClient httpClient, IUserService userService, INotificationService notificationService, ISessionManager sessionManager, INavigation navigation = null)
         {
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             _userService = userService; // Instance of ApiUserService
             _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
+            _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
             _navigation = navigation;
             Debug.WriteLine($"LoginViewModel initialized with HttpClient: {_httpClient.BaseAddress}");
         }
@@ -94,10 +96,16 @@ namespace wms_android.ViewModels
                 // Get device information
                 var deviceInfo = await DeviceInfoService.GetDeviceInfoAsync();
                 
-                var loginRequest = new wms_android.shared.DTOs.LoginRequest 
+                // Create device info string
+                var deviceInfoString = $"{deviceInfo.DeviceManufacturer} {deviceInfo.DeviceModel} (Android {deviceInfo.AndroidVersion})";
+                
+                var loginRequest = new wms_android.shared.DTOs.LoginRequestDto 
                 { 
                     Username = Username, 
                     Password = Password,
+                    ClientType = "Android",
+                    DeviceInfo = deviceInfoString,
+                    // Keep legacy fields for backward compatibility
                     DeviceSerialNumber = deviceInfo.SerialNumber,
                     DeviceName = deviceInfo.DeviceName,
                     DeviceModel = deviceInfo.DeviceModel,
@@ -124,9 +132,9 @@ namespace wms_android.ViewModels
                 if (response.IsSuccessStatusCode)
                 {
                     // Deserialize the successful response
-                    var loginResponse = await response.Content.ReadFromJsonAsync<LoginResponseDto>();
+                    var loginResponse = await response.Content.ReadFromJsonAsync<SessionLoginResponseDto>();
 
-                    if (loginResponse != null && !string.IsNullOrEmpty(loginResponse.Token))
+                    if (loginResponse != null && !string.IsNullOrEmpty(loginResponse.Token) && !string.IsNullOrEmpty(loginResponse.SessionId))
                     {
                         // Store token and user info from API response
                         Preferences.Set("AuthToken", loginResponse.Token);
@@ -134,7 +142,14 @@ namespace wms_android.ViewModels
                         Preferences.Set("UserRole", loginResponse.Role);
                         Preferences.Set("CurrentUserId", loginResponse.UserId);
 
-                        Debug.WriteLine($"Login successful - Token received from API for user {loginResponse.Username} (ID: {loginResponse.UserId})");
+                        Debug.WriteLine($"Login successful - Token and Session received from API for user {loginResponse.Username} (ID: {loginResponse.UserId})");
+
+                        // Create session in the session manager
+                        await _sessionManager.CreateSessionAsync(
+                            loginResponse.SessionId, 
+                            loginResponse.UserId, 
+                            loginResponse.Username, 
+                            loginResponse.SessionExpiresAt);
 
                         // Use a different navigation approach for the login->dashboard transition
                         // Since this is a shell reset, we can use absolute navigation here
@@ -153,7 +168,7 @@ namespace wms_android.ViewModels
                     {
                          ErrorMessage = "Login failed: Invalid response from server.";
                          HasError = true;
-                         Debug.WriteLine("Login failed - Invalid response structure or empty token from API.");
+                         Debug.WriteLine("Login failed - Invalid response structure or empty token/session from API.");
                          Password = string.Empty; // Clear password
                     }
                 }
@@ -196,13 +211,16 @@ namespace wms_android.ViewModels
             }
         }
 
-        // Helper class to deserialize the API response
-        private class LoginResponseDto
+        // Helper class to deserialize the API response with session information
+        private class SessionLoginResponseDto
         {
             public string Token { get; set; }
             public string Username { get; set; }
             public string Role { get; set; }
             public int UserId { get; set; }
+            public string SessionId { get; set; }
+            public DateTime SessionExpiresAt { get; set; }
+            public int SessionRemainingMinutes { get; set; }
         }
     }
 } 
