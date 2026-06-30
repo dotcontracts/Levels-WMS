@@ -12,7 +12,6 @@ namespace wms_android.ViewModels
     public partial class SettingsViewModel : BaseViewModel
     {
         private readonly IDialogService _dialogService;
-        private readonly ISessionTimeoutService _sessionTimeoutService;
 
         [ObservableProperty]
         private string _deviceModel = string.Empty;
@@ -32,10 +31,9 @@ namespace wms_android.ViewModels
         [ObservableProperty]
         private int _selectedThemeIndex = 0;
 
-        public SettingsViewModel(IDialogService dialogService, ISessionTimeoutService sessionTimeoutService = null) : base(sessionTimeoutService)
+        public SettingsViewModel(IDialogService dialogService) : base()
         {
             _dialogService = dialogService;
-            _sessionTimeoutService = sessionTimeoutService;
             Title = "Settings";
             LoadDeviceInfo();
             LoadSettings();
@@ -107,8 +105,7 @@ namespace wms_android.ViewModels
 
                 Debug.WriteLine("SettingsViewModel: User confirmed logout, clearing session...");
 
-                // Stop session timeout service
-                _sessionTimeoutService?.StopSession();
+                // Session will be handled by the new session manager automatically
 
                 // Clear all stored authentication data
                 ClearUserSession();

@@ -44,7 +44,7 @@ namespace wms_android.ViewModels
         [ObservableProperty]
         private string _errorMessage = string.Empty;
 
-        public ProfileViewModel(IUserService userService, ISessionTimeoutService sessionTimeout = null) : base(sessionTimeout)
+        public ProfileViewModel(IUserService userService) : base()
         {
             _userService = userService;
             Title = "Profile";

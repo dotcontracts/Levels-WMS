@@ -32,7 +32,7 @@ namespace wms_android.ViewModels
         private ComprehensiveDiagnosticResult _lastComprehensiveResult;
         private Utils.AdaptivePrinterDiagnosticResult _lastAdaptiveResult;
         
-        public PrinterDiagnosticViewModel(IPrinterService printerService, ISessionTimeoutService sessionTimeout = null) : base(sessionTimeout)
+        public PrinterDiagnosticViewModel(IPrinterService printerService) : base()
         {
             _printerService = printerService;
             Title = "Printer Diagnostics";
