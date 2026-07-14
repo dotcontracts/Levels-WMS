@@ -7,7 +7,7 @@ using wms_android.shared.Models;
 
 namespace wms_android.api.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("[controller]")]
     [ApiController]
     public class RolesController : ControllerBase
     {

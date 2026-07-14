@@ -9,7 +9,7 @@ using wms_android.shared.Interfaces;
 namespace wms_android.api.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("[controller]")]
     public class SessionController : ControllerBase
     {
         private readonly ISessionService _sessionService;

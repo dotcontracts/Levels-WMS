@@ -12,7 +12,7 @@ using wms_android.api.Services;
 namespace wms_android.api.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("[controller]")]
     public class ParcelsController : ControllerBase
     {
         private readonly IParcelService _parcelService;

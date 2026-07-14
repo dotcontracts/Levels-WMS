@@ -8,7 +8,7 @@ using wms_android.shared.Models;
 namespace wms_android.api.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("[controller]")]
     public class ParcelDepositsController : ControllerBase
     {
         private readonly AppDbContext _context;

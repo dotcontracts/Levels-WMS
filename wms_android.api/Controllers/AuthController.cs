@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 namespace wms_android.api.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("[controller]")]
     public class AuthController : ControllerBase
     {
         private readonly IUserService _userService; // API's DB-backed user service

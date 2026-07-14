@@ -11,7 +11,7 @@ using wms_android.api.Services;
 namespace wms_android.api.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("[controller]")]
     public class BranchesController : ControllerBase
     {
         private readonly AppDbContext _context;

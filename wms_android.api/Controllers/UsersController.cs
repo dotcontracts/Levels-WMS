@@ -14,7 +14,7 @@ using wms_android.api.Services;
 
 namespace wms_android.api.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("[controller]")]
     [ApiController]
     public class UsersController : ControllerBase
     {

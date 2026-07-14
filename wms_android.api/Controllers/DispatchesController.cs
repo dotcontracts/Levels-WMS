@@ -8,7 +8,7 @@ using System.Security.Claims;
 namespace wms_android.api.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("[controller]")]
     public class DispatchesController : ControllerBase
     {
         private readonly AppDbContext _context;

@@ -7,7 +7,7 @@ using wms_android.shared.DTOs;
 namespace wms_android.api.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
+    [Route("[controller]")]
     public class PaymentsController : ControllerBase
     {
         private readonly AppDbContext _context;
