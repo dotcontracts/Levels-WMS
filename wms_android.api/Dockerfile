@@ -15,17 +15,17 @@ RUN echo "=== Starting build process ===" && \
     echo "Listing build context root:" && \
     ls -la / || echo "Could not list root"
 
-# Copy project files - build context is now at root level
-COPY wms_android.api/wms_android.api.csproj ./
+# Copy project files and restore them in their original structure
+COPY wms_android.api/wms_android.api.csproj wms_android.api/
 COPY wms_android.shared/wms_android.shared.csproj wms_android.shared/
 COPY wms_android.cache/wms_android.cache.csproj wms_android.cache/
 RUN echo "=== Project files copied ===" && \
-    ls -la /src/ && \
+    ls -la /src/wms_android.api/ && \
     ls -la /src/wms_android.shared/ && \
     ls -la /src/wms_android.cache/
 
-# Set working directory and restore with optimizations
-WORKDIR /src
+# Set working directory to the API directory to restore
+WORKDIR /src/wms_android.api
 
 # Optimize restore process - reduce memory usage
 RUN echo "=== Restoring NuGet packages ===" && \
@@ -35,23 +35,18 @@ RUN echo "=== Restoring NuGet packages ===" && \
     --no-cache \
     --disable-parallel || (echo "ERROR: Restore failed!" && exit 1)
 
-# Copy source code
-RUN echo "=== Copying source files ===" && \
-    echo "Files before copy:" && ls -la /src || echo "Source directory listing failed"
-COPY wms_android.api/ ./
+# Copy source code in original folder structure
+WORKDIR /src
+COPY wms_android.api/ wms_android.api/
 COPY wms_android.shared/ wms_android.shared/
 COPY wms_android.cache/ wms_android.cache/
 RUN echo "=== Files after copy ===" && \
-    ls -la /src && \
-    echo "=== API project files ===" && \
-    ls -la /src/ | head -20 && \
-    echo "=== Shared project files ===" && \
+    ls -la /src/wms_android.api/ | head -20 && \
     ls -la /src/wms_android.shared/ | head -20 && \
-    echo "=== Cache project files ===" && \
     ls -la /src/wms_android.cache/ | head -20
 
 # Build and publish the API project specifically to avoid solution path issues
-WORKDIR /src
+WORKDIR /src/wms_android.api
 RUN echo "Building and publishing application..." && \
     dotnet publish wms_android.api.csproj \
     -c Release \
