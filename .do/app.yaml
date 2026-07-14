@@ -1,50 +1,52 @@
 name: nid-wms-full-stack
 services:
-- name: api
-  github:
-    repo: dot-contracts/NID_WMS
-    branch: master
-    deploy_on_push: true
-  dockerfile_path: wms_android.api/Dockerfile
-  instance_count: 1
-  instance_size_slug: apps-s-1vcpu-0.5gb
-  envs:
-  - key: ASPNETCORE_ENVIRONMENT
-    value: Production
-  - key: ASPNETCORE_URLS
-    value: http://+:8080
-  - key: PathBase
-    value: /api
-  - key: DB_HOST
-    value: "209.38.121.208"
-  - key: DB_PORT
-    value: "5432"
-  - key: DB_NAME
-    value: "NID_WMS"
-  - key: DB_USER
-    value: "nid_user"
-  - key: DB_PASSWORD
-    value: "2025@_1Nid"
-  - key: JWT_SECRET
-    value: "36cd93e4947c4a92917c18a7da820e9b"
-  - key: API_BASE_URL
-    value: "https://nid-wms-full-stack-xxxxx.ondigitalocean.app"
-  http_port: 8080
-  health_check:
-    http_path: /health
-  routes:
-  - path: /api
-- name: web
-  github:
-    repo: dot-contracts/NID_WMS
-    branch: master
-    deploy_on_push: true
-  dockerfile_path: wms_web.dispatch.react/Dockerfile
-  instance_count: 1
-  instance_size_slug: apps-s-1vcpu-0.5gb
-  envs:
-  - key: REACT_APP_API_URL
-    value: "https://nid-wms-full-stack-xxxxx.ondigitalocean.app/api"
-  http_port: 3000
-  routes:
-  - path: /
+  - name: api
+    github:
+      repo: dot-contracts/NID_WMS
+      branch: master
+      deploy_on_push: true
+    dockerfile_path: wms_android.api/Dockerfile
+    source_dir: /
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    envs:
+    - key: ASPNETCORE_ENVIRONMENT
+      value: Production
+    - key: ASPNETCORE_URLS
+      value: http://+:8080
+    - key: PathBase
+      value: /api
+    - key: DB_HOST
+      value: "209.38.121.208"
+    - key: DB_PORT
+      value: "5432"
+    - key: DB_NAME
+      value: "NID_WMS"
+    - key: DB_USER
+      value: "nid_user"
+    - key: DB_PASSWORD
+      value: "2025@_1Nid"
+    - key: JWT_SECRET
+      value: "36cd93e4947c4a92917c18a7da820e9b"
+    - key: API_BASE_URL
+      value: "https://nid-wms-full-stack-xxxxx.ondigitalocean.app"
+    http_port: 8080
+    health_check:
+      http_path: /health
+    routes:
+    - path: /api
+  - name: web
+    github:
+      repo: dot-contracts/NID_WMS
+      branch: master
+      deploy_on_push: true
+    dockerfile_path: wms_web.dispatch.react/Dockerfile
+    source_dir: wms_web.dispatch.react
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    envs:
+    - key: REACT_APP_API_URL
+      value: "https://nid-wms-full-stack-xxxxx.ondigitalocean.app/api"
+    http_port: 3000
+    routes:
+    - path: /
