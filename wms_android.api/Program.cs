@@ -387,7 +387,10 @@ public class Program
         });
 
         // Middleware pipeline
-        app.UseHttpsRedirection();
+        // NOTE: HTTPS is terminated at the DigitalOcean load balancer.
+        // Do NOT use UseHttpsRedirection() inside the container — it causes
+        // "Failed to determine the https port" warnings and can break health checks.
+        // app.UseHttpsRedirection();
         
         // Add Response Compression early in pipeline for maximum benefit
         app.UseResponseCompression();
