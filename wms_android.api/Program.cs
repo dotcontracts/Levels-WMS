@@ -184,10 +184,12 @@ public class Program
         // Configure CORS - Always use our hardcoded origins to ensure they work
         var corsOrigins = new[]
         {
-            "https://wms-ficma-dispatch-l5z4y.ondigitalocean.app", // React app URL
-            "https://levelsapi-82i8a.ondigitalocean.app", // API URL  
-            "http://localhost:3000", // Local development
-            "https://localhost:3001" // Local development HTTPS
+            "https://wms-ficma-dispatch-l5z4y.ondigitalocean.app", // React app (old URL)
+            "https://starfish-app-2q7m5.ondigitalocean.app",       // React web panel
+            "https://levelsapi-82i8a.ondigitalocean.app",          // API URL
+            "https://wmsandroidapi-w74du.ondigitalocean.app",      // Android API URL
+            "http://localhost:3000",                                 // Local development
+            "https://localhost:3001"                                 // Local development HTTPS
         };
         
         Console.WriteLine($"✓ Using hardcoded CORS origins: {string.Join(", ", corsOrigins)}");
