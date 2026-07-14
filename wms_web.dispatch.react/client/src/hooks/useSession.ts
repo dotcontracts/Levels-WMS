@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { buildApiUrl } from '../config/api';
 
 interface SessionInfo {
   sessionId: string;
@@ -43,7 +44,7 @@ export const useSession = () => {
     }
 
     try {
-      const response = await fetch('/api/session/validate', {
+      const response = await fetch(buildApiUrl('session/validate'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -58,7 +59,7 @@ export const useSession = () => {
 
       if (response.ok) {
         const result: SessionValidationResponse = await response.json();
-        
+
         if (result.isValid && result.session) {
           setSessionInfo(result.session);
           setIsSessionValid(true);
@@ -66,7 +67,7 @@ export const useSession = () => {
         } else {
           console.warn('Session validation failed:', result.errorMessage);
           setIsSessionValid(false);
-          
+
           if (result.requiresReauthentication) {
             logout();
           }
@@ -94,7 +95,7 @@ export const useSession = () => {
     if (!sessionId || !isAuthenticated) return false;
 
     try {
-      const response = await fetch('/api/session/activity', {
+      const response = await fetch(buildApiUrl('session/activity'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -134,7 +135,7 @@ export const useSession = () => {
 
       setSessionInfo(sessionData);
       setIsSessionValid(true);
-      
+
       console.log('Session created successfully:', sessionData.sessionId);
     } catch (error) {
       console.error('Error creating session:', error);
@@ -147,7 +148,7 @@ export const useSession = () => {
     if (!sessionId) return;
 
     try {
-      const response = await fetch('/api/auth/logout', {
+      const response = await fetch(buildApiUrl('auth/logout'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -176,16 +177,16 @@ export const useSession = () => {
     localStorage.removeItem('userId');
     localStorage.removeItem('username');
     localStorage.removeItem('sessionExpiresAt');
-    
+
     setSessionInfo(null);
     setIsSessionValid(false);
-    
+
     console.log('Session data cleared');
   }, []);
 
   const getSessionStatistics = useCallback(async () => {
     try {
-      const response = await fetch('/api/session/statistics', {
+      const response = await fetch(buildApiUrl('session/statistics'), {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,

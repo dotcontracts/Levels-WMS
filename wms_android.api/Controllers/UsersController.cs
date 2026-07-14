@@ -78,14 +78,14 @@ namespace wms_android.api.Controllers
                                 IsActive = user.IsActive,
                                 CanConfirm = user.CanConfirm,
                                 CanDispatch = user.CanDispatch,
-                                Role = new UserRoleDto
+                                Role = user.Role != null ? new UserRoleDto
                                 {
                                     Id = user.Role.Id,
                                     Name = user.Role.Name,
                                     Description = user.Role.Description,
                                     CanConfirm = user.Role.CanConfirm,
                                     CanDispatch = user.Role.CanDispatch
-                                },
+                                } : new UserRoleDto { Name = "Unknown" },
                                 Branch = branchDto
                             });
                         }
