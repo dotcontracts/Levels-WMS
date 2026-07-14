@@ -35,18 +35,3 @@ services:
       http_path: /health
     routes:
     - path: /api
-  - name: web
-    github:
-      repo: dot-contracts/NID_WMS
-      branch: master
-      deploy_on_push: true
-    dockerfile_path: wms_web.dispatch.react/Dockerfile
-    source_dir: wms_web.dispatch.react
-    instance_count: 1
-    instance_size_slug: apps-s-1vcpu-0.5gb
-    envs:
-    - key: REACT_APP_API_URL
-      value: "https://nid-wms-full-stack-xxxxx.ondigitalocean.app/api"
-    http_port: 3000
-    routes:
-    - path: /
