@@ -18,9 +18,11 @@ RUN echo "=== Starting build process ===" && \
 # Copy project files - build context is now at root level
 COPY wms_android.api/wms_android.api.csproj ./
 COPY wms_android.shared/wms_android.shared.csproj wms_android.shared/
+COPY wms_android.cache/wms_android.cache.csproj wms_android.cache/
 RUN echo "=== Project files copied ===" && \
     ls -la /src/ && \
-    ls -la /src/wms_android.shared/
+    ls -la /src/wms_android.shared/ && \
+    ls -la /src/wms_android.cache/
 
 # Set working directory and restore with optimizations
 WORKDIR /src
@@ -38,12 +40,15 @@ RUN echo "=== Copying source files ===" && \
     echo "Files before copy:" && ls -la /src || echo "Source directory listing failed"
 COPY wms_android.api/ ./
 COPY wms_android.shared/ wms_android.shared/
+COPY wms_android.cache/ wms_android.cache/
 RUN echo "=== Files after copy ===" && \
     ls -la /src && \
     echo "=== API project files ===" && \
     ls -la /src/ | head -20 && \
     echo "=== Shared project files ===" && \
-    ls -la /src/wms_android.shared/ | head -20
+    ls -la /src/wms_android.shared/ | head -20 && \
+    echo "=== Cache project files ===" && \
+    ls -la /src/wms_android.cache/ | head -20
 
 # Build and publish the API project specifically to avoid solution path issues
 WORKDIR /src
