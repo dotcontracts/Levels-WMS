@@ -5,11 +5,11 @@ FROM node:18-alpine AS build
 WORKDIR /app
 
 # Install deps first for better caching
-COPY client/package.json client/package-lock.json ./client/
+COPY wms_web.dispatch.react/client/package.json wms_web.dispatch.react/client/package-lock.json ./client/
 RUN cd client && npm ci --no-audit --no-fund
 
 # Copy source and build
-COPY client ./client
+COPY wms_web.dispatch.react/client ./client
 WORKDIR /app/client
 # Environment can be overridden at build-time with --build-arg
 ARG REACT_APP_API_BASE_URL
@@ -20,7 +20,7 @@ RUN npm run build
 FROM nginx:1.25-alpine AS runtime
 
 # Copy custom nginx config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY wms_web.dispatch.react/nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy built assets
 COPY --from=build /app/client/build /usr/share/nginx/html
