@@ -366,11 +366,15 @@ public class Program
 
         // Configure path base for DigitalOcean routing
         // DigitalOcean routes /api/* to this service, so we need to handle the /api prefix
-        var pathBase = builder.Configuration["PathBase"] ?? "/api";
+        var pathBase = builder.Configuration["PathBase"];
         if (!string.IsNullOrEmpty(pathBase) && pathBase != "/")
         {
             app.UsePathBase(pathBase);
             Console.WriteLine($"Using path base: {pathBase}");
+        }
+        else
+        {
+            Console.WriteLine("No path base configured — running at root /");
         }
 
         // Configure the HTTP request pipeline
@@ -396,8 +400,8 @@ public class Program
         
         // Add Response Compression early in pipeline for maximum benefit
         app.UseResponseCompression();
+        app.UseRouting();
         
-        // Add CORS before path base to ensure it works for all requests
         app.UseCors("AllowWebApp");
         
         app.UseAuthentication();
