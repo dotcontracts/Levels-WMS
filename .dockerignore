@@ -8,7 +8,6 @@
 **/bin/
 **/obj/
 **/dist/
-**/build/
 **/out/
 
 # IDE files
@@ -62,9 +61,8 @@
 **/libs/
 **/aidl/
 
-# Web projects (we only need API)
+# Web projects (we only need API for API builds)
 wms_web.dispatch.django/
-wms_web.dispatch.react/
 wms_web.dispatch/
 wms_web.ems/
 
@@ -79,8 +77,6 @@ wms_android.api.new/
 wms_android.data/
 
 # Package files
-package-lock.json
-package.json
 node_modules/
 
 # Environment files
