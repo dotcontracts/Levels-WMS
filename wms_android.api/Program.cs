@@ -185,7 +185,8 @@ public class Program
         var corsOrigins = new[]
         {
             "https://wms-ficma-dispatch-l5z4y.ondigitalocean.app", // React app (old URL)
-            "https://starfish-app-2q7m5.ondigitalocean.app",       // React web panel
+            "https://starfish-app-2q7m5.ondigitalocean.app",       // React web panel (old)
+            "https://wms-dispatch-app-pi36f.ondigitalocean.app",   // React web panel
             "https://levelsapi-82i8a.ondigitalocean.app",          // API URL
             "https://wmsandroidapi-w74du.ondigitalocean.app",      // Android API URL
             "http://localhost:3000",                                 // Local development
