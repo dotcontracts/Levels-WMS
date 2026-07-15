@@ -29,7 +29,8 @@ namespace wms_android.cache.Services
         {
             var options = new MemoryCacheEntryOptions
             {
-                AbsoluteExpirationRelativeToNow = expiration ?? _defaultExpiration
+                AbsoluteExpirationRelativeToNow = expiration ?? _defaultExpiration,
+                Size = 1
             };
 
             _memoryCache.Set(key, value, options);
