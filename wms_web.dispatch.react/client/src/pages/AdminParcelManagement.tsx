@@ -507,15 +507,15 @@ const AdminParcelManagement: React.FC = () => {
     setEditForm({
       waybillNumber: parcel.waybillNumber,
       status: parcel.status,
-      paymentMethods: parcel.paymentMethods,
-      sender: parcel.sender,
-      senderTelephone: parcel.senderTelephone,
-      receiver: parcel.receiver,
-      receiverTelephone: parcel.receiverTelephone,
-      destination: parcel.destination,
-      quantity: parcel.quantity,
-      amount: parcel.totalAmount || parcel.amount,
-      description: parcel.description
+      paymentMethods: parcel.paymentMethods || '',
+      sender: parcel.sender || '',
+      senderTelephone: parcel.senderTelephone || '',
+      receiver: parcel.receiver || '',
+      receiverTelephone: parcel.receiverTelephone || '',
+      destination: parcel.destination || '',
+      quantity: parcel.quantity || 0,
+      amount: parcel.totalAmount || parcel.amount || 0,
+      description: parcel.description || ''
     });
   };
 
@@ -537,21 +537,34 @@ const AdminParcelManagement: React.FC = () => {
     setEditForm({
       waybillNumber: editingParcel.waybillNumber,
       status: editingParcel.status,
-      paymentMethods: editingParcel.paymentMethods,
-      sender: editingParcel.sender,
-      senderTelephone: editingParcel.senderTelephone,
-      receiver: editingParcel.receiver,
-      receiverTelephone: editingParcel.receiverTelephone,
-      destination: editingParcel.destination,
-      quantity: editingParcel.quantity,
-      amount: editingParcel.totalAmount || editingParcel.amount,
-      description: editingParcel.description
+      paymentMethods: editingParcel.paymentMethods || '',
+      sender: editingParcel.sender || '',
+      senderTelephone: editingParcel.senderTelephone || '',
+      receiver: editingParcel.receiver || '',
+      receiverTelephone: editingParcel.receiverTelephone || '',
+      destination: editingParcel.destination || '',
+      quantity: editingParcel.quantity || 0,
+      amount: editingParcel.totalAmount || editingParcel.amount || 0,
+      description: editingParcel.description || ''
     });
   };
 
   // Save parcel edits
   const saveParcelEdits = async () => {
     if (!editingParcel || !editForm) return;
+
+    const validationErrors: string[] = [];
+    if (!editForm.sender?.trim()) validationErrors.push('Sender is required');
+    if (!editForm.senderTelephone?.trim()) validationErrors.push('Sender telephone is required');
+    if (!editForm.receiver?.trim()) validationErrors.push('Receiver is required');
+    if (!editForm.receiverTelephone?.trim()) validationErrors.push('Receiver telephone is required');
+    if (!editForm.destination?.trim()) validationErrors.push('Destination is required');
+    if (!editForm.paymentMethods?.trim()) validationErrors.push('Payment method is required');
+    if (validationErrors.length > 0) {
+      setError(validationErrors.join(', '));
+      setTimeout(() => setError(null), 5000);
+      return;
+    }
     
     try {
       setSaving(true);
@@ -559,6 +572,7 @@ const AdminParcelManagement: React.FC = () => {
       // Prepare update data with both amount and totalAmount
       const updateData = {
         ...editForm,
+        description: editForm.description || '',
         totalAmount: editForm.amount, // Set totalAmount to the edited amount value
         amount: editForm.amount // Keep amount field consistent
       };
@@ -944,6 +958,9 @@ const AdminParcelManagement: React.FC = () => {
                     {availablePaymentMethods.filter(method => !['Paid', 'COD', 'Contract'].includes(method)).map(method => (
                       <option key={method} value={method}>{method}</option>
                     ))}
+                    {editForm.paymentMethods && !['Paid', 'COD', 'Contract', ...availablePaymentMethods].includes(editForm.paymentMethods) && (
+                      <option value={editForm.paymentMethods}>{editForm.paymentMethods}</option>
+                    )}
                   </select>
                 </div>
 
@@ -960,6 +977,9 @@ const AdminParcelManagement: React.FC = () => {
                     {availableDestinations.map(dest => (
                       <option key={dest} value={dest}>{dest}</option>
                     ))}
+                    {editForm.destination && !availableDestinations.includes(editForm.destination) && (
+                      <option value={editForm.destination}>{editForm.destination}</option>
+                    )}
                   </select>
                 </div>
 
