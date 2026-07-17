@@ -194,7 +194,9 @@ namespace wms_android.api.Controllers
                             DispatchedAt = p.DispatchedAt,
                             SenderTelephone = p.SenderTelephone,
                             ReceiverTelephone = p.ReceiverTelephone,
-                            PaymentMethods = p.PaymentMethods
+                            PaymentMethods = p.PaymentMethods,
+                            Quantity = p.Quantity,
+                            Description = p.Description
                         })
                         .ToListAsync();
                     return new ParcelPageWrapper { Parcels = parcels };
@@ -233,13 +235,21 @@ namespace wms_android.api.Controllers
             [FromQuery] string? statuses = null,
             [FromQuery] DateTime? fromDate = null,
             [FromQuery] DateTime? toDate = null,
-            [FromQuery] string? search = null)
+            [FromQuery] string? search = null,
+            [FromQuery] string? paymentMethod = null)
         {
             try
             {
                 // Validate pagination parameters
                 page = Math.Max(1, page);
                 pageSize = Math.Clamp(pageSize, 1, 1500); // Increased limit for better performance with large datasets
+
+                // Enforce 3-day restriction for user-specific parcel queries
+                var maxFromDate = DateTime.Today.AddDays(-3);
+                if (!fromDate.HasValue || fromDate.Value.Date < maxFromDate)
+                {
+                    fromDate = maxFromDate;
+                }
 
                 var query = _context.Parcels
                     .AsNoTracking()
@@ -289,6 +299,12 @@ namespace wms_android.api.Controllers
                         p.Destination.ToLower().Contains(searchLower) ||
                         p.ReceiverTelephone.Contains(search) ||
                         p.SenderTelephone.Contains(search));
+                }
+
+                if (!string.IsNullOrEmpty(paymentMethod))
+                {
+                    var paymentMethodLower = paymentMethod.ToLower();
+                    query = query.Where(p => p.PaymentMethods != null && p.PaymentMethods.ToLower().Contains(paymentMethodLower));
                 }
 
                 var totalCount = await query.CountAsync();
