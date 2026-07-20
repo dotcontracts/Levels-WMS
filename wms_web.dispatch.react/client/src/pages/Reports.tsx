@@ -139,6 +139,7 @@ interface ClerkDebitData {
     to: string;
   };
   transactions: ClerkDebitTransaction[];
+  approvedExpenseItems: DailyExpense[];
 }
 
 interface ClerkDebitTransaction {
@@ -223,7 +224,6 @@ const Reports: React.FC = () => {
   const [selectedClerkParcel, setSelectedClerkParcel] = useState<ClerkParcelData | null>(null);
   const [showParcelModal, setShowParcelModal] = useState(false);
   const [parcelDepositAmount, setParcelDepositAmount] = useState('');
-  const [parcelExpenses, setParcelExpenses] = useState('');
   const [updatingParcel, setUpdatingParcel] = useState(false);
   const [cashInDate, setCashInDate] = useState(new Date().toISOString().split('T')[0]); // Single date filter for cash-in
   const [activeBranchTab, setActiveBranchTab] = useState<string>('');
@@ -704,7 +704,8 @@ const Reports: React.FC = () => {
             currentDebit: 0,
             parcelCount: 0,
             dateRange: dateRange,
-            transactions: []
+            transactions: [],
+            approvedExpenseItems: []
           };
         }
 
@@ -752,12 +753,50 @@ const Reports: React.FC = () => {
 
       // Calculate current debit for each clerk, subtracting approved clerk expenses
       Object.values(clerkDebitMap).forEach(clerk => {
-        const clerkApprovedExpenses = allApprovedExpenses
-          .filter(e => e.clerkId === clerk.clerkId)
-          .reduce((sum, e) => sum + e.amount, 0);
+        const clerkExpenseItems = allApprovedExpenses.filter(e => e.clerkId === clerk.clerkId);
+        const clerkApprovedExpenses = clerkExpenseItems.reduce((sum, e) => sum + e.amount, 0);
         clerk.totalExpenses = clerkApprovedExpenses;
         clerk.currentDebit = clerk.totalPaidAmount - clerk.totalDeposited - clerkApprovedExpenses;
+        clerk.approvedExpenseItems = clerkExpenseItems.sort(
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
         clerk.transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      });
+
+      // Also include clerks who only have expenses but no parcel transactions in the date range
+      allApprovedExpenses.forEach(expense => {
+        if (!expense.clerkId) return;
+        if (clerkDebitMap[expense.clerkId]) return; // already handled
+        const clerkUser = users.find(u => u.id === expense.clerkId);
+        if (!clerkUser) return;
+        clerkDebitMap[expense.clerkId] = {
+          clerkId: expense.clerkId,
+          clerkName: clerkUser.firstName && clerkUser.lastName
+            ? `${clerkUser.firstName} ${clerkUser.lastName}`
+            : clerkUser.username,
+          clerkUsername: clerkUser.username,
+          totalPaidAmount: 0,
+          totalDeposited: 0,
+          totalExpenses: 0,
+          currentDebit: 0,
+          parcelCount: 0,
+          dateRange: dateRange,
+          transactions: [],
+          approvedExpenseItems: []
+        };
+      });
+
+      // Second pass: populate expense-only clerks
+      Object.values(clerkDebitMap).forEach(clerk => {
+        if (clerk.approvedExpenseItems.length > 0) return;
+        const clerkExpenseItems = allApprovedExpenses.filter(e => e.clerkId === clerk.clerkId);
+        if (clerkExpenseItems.length === 0) return;
+        const total = clerkExpenseItems.reduce((sum, e) => sum + e.amount, 0);
+        clerk.totalExpenses = total;
+        clerk.currentDebit = -total;
+        clerk.approvedExpenseItems = clerkExpenseItems.sort(
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
       });
 
       // Sort clerks by highest debit first
@@ -1743,7 +1782,6 @@ const Reports: React.FC = () => {
   const openParcelModal = useCallback((parcel: ClerkParcelData) => {
     setSelectedClerkParcel(parcel);
     setParcelDepositAmount(parcel.depositedAmount.toString());
-    setParcelExpenses(parcel.expenses.toString());
     setShowParcelModal(true);
   }, []);
 
@@ -1751,10 +1789,9 @@ const Reports: React.FC = () => {
     if (!selectedClerkParcel || !selectedClerk) return;
 
     const depositAmount = parseFloat(parcelDepositAmount) || 0;
-    const expenses = parseFloat(parcelExpenses) || 0;
 
-    if (depositAmount < 0 || expenses < 0) {
-      setError('Amounts cannot be negative');
+    if (depositAmount < 0) {
+      setError('Amount cannot be negative');
       return;
     }
 
@@ -1767,7 +1804,7 @@ const Reports: React.FC = () => {
 
         await wmsApi.updateOrCreateParcelDeposit(selectedClerkParcel.id, {
           depositedAmount: depositAmount,
-          expenses: expenses,
+          expenses: 0,
           updatedById: user?.id ? parseInt(user.id.toString()) : undefined
         });
 
@@ -1781,7 +1818,7 @@ const Reports: React.FC = () => {
                 return {
                   ...parcel,
                   depositedAmount: depositAmount,
-                  expenses: expenses
+                  expenses: 0
                 };
               }
               return parcel;
@@ -1820,7 +1857,6 @@ const Reports: React.FC = () => {
         setShowParcelModal(false);
         setSelectedClerkParcel(null);
         setParcelDepositAmount('');
-        setParcelExpenses('');
         return;
       } catch (apiError) {
         console.error('Failed to update parcel deposit via API:', apiError);
@@ -1835,14 +1871,13 @@ const Reports: React.FC = () => {
       setShowParcelModal(false);
       setSelectedClerkParcel(null);
       setParcelDepositAmount('');
-      setParcelExpenses('');
 
     } catch (err) {
       setError('Failed to update parcel information');
     } finally {
       setUpdatingParcel(false);
     }
-  }, [selectedClerkParcel, selectedClerk, parcelDepositAmount, parcelExpenses, user, fetchClerkCashInData, cashInDate, fetchClerkDebitData, debitDateRange]);
+  }, [selectedClerkParcel, selectedClerk, parcelDepositAmount, user, fetchClerkCashInData, cashInDate, fetchClerkDebitData, debitDateRange]);
 
   const downloadBranchPDF = useCallback((branchSummary: BranchDebitSummary) => {
     const printWindow = window.open('', '_blank');
@@ -3805,74 +3840,103 @@ const Reports: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Transactions Table */}
+                {/* Transactions + Expenses Table interleaved by date */}
                 <div className="overflow-x-auto">
                   <Table>
                     <Table.Header>
                       <Table.Row>
                         <Table.Head>Date</Table.Head>
-                        <Table.Head>Waybill</Table.Head>
+                        <Table.Head>Type</Table.Head>
+                        <Table.Head>Reference / Description</Table.Head>
                         <Table.Head>Destination</Table.Head>
-                        <Table.Head>Sender</Table.Head>
-                        <Table.Head>Receiver</Table.Head>
                         <Table.Head>Paid Amount</Table.Head>
                         <Table.Head>Deposited</Table.Head>
-                        <Table.Head>Expenses</Table.Head>
+                        <Table.Head>Expense</Table.Head>
                         <Table.Head>Net Debit</Table.Head>
                       </Table.Row>
                     </Table.Header>
                     <Table.Body>
-                      {selectedDebitClerk.transactions.map((transaction) => (
-                        <Table.Row key={transaction.parcelId}>
-                          <Table.Cell>
-                            <div className="text-sm text-gray-900 dark:text-white">
-                              {new Date(transaction.date).toLocaleDateString()}
-                            </div>
-                          </Table.Cell>
-                          <Table.Cell>
-                            <div className="font-medium text-gray-900 dark:text-white">
-                              {transaction.waybillNumber}
-                            </div>
-                          </Table.Cell>
-                          <Table.Cell>
-                            <div className="text-sm text-gray-600 dark:text-gray-400">
-                              {transaction.destination}
-                            </div>
-                          </Table.Cell>
-                          <Table.Cell>
-                            <div className="text-sm text-gray-600 dark:text-gray-400">
-                              {transaction.sender}
-                            </div>
-                          </Table.Cell>
-                          <Table.Cell>
-                            <div className="text-sm text-gray-600 dark:text-gray-400">
-                              {transaction.receiver}
-                            </div>
-                          </Table.Cell>
-                          <Table.Cell>
-                            <span className="font-medium">
-                              {formatCurrency(transaction.paidAmount)}
-                            </span>
-                          </Table.Cell>
-                          <Table.Cell>
-                            <span className="text-green-600 font-medium">
-                              {formatCurrency(transaction.depositedAmount)}
-                            </span>
-                          </Table.Cell>
-                          <Table.Cell>
-                            <span className="text-orange-600 font-medium">
-                              {formatCurrency(transaction.expenses)}
-                            </span>
-                          </Table.Cell>
-                          <Table.Cell>
-                            <span className={`font-bold ${transaction.netDebit > 0 ? 'text-red-600' : 'text-green-600'
-                              }`}>
-                              {formatCurrency(Math.abs(transaction.netDebit))}
-                              {transaction.netDebit < 0 ? ' (Credit)' : ''}
-                            </span>
-                          </Table.Cell>
-                        </Table.Row>
-                      ))}
+                      {(() => {
+                        type Row =
+                          | { kind: 'parcel'; date: string; data: ClerkDebitTransaction }
+                          | { kind: 'expense'; date: string; data: DailyExpense };
+
+                        const rows: Row[] = [
+                          ...selectedDebitClerk.transactions.map(t => ({
+                            kind: 'parcel' as const,
+                            date: t.date,
+                            data: t
+                          })),
+                          ...(selectedDebitClerk.approvedExpenseItems || []).map(e => ({
+                            kind: 'expense' as const,
+                            date: e.date.split('T')[0],
+                            data: e
+                          }))
+                        ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                        return rows.map((row, idx) => {
+                          if (row.kind === 'parcel') {
+                            const t = row.data as ClerkDebitTransaction;
+                            return (
+                              <Table.Row key={`p-${t.parcelId}`}>
+                                <Table.Cell>
+                                  <div className="text-sm text-gray-900 dark:text-white">
+                                    {new Date(t.date).toLocaleDateString()}
+                                  </div>
+                                </Table.Cell>
+                                <Table.Cell>
+                                  <Badge variant="primary" size="sm">Parcel</Badge>
+                                </Table.Cell>
+                                <Table.Cell>
+                                  <div className="font-medium text-gray-900 dark:text-white">{t.waybillNumber}</div>
+                                  <div className="text-xs text-gray-500">{t.sender} → {t.receiver}</div>
+                                </Table.Cell>
+                                <Table.Cell>
+                                  <div className="text-sm text-gray-600 dark:text-gray-400">{t.destination}</div>
+                                </Table.Cell>
+                                <Table.Cell>
+                                  <span className="font-medium">{formatCurrency(t.paidAmount)}</span>
+                                </Table.Cell>
+                                <Table.Cell>
+                                  <span className="text-green-600 font-medium">{formatCurrency(t.depositedAmount)}</span>
+                                </Table.Cell>
+                                <Table.Cell>—</Table.Cell>
+                                <Table.Cell>
+                                  <span className={`font-bold ${t.netDebit > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                    {formatCurrency(Math.abs(t.netDebit))}
+                                    {t.netDebit < 0 ? ' (Cr)' : ''}
+                                  </span>
+                                </Table.Cell>
+                              </Table.Row>
+                            );
+                          } else {
+                            const e = row.data as DailyExpense;
+                            return (
+                              <Table.Row key={`e-${e.id}`} className="bg-orange-50 dark:bg-orange-900/10">
+                                <Table.Cell>
+                                  <div className="text-sm text-gray-900 dark:text-white">
+                                    {new Date(e.date).toLocaleDateString()}
+                                  </div>
+                                </Table.Cell>
+                                <Table.Cell>
+                                  <Badge variant="warning" size="sm">Expense</Badge>
+                                </Table.Cell>
+                                <Table.Cell>
+                                  <div className="font-medium text-orange-700 dark:text-orange-300">{e.description}</div>
+                                  <div className="text-xs text-gray-500 capitalize">{e.category.replace('_', ' ')}{e.vendor ? ` · ${e.vendor}` : ''}</div>
+                                </Table.Cell>
+                                <Table.Cell>—</Table.Cell>
+                                <Table.Cell>—</Table.Cell>
+                                <Table.Cell>—</Table.Cell>
+                                <Table.Cell>
+                                  <span className="text-orange-600 font-medium">-{formatCurrency(e.amount)}</span>
+                                </Table.Cell>
+                                <Table.Cell>—</Table.Cell>
+                              </Table.Row>
+                            );
+                          }
+                        });
+                      })()}
                     </Table.Body>
                   </Table>
                 </div>
@@ -4740,27 +4804,19 @@ const Reports: React.FC = () => {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Expenses
-                </label>
-                <input
-                  type="number"
-                  value={parcelExpenses}
-                  onChange={(e) => setParcelExpenses(e.target.value)}
-                  min="0"
-                  step="0.01"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter expenses"
-                />
-              </div>
+              {selectedClerkParcel.transactionCode && (
+                <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Transaction Code</div>
+                  <div className="text-sm font-mono font-medium text-gray-900 dark:text-white">
+                    {selectedClerkParcel.transactionCode}
+                  </div>
+                </div>
+              )}
 
               <div className="bg-blue-50 dark:bg-blue-500/20 p-3 rounded-lg">
                 <div className="text-sm text-blue-600 dark:text-blue-400">
                   Remaining: {formatCurrency(
-                    selectedClerkParcel.amount -
-                    (parseFloat(parcelDepositAmount) || 0) -
-                    (parseFloat(parcelExpenses) || 0)
+                    selectedClerkParcel.amount - (parseFloat(parcelDepositAmount) || 0)
                   )}
                 </div>
               </div>

@@ -180,49 +180,27 @@ namespace wms_android.api.Controllers
             }
         }
 
+        public class ApproveExpenseRequest
+        {
+            public int ExpenseId { get; set; }
+            public bool Approved { get; set; }
+            public string? RejectionReason { get; set; }
+            public string? Notes { get; set; }
+        }
+
         // POST: api/Expenses/approve
         [HttpPost("approve")]
-        public async Task<IActionResult> ApproveExpense([FromBody] dynamic requestBody)
+        public async Task<IActionResult> ApproveExpense([FromBody] ApproveExpenseRequest request)
         {
             try
             {
-                Console.WriteLine($"[DEBUG] Raw request body: {requestBody}");
-                
-                // Extract values from the dynamic object
-                int expenseId = 0;
-                bool approved = false;
-                string rejectionReason = "";
-                string approvalNotes = "";
-                
-                try 
-                {
-                    var jsonElement = (System.Text.Json.JsonElement)requestBody;
-                    expenseId = jsonElement.GetProperty("expenseId").GetInt32();
-                    approved = jsonElement.GetProperty("approved").GetBoolean();
-                    
-                    // Try to get rejection reason if present
-                    if (jsonElement.TryGetProperty("rejectionReason", out var rejectionElement))
-                    {
-                        rejectionReason = rejectionElement.GetString() ?? "";
-                    }
-                    
-                    // Try to get approval notes if present
-                    if (jsonElement.TryGetProperty("notes", out var notesElement))
-                    {
-                        approvalNotes = notesElement.GetString() ?? "";
-                    }
-                    
-                    Console.WriteLine($"[DEBUG] Parsed - ExpenseId: {expenseId}, Approved: {approved}, Rejection: {rejectionReason}");
-                }
-                catch (Exception parseEx)
-                {
-                    Console.WriteLine($"[DEBUG] Parse error: {parseEx.Message}");
-                    return BadRequest("Invalid request format");
-                }
-                
+                var expenseId = request.ExpenseId;
+                var approved = request.Approved;
+                var rejectionReason = request.RejectionReason ?? "";
+                var approvalNotes = request.Notes ?? "";
+
                 if (expenseId <= 0)
                 {
-                    Console.WriteLine($"[DEBUG] Invalid ExpenseId: {expenseId}");
                     return BadRequest("Invalid expense ID");
                 }
                 
