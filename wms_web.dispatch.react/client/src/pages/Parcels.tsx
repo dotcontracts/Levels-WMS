@@ -521,15 +521,44 @@ const Parcels: React.FC = () => {
       setIsExporting(true);
       setShowExportDropdown(false);
 
-      // Load all remaining pages before exporting
-      let latestData = cachedData;
-      while (latestData && latestData.currentPage < latestData.totalPages) {
-        const result = await loadMoreParcels();
-        if (!result) break;
-        latestData = result;
-      }
+      // Fetch all pages with the current active filters
+      let allParcels: typeof parcels = [];
+      let currentPage = 1;
+      let totalPages = 1;
 
-      const allParcels = latestData?.parcels ?? parcels;
+      do {
+        const result = await wmsApi.getParcelsPaged({
+          page: currentPage,
+          pageSize: 200,
+          search: filters.search || undefined,
+          status: filters.status ? parseInt(filters.status) : undefined,
+          destination: filters.destination || undefined,
+          fromDate: filters.dateRange.from || undefined,
+          toDate: filters.dateRange.to || undefined,
+          createdByUsername: filters.clerk || undefined,
+        });
+
+        let pageData = result.data;
+
+        // Apply client-side filters not supported by the API
+        if (filters.sender) {
+          pageData = pageData.filter(p =>
+            p.sender?.toLowerCase().includes(filters.sender.toLowerCase())
+          );
+        }
+        if (filters.receiver) {
+          pageData = pageData.filter(p =>
+            p.receiver?.toLowerCase().includes(filters.receiver.toLowerCase())
+          );
+        }
+        if (filters.paymentMethod) {
+          pageData = pageData.filter(p => p.paymentMethods === filters.paymentMethod);
+        }
+
+        allParcels = [...allParcels, ...pageData];
+        totalPages = result.totalPages;
+        currentPage++;
+      } while (currentPage <= totalPages);
 
       const filterSummary = generateExportFilterSummary(filters);
       const exportDate = new Date().toISOString().split('T')[0];
