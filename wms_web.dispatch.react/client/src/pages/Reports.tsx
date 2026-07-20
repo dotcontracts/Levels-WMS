@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useReportsData } from '../context/ReportsDataContext';
-import { wmsApi, Parcel, Dispatch, ParcelDepositDto } from '../services/wmsApi';
+import { wmsApi, Parcel, Dispatch, ParcelDepositDto, DailyExpense } from '../services/wmsApi';
 import { DataLoadingState, SkeletonTable, SkeletonCard, ProgressBar } from '../components/SkeletonLoader';
 import {
   BarChart,
@@ -89,6 +89,7 @@ interface BranchDebitSummary {
   totalCodAmount: number;
   totalDeposited: number;
   totalDebt: number;
+  totalExpenses: number;
   transactions: BranchDebitData[];
 }
 
@@ -228,6 +229,8 @@ const Reports: React.FC = () => {
   const [activeBranchTab, setActiveBranchTab] = useState<string>('');
   const [loadingDeposits, setLoadingDeposits] = useState(false);
   const [savingDeposit, setSavingDeposit] = useState(false);
+
+  const [approvedExpenses, setApprovedExpenses] = useState<DailyExpense[]>([]);
 
   // Clerk Debit related state
   const [clerkDebitData, setClerkDebitData] = useState<ClerkDebitData[]>([]);
@@ -549,17 +552,13 @@ const Reports: React.FC = () => {
           };
         }
 
-        // Check for deposit/expense data from database only
+        // Check for deposit data from database only
         let depositedAmount = 0;
-        let expenses = 0;
 
         const dbDeposit = depositsMap[parcel.id];
         if (dbDeposit) {
-          // Use database data
           depositedAmount = dbDeposit.depositedAmount;
-          expenses = dbDeposit.expenses;
         }
-        // If no database record exists, use default values (0, 0)
 
         // Add parcel to clerk's data
         const clerkParcelData: ClerkParcelData = {
@@ -570,7 +569,7 @@ const Reports: React.FC = () => {
           destination: parcel.destination,
           amount: parcel.totalAmount,
           depositedAmount: depositedAmount,
-          expenses: expenses,
+          expenses: 0,
           transactionCode: parcel.transactionCode || '',
           createdAt: parcel.createdAt
         };
@@ -579,11 +578,26 @@ const Reports: React.FC = () => {
         clerkData[clerkId].totalPaidAmount += parcel.totalAmount;
       });
 
-      // Calculate totals for each clerk
+      // Fetch approved expenses and apply per-clerk (filtered by date if provided)
+      let approvedClerkExpenses: DailyExpense[] = [];
+      try {
+        const allExpenses = await wmsApi.getDailyExpenses();
+        approvedClerkExpenses = allExpenses.filter(e => {
+          if (e.status !== 'approved') return false;
+          if (filterDate) {
+            return e.date.split('T')[0] === filterDate;
+          }
+          return true;
+        });
+      } catch {}
+
+      // Calculate totals for each clerk, applying approved expenses
       Object.values(clerkData).forEach(clerk => {
         clerk.totalDeposited = clerk.parcels.reduce((sum, p) => sum + p.depositedAmount, 0);
-        clerk.totalExpenses = clerk.parcels.reduce((sum, p) => sum + p.expenses, 0);
-        clerk.remainingDebt = clerk.totalPaidAmount - clerk.totalDeposited + clerk.totalExpenses;
+        clerk.totalExpenses = approvedClerkExpenses
+          .filter(e => e.clerkId === clerk.clerkId)
+          .reduce((sum, e) => sum + e.amount, 0);
+        clerk.remainingDebt = clerk.totalPaidAmount - clerk.totalDeposited - clerk.totalExpenses;
       });
 
       return Object.values(clerkData);
@@ -694,19 +708,16 @@ const Reports: React.FC = () => {
           };
         }
 
-        // Check for deposit/expense data from database only
+        // Check for deposit data from database only
         let depositedAmount = 0;
-        let expenses = 0;
 
         const dbDeposit = depositsMap[parcel.id];
         if (dbDeposit) {
           depositedAmount = dbDeposit.depositedAmount;
-          expenses = dbDeposit.expenses;
         }
-        // If no database record exists, use default values (0, 0)
 
-        // Calculate net debit for this transaction
-        const netDebit = parcel.totalAmount - depositedAmount + expenses;
+        // Calculate net debit for this transaction (expenses handled separately via DailyExpense)
+        const netDebit = parcel.totalAmount - depositedAmount;
 
         // Add transaction to clerk's data
         const transaction: ClerkDebitTransaction = {
@@ -715,7 +726,7 @@ const Reports: React.FC = () => {
           waybillNumber: parcel.waybillNumber,
           paidAmount: parcel.totalAmount,
           depositedAmount: depositedAmount,
-          expenses: expenses,
+          expenses: 0,
           netDebit: netDebit,
           destination: parcel.destination,
           sender: parcel.sender,
@@ -725,15 +736,27 @@ const Reports: React.FC = () => {
         clerkDebitMap[clerkId].transactions.push(transaction);
         clerkDebitMap[clerkId].totalPaidAmount += parcel.totalAmount;
         clerkDebitMap[clerkId].totalDeposited += depositedAmount;
-        clerkDebitMap[clerkId].totalExpenses += expenses;
         clerkDebitMap[clerkId].parcelCount += 1;
       });
 
-      // Calculate current debit for each clerk (fixed to match .NET MAUI calculation)
-      // Formula: remainingDebt = totalPaidAmount - (totalDeposited + totalExpenses)
+      // Fetch approved expenses and apply per-clerk within date range
+      let allApprovedExpenses: DailyExpense[] = [];
+      try {
+        const allExpenses = await wmsApi.getDailyExpenses();
+        allApprovedExpenses = allExpenses.filter(e => {
+          if (e.status !== 'approved') return false;
+          const expDate = e.date.split('T')[0];
+          return expDate >= dateRange.from && expDate <= dateRange.to;
+        });
+      } catch {}
+
+      // Calculate current debit for each clerk, subtracting approved clerk expenses
       Object.values(clerkDebitMap).forEach(clerk => {
-        clerk.currentDebit = clerk.totalPaidAmount - (clerk.totalDeposited + clerk.totalExpenses);
-        // Sort transactions by date (most recent first)
+        const clerkApprovedExpenses = allApprovedExpenses
+          .filter(e => e.clerkId === clerk.clerkId)
+          .reduce((sum, e) => sum + e.amount, 0);
+        clerk.totalExpenses = clerkApprovedExpenses;
+        clerk.currentDebit = clerk.totalPaidAmount - clerk.totalDeposited - clerkApprovedExpenses;
         clerk.transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       });
 
@@ -899,8 +922,8 @@ const Reports: React.FC = () => {
         receiver: parcel.receiver,
         destination: parcel.destination,
         amount: parcel.totalAmount || 0,
-        depositedAmount: 0, // Will be updated from database
-        expenses: 0, // Will be updated by user
+        depositedAmount: 0,
+        expenses: 0,
         transactionCode: parcel.transactionCode,
         createdAt: parcel.createdAt
       };
@@ -909,15 +932,22 @@ const Reports: React.FC = () => {
       clerkData[clerkId].totalPaidAmount += parcelData.amount;
     });
 
-    // Calculate totals for each clerk
+    // Calculate totals for each clerk (expenses come from approvedExpenses state)
     Object.values(clerkData).forEach(clerk => {
       clerk.totalDeposited = clerk.parcels.reduce((sum, p) => sum + p.depositedAmount, 0);
-      clerk.totalExpenses = clerk.parcels.reduce((sum, p) => sum + p.expenses, 0);
-      clerk.remainingDebt = clerk.totalPaidAmount - clerk.totalDeposited - clerk.totalExpenses;
+      const clerkExpenses = approvedExpenses
+        .filter(e => {
+          if (e.clerkId !== clerk.clerkId) return false;
+          if (filterDate) return e.date.split('T')[0] === filterDate;
+          return true;
+        })
+        .reduce((sum, e) => sum + e.amount, 0);
+      clerk.totalExpenses = clerkExpenses;
+      clerk.remainingDebt = clerk.totalPaidAmount - clerk.totalDeposited - clerkExpenses;
     });
 
     return Object.values(clerkData).sort((a, b) => b.totalPaidAmount - a.totalPaidAmount);
-  }, [userCache]);
+  }, [userCache, approvedExpenses]);
 
   // Generate sales per clerk data with proper user resolution
   const generateSalesPerClerkData = useCallback((parcels: Parcel[]): SalesPerClerkData[] => {
@@ -1053,6 +1083,7 @@ const Reports: React.FC = () => {
           branch,
           totalCodAmount: 0,
           totalDeposited: 0,
+          totalExpenses: 0,
           totalDebt: 0,
           transactions: []
         };
@@ -1084,6 +1115,7 @@ const Reports: React.FC = () => {
           branch: nairobiPaidsBranch,
           totalCodAmount: 0,
           totalDeposited: 0,
+          totalExpenses: 0,
           totalDebt: 0,
           transactions: []
         };
@@ -1129,7 +1161,7 @@ const Reports: React.FC = () => {
     return branchData;
   }, []);
 
-  const loadAndMergeBranchDeposits = useCallback(async (generatedData: { [key: string]: BranchDebitSummary }) => {
+  const loadAndMergeBranchDeposits = useCallback(async (generatedData: { [key: string]: BranchDebitSummary }, approvedExp: DailyExpense[] = []) => {
     try {
       setLoadingDeposits(true);
 
@@ -1230,14 +1262,24 @@ const Reports: React.FC = () => {
             // This branch only exists in API (no COD data for current period)
             mergedData[branch] = {
               branch: branchApiData.branch,
-              totalCodAmount: 0, // No COD data for this period
+              totalCodAmount: 0,
               totalDeposited: branchApiData.totalDeposited,
+              totalExpenses: 0,
               totalDebt: branchApiData.totalDebt,
               transactions: branchApiData.transactions
             };
           }
         });
       }
+
+      // Apply approved branch expenses to each branch's debt
+      Object.keys(mergedData).forEach(branch => {
+        const branchExpenses = approvedExp
+          .filter(e => e.branchName === branch || e.branchName?.toLowerCase() === branch.toLowerCase())
+          .reduce((sum, e) => sum + e.amount, 0);
+        mergedData[branch].totalExpenses = branchExpenses;
+        mergedData[branch].totalDebt = mergedData[branch].totalDebt - branchExpenses;
+      });
 
       return mergedData;
     } catch (error) {
@@ -1347,7 +1389,13 @@ const Reports: React.FC = () => {
           to: debitDateRange.to
         };
         const data: any = {};
-        data.clerkDebit = await fetchClerkDebitData(clerkDateRange);
+        const [clerkDebitResult, allExpenses] = await Promise.all([
+          fetchClerkDebitData(clerkDateRange),
+          wmsApi.getDailyExpenses().catch(() => [] as DailyExpense[])
+        ]);
+        const approvedExp = allExpenses.filter(e => e.status === 'approved');
+        setApprovedExpenses(approvedExp);
+        data.clerkDebit = clerkDebitResult;
         setClerkDebitData(data.clerkDebit);
         setReportData(data);
         
@@ -1436,12 +1484,18 @@ const Reports: React.FC = () => {
         case 'undelivered-parcels':
           data.undeliveredParcels = generateUndeliveredParcelData(dispatchesData, filteredParcels);
           break;
-        case 'cod-delivered':
-          const generatedData = generateBranchDebitData(filteredParcels);
-          const mergedData = await loadAndMergeBranchDeposits(generatedData);
+        case 'cod-delivered': {
+          const [generatedData, allExpenses] = await Promise.all([
+            Promise.resolve(generateBranchDebitData(filteredParcels)),
+            wmsApi.getDailyExpenses().catch(() => [] as DailyExpense[])
+          ]);
+          const approvedExp = allExpenses.filter(e => e.status === 'approved');
+          setApprovedExpenses(approvedExp);
+          const mergedData = await loadAndMergeBranchDeposits(generatedData, approvedExp);
           data.branchDebit = mergedData;
           setBranchDebitData(mergedData || {});
           break;
+        }
         case 'dashboard':
           data.salesPerClerk = generateSalesPerClerkData(filteredParcels);
           data.deliveryRate = generateDeliveryRateData(filteredParcels);
@@ -1733,10 +1787,10 @@ const Reports: React.FC = () => {
               return parcel;
             });
 
-            // Recalculate totals for this clerk only
+            // Recalculate totals for this clerk only (expenses come from approved DailyExpenses, not parcels)
             const totalDeposited = updatedParcels.reduce((sum, p) => sum + p.depositedAmount, 0);
-            const totalExpenses = updatedParcels.reduce((sum, p) => sum + p.expenses, 0);
-            const remainingDebt = clerk.totalPaidAmount - (totalDeposited + totalExpenses);
+            const totalExpenses = clerk.totalExpenses;
+            const remainingDebt = clerk.totalPaidAmount - totalDeposited - totalExpenses;
 
             return {
               ...clerk,
@@ -3302,6 +3356,14 @@ const Reports: React.FC = () => {
                         {formatCurrency(activeBranchSummary.totalDeposited)}
                       </div>
                     </div>
+                    {activeBranchSummary.totalExpenses > 0 && (
+                      <div className="text-center">
+                        <div className="text-sm text-gray-600 dark:text-gray-400">Approved Expenses</div>
+                        <div className="text-lg font-semibold text-orange-600">
+                          -{formatCurrency(activeBranchSummary.totalExpenses)}
+                        </div>
+                      </div>
+                    )}
                     <div className="text-center">
                       <div className="text-sm text-gray-600 dark:text-gray-400">
                         {activeBranchSummary.branch === 'Nairobi-Paids' ? 'Balance' : 'Debt'}
@@ -3728,10 +3790,11 @@ const Reports: React.FC = () => {
                     </div>
                   </div>
                   <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg">
-                    <div className="text-sm text-orange-600 dark:text-orange-400">Total Expenses</div>
+                    <div className="text-sm text-orange-600 dark:text-orange-400">Approved Expenses</div>
                     <div className="text-lg font-bold text-orange-700 dark:text-orange-300">
                       {formatCurrency(selectedDebitClerk.totalExpenses)}
                     </div>
+                    <div className="text-xs text-orange-500 mt-1">Deducted from debit</div>
                   </div>
                   <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg">
                     <div className="text-sm text-red-600 dark:text-red-400">Current Debit</div>
@@ -4536,10 +4599,11 @@ const Reports: React.FC = () => {
                   </div>
                 </div>
                 <div className="bg-orange-50 dark:bg-orange-500/20 p-4 rounded-lg">
-                  <div className="text-sm font-medium text-orange-600 dark:text-orange-400">Total Expenses</div>
+                  <div className="text-sm font-medium text-orange-600 dark:text-orange-400">Approved Expenses</div>
                   <div className="text-xl font-bold text-orange-900 dark:text-orange-300">
                     {formatCurrency(selectedClerk.totalExpenses)}
                   </div>
+                  <div className="text-xs text-orange-500 mt-1">Deducted from debt</div>
                 </div>
                 <div className="bg-red-50 dark:bg-red-500/20 p-4 rounded-lg">
                   <div className="text-sm font-medium text-red-600 dark:text-red-400">Outstanding Debt</div>
