@@ -24,6 +24,7 @@ export interface FilterField {
   placeholder?: string;
   options?: FilterOption[];
   icon?: React.ReactNode;
+  disabled?: boolean;
 }
 
 export interface FilterState {
@@ -35,6 +36,7 @@ export interface FilterChip {
   label: string;
   value: string;
   onRemove: () => void;
+  locked?: boolean;
 }
 
 interface FilterPanelProps {
@@ -125,6 +127,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
             placeholder={field.placeholder}
             value={value as string}
             onChange={(valueOrEvent: any) => {
+              if (field.disabled) return;
               // Handle both direct value and event object
               const actualValue = typeof valueOrEvent === 'string' 
                 ? valueOrEvent 
@@ -133,6 +136,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
             }}
             options={field.options || []}
             size="sm"
+            disabled={field.disabled}
           />
         );
 
@@ -315,16 +319,23 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
           {activeFilters.map((chip) => (
             <div
               key={chip.key}
-              className="inline-flex items-center gap-1 px-3 py-1 bg-brand-100 text-brand-800 rounded-full text-sm dark:bg-brand-500/20 dark:text-brand-400"
+              className={clsx(
+                'inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm',
+                chip.locked
+                  ? 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                  : 'bg-brand-100 text-brand-800 dark:bg-brand-500/20 dark:text-brand-400'
+              )}
             >
               <span className="font-medium">{chip.label}:</span>
               <span>{chip.value}</span>
-              <button
-                onClick={chip.onRemove}
-                className="ml-1 hover:bg-brand-200 rounded-full p-0.5 dark:hover:bg-brand-500/30"
-              >
-                <X className="w-3 h-3" />
-              </button>
+              {!chip.locked && (
+                <button
+                  onClick={chip.onRemove}
+                  className="ml-1 hover:bg-brand-200 rounded-full p-0.5 dark:hover:bg-brand-500/30"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </div>
           ))}
         </div>

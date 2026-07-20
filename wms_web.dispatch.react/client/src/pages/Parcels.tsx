@@ -70,7 +70,10 @@ const Parcels: React.FC = () => {
     clerk: ''
   });
 
-  useAuth();
+  const { user, isBranchManager } = useAuth();
+
+  // For branch managers, restrict view to their branch destination
+  const branchDestination = isBranchManager() && user?.branch?.name ? user.branch.name : null;
 
   // Get parcels from cached data
   const parcels = cachedData?.parcels || [];
@@ -532,7 +535,7 @@ const Parcels: React.FC = () => {
           pageSize: 200,
           search: filters.search || undefined,
           status: filters.status ? parseInt(filters.status) : undefined,
-          destination: filters.destination || undefined,
+          destination: (branchDestination ?? filters.destination) || undefined,
           fromDate: filters.dateRange.from || undefined,
           toDate: filters.dateRange.to || undefined,
           createdByUsername: filters.clerk || undefined,
@@ -629,7 +632,7 @@ const Parcels: React.FC = () => {
         {
           search: filters.search,
           status: filters.status,
-          destination: filters.destination,
+          destination: branchDestination ?? filters.destination,
           paymentMethod: filters.paymentMethod,
           dateRange: filters.dateRange,
           sender: filters.sender,
@@ -733,6 +736,16 @@ const Parcels: React.FC = () => {
   const getActiveFilterChips = () => {
     const chips: any[] = [];
 
+    if (branchDestination) {
+      chips.push({
+        key: 'branchDestination',
+        label: 'Branch',
+        value: branchDestination,
+        onRemove: () => {},
+        locked: true
+      });
+    }
+
     if (filters.search) {
       chips.push({
         key: 'search',
@@ -759,7 +772,7 @@ const Parcels: React.FC = () => {
       });
     }
 
-    if (filters.destination) {
+    if (filters.destination && !branchDestination) {
       chips.push({
         key: 'destination',
         label: 'Destination',
@@ -846,10 +859,13 @@ const Parcels: React.FC = () => {
       type: 'select',
       placeholder: 'Select destination',
       icon: <MapPin className="w-4 h-4" />,
-      options: [
-        { value: '', label: 'All Destinations' },
-        ...(destinations || []).map(dest => ({ value: dest, label: dest }))
-      ]
+      disabled: !!branchDestination,
+      options: branchDestination
+        ? [{ value: branchDestination, label: branchDestination }]
+        : [
+            { value: '', label: 'All Destinations' },
+            ...(destinations || []).map(dest => ({ value: dest, label: dest }))
+          ]
     },
     {
       key: 'paymentMethod',
