@@ -259,7 +259,7 @@ namespace wms_android.api.Controllers
             var now = DateTime.UtcNow;
             var month = now.ToString("MM"); // MM for month
             var year = now.ToString("yy");  // yy for 2-digit year
-            var contractPrefix = $"NID-{month}/{year}-CTR";
+            var contractPrefix = $"FHL-{month}/{year}-CTR";
 
             // Get the highest numeric code for this month/year
             var existingContracts = await _context.ContractCustomers
