@@ -204,6 +204,13 @@ const AdminParcelManagement: React.FC = () => {
     }
   }, [user, isAdmin, isAccountant]);
 
+  // Load branches for destination dropdown
+  useEffect(() => {
+    wmsApi.getBranches().then(branches => {
+      setAvailableDestinations(branches.map(b => b.name));
+    }).catch(() => {});
+  }, []);
+
   // Load parcels with pagination and server-side filtering
   const loadParcels = useCallback(async (forceRefresh = false, loadMore = false) => {
     if (!user || (!isAdmin() && !isAccountant())) return;
@@ -316,10 +323,8 @@ const AdminParcelManagement: React.FC = () => {
           isLoadingMore: false
         }));
 
-        // Extract unique destinations and payment methods for filter dropdowns
-        const destinations = Array.from(new Set(updatedParcels.map(p => p.destination).filter(Boolean)));
+        // Extract unique payment methods for filter dropdown
         const paymentMethods = Array.from(new Set(updatedParcels.map(p => p.paymentMethods).filter(Boolean)));
-        setAvailableDestinations(destinations);
         setAvailablePaymentMethods(paymentMethods);
 
         // Set clerks for filter
@@ -707,7 +712,7 @@ const AdminParcelManagement: React.FC = () => {
       render: (parcel: Parcel) => (
         <div className="flex items-center text-sm font-medium text-gray-900">
           <DollarSign className="w-4 h-4 text-gray-400 mr-1" />
-          {formatCurrency(parcel.amount)}
+          {formatCurrency(parcel.totalAmount || parcel.amount || 0)}
         </div>
       )
     },
@@ -951,7 +956,7 @@ const AdminParcelManagement: React.FC = () => {
                     onChange={(e) => handleEditFormChange('paymentMethods', e.target.value)}
                     className="input-field"
                   >
-                    <option value="">Select Payment Method</option>
+                    <option value="" disabled>Select Payment Method</option>
                     <option value="Paid">Paid</option>
                     <option value="COD">COD (Cash on Delivery)</option>
                     <option value="Contract">Contract</option>
@@ -973,7 +978,7 @@ const AdminParcelManagement: React.FC = () => {
                     onChange={(e) => handleEditFormChange('destination', e.target.value)}
                     className="input-field"
                   >
-                    <option value="">Select Destination</option>
+                    <option value="" disabled>Select Destination</option>
                     {availableDestinations.map(dest => (
                       <option key={dest} value={dest}>{dest}</option>
                     ))}
