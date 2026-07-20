@@ -2120,6 +2120,12 @@ const Reports: React.FC = () => {
               .summary-card.deposited { background: #e8f5e8; }
               .summary-card.expenses { background: #fff3e0; }
               .summary-card.debit { background: #ffebee; }
+              .row-expense { background: #fff8f0; }
+              .row-expense td { color: #b45309; }
+              .badge { display: inline-block; padding: 2px 7px; border-radius: 9999px; font-size: 9px; font-weight: bold; text-transform: uppercase; }
+              .badge-parcel { background: #dbeafe; color: #1e40af; }
+              .badge-expense { background: #fed7aa; color: #92400e; }
+              .expense-amount { color: #d97706; font-weight: bold; }
               
               table { 
                 width: 100%; 
@@ -2182,7 +2188,7 @@ const Reports: React.FC = () => {
                 <div class="summary-value">KSh ${clerkData.totalDeposited.toLocaleString()}</div>
               </div>
               <div class="summary-card expenses">
-                <div class="summary-label">Total Expenses</div>
+                <div class="summary-label">Approved Expenses</div>
                 <div class="summary-value">KSh ${clerkData.totalExpenses.toLocaleString()}</div>
               </div>
               <div class="summary-card debit">
@@ -2194,44 +2200,65 @@ const Reports: React.FC = () => {
               </div>
             </div>
 
-            <h3>Transaction Details</h3>
+            <h3>Transaction &amp; Expense Details</h3>
             <table>
               <thead>
                 <tr>
                   <th>Date</th>
-                  <th>Waybill Number</th>
+                  <th>Type</th>
+                  <th>Reference / Description</th>
                   <th>Destination</th>
-                  <th>Sender</th>
-                  <th>Receiver</th>
                   <th>Paid Amount</th>
                   <th>Deposited</th>
-                  <th>Expenses</th>
+                  <th>Expense</th>
                   <th>Net Debit</th>
                 </tr>
               </thead>
               <tbody>
-                ${clerkData.transactions.map(transaction => `
-                  <tr>
-                    <td>${new Date(transaction.date).toLocaleDateString()}</td>
-                    <td>${transaction.waybillNumber}</td>
-                    <td>${transaction.destination}</td>
-                    <td>${transaction.sender}</td>
-                    <td>${transaction.receiver}</td>
-                    <td class="amount">KSh ${transaction.paidAmount.toLocaleString()}</td>
-                    <td class="amount">KSh ${transaction.depositedAmount.toLocaleString()}</td>
-                    <td class="amount">KSh ${transaction.expenses.toLocaleString()}</td>
-                    <td class="amount ${transaction.netDebit > 0 ? 'debit-positive' : 'debit-negative'}">
-                      KSh ${Math.abs(transaction.netDebit).toLocaleString()}
-                      ${transaction.netDebit < 0 ? ' (Credit)' : ''}
-                    </td>
-                  </tr>
-                `).join('')}
+                ${(() => {
+                  const rows = [
+                    ...clerkData.transactions.map(t => ({ kind: 'parcel', date: t.date, data: t })),
+                    ...(clerkData.approvedExpenseItems || []).map(e => ({ kind: 'expense', date: e.date.split('T')[0], data: e }))
+                  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+                  return rows.map(row => {
+                    if (row.kind === 'parcel') {
+                      const t = row.data as ClerkDebitTransaction;
+                      return `
+                        <tr>
+                          <td>${new Date(t.date).toLocaleDateString()}</td>
+                          <td><span class="badge badge-parcel">Parcel</span></td>
+                          <td>${t.waybillNumber}<br/><span style="font-size:9px;color:#666">${t.sender} &rarr; ${t.receiver}</span></td>
+                          <td>${t.destination}</td>
+                          <td class="amount">KSh ${t.paidAmount.toLocaleString()}</td>
+                          <td class="amount">KSh ${t.depositedAmount.toLocaleString()}</td>
+                          <td>&mdash;</td>
+                          <td class="amount ${t.netDebit > 0 ? 'debit-positive' : 'debit-negative'}">
+                            KSh ${Math.abs(t.netDebit).toLocaleString()}${t.netDebit < 0 ? ' (Cr)' : ''}
+                          </td>
+                        </tr>`;
+                    } else {
+                      const e = row.data as DailyExpense;
+                      return `
+                        <tr class="row-expense">
+                          <td>${new Date(e.date).toLocaleDateString()}</td>
+                          <td><span class="badge badge-expense">Expense</span></td>
+                          <td>${e.description}<br/><span style="font-size:9px;color:#92400e">${e.category.replace('_',' ')}${e.vendor ? ' &middot; ' + e.vendor : ''}</span></td>
+                          <td>&mdash;</td>
+                          <td>&mdash;</td>
+                          <td>&mdash;</td>
+                          <td class="amount expense-amount">-KSh ${e.amount.toLocaleString()}</td>
+                          <td>&mdash;</td>
+                        </tr>`;
+                    }
+                  }).join('');
+                })()}
               </tbody>
             </table>
 
             <div class="footer">
               <p>Generated on ${new Date().toLocaleString()} | Ficma Home Logistics Clerk Management System</p>
-              <p>Total Transactions: ${clerkData.transactions.length} | Parcel Count: ${clerkData.parcelCount}</p>
+              <p>Parcels: ${clerkData.parcelCount} | Approved Expenses: ${(clerkData.approvedExpenseItems || []).length}</p>
             </div>
           </body>
         </html>
