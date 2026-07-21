@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using System.Collections.ObjectModel;
 using wms_android.shared.Models;
 using wms_android.shared.Interfaces;
+using wms_android.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Storage;
 
@@ -12,6 +13,7 @@ namespace wms_android.ViewModels
     {
         private readonly IParcelService _parcelService;
         private readonly ILogger<AllParcelsViewModel> _logger;
+        private readonly IPrinterService _printerService;
 
         [ObservableProperty]
         private bool _isLoading;
@@ -23,7 +25,7 @@ namespace wms_android.ViewModels
         private ObservableCollection<Parcel> _parcels = new();
 
         [ObservableProperty]
-        private DateTime _fromDate = DateTime.Today.AddDays(-30);
+        private DateTime _fromDate = DateTime.Today.AddDays(-3);
 
         [ObservableProperty]
         private DateTime _toDate = DateTime.Today;
@@ -78,10 +80,11 @@ namespace wms_android.ViewModels
             private set => SetProperty(ref _destinations, value);
         }
 
-        public AllParcelsViewModel(IParcelService parcelService, ILogger<AllParcelsViewModel> logger)
+        public AllParcelsViewModel(IParcelService parcelService, ILogger<AllParcelsViewModel> logger, IPrinterService printerService)
         {
             _parcelService = parcelService;
             _logger = logger;
+            _printerService = printerService;
 
             // Subscribe to property changes for auto-filtering
             PropertyChanged += OnViewModelPropertyChanged;
@@ -190,7 +193,7 @@ namespace wms_android.ViewModels
             
             try
             {
-                FromDate = DateTime.Today.AddDays(-30);
+                FromDate = DateTime.Today.AddDays(-3);
                 ToDate = DateTime.Today;
                 SelectedPaymentMode = "All";
                 SelectedDestination = "All";
@@ -246,7 +249,8 @@ namespace wms_android.ViewModels
                         FromDate = FromDate,
                         ToDate = ToDate,
                         Destination = SelectedDestination != "All" ? SelectedDestination : null,
-                        SearchTerm = !string.IsNullOrWhiteSpace(SearchText) ? SearchText : null
+                        SearchTerm = !string.IsNullOrWhiteSpace(SearchText) ? SearchText : null,
+                        PaymentMethod = SelectedPaymentMode != "All" ? SelectedPaymentMode : null
                     };
 
                     var response = await _parcelService.GetParcelsPagedByUserAsync(currentUserId, queryParams);
@@ -307,18 +311,9 @@ namespace wms_android.ViewModels
                 FromDate = FromDate,
                 ToDate = ToDate,
                 Destination = SelectedDestination != "All" ? SelectedDestination : null,
-                SearchTerm = !string.IsNullOrWhiteSpace(SearchText) ? SearchText : null
+                SearchTerm = !string.IsNullOrWhiteSpace(SearchText) ? SearchText : null,
+                PaymentMethod = SelectedPaymentMode != "All" ? SelectedPaymentMode : null
             };
-
-            // Handle payment method filtering
-            if (SelectedPaymentMode != "All")
-            {
-                // Map payment modes to statuses or handle differently based on your business logic
-                // This is a simplified approach - you may need to adjust based on how payment methods are stored
-                queryParams.SearchTerm = string.IsNullOrWhiteSpace(queryParams.SearchTerm) 
-                    ? SelectedPaymentMode 
-                    : $"{queryParams.SearchTerm} {SelectedPaymentMode}";
-            }
 
             _logger.LogInformation($"Loading page {CurrentPage} with filters: Destination={SelectedDestination}, Payment={SelectedPaymentMode}, Search={SearchText}");
 
@@ -424,6 +419,18 @@ namespace wms_android.ViewModels
             if (_isInitialLoad || IsLoading)
                 return;
 
+            // Enforce 3-day restriction on FromDate
+            if (e.PropertyName == nameof(FromDate))
+            {
+                var minAllowedDate = DateTime.Today.AddDays(-3);
+                if (FromDate < minAllowedDate)
+                {
+                    PropertyChanged -= OnViewModelPropertyChanged;
+                    FromDate = minAllowedDate;
+                    PropertyChanged += OnViewModelPropertyChanged;
+                }
+            }
+
             // Auto-apply filters when certain properties change
             if (e.PropertyName == nameof(FromDate) ||
                 e.PropertyName == nameof(ToDate) ||
@@ -477,6 +484,96 @@ namespace wms_android.ViewModels
             }
 
             return index < Parcels.Count ? Parcels[index] : null;
+        }
+
+        [RelayCommand]
+        public async Task ReprintWaybill(Parcel parcel)
+        {
+            if (parcel == null) return;
+
+            try
+            {
+                var initialized = await _printerService.InitializePrinterAsync();
+                if (!initialized)
+                {
+                    await Application.Current.MainPage.DisplayAlert("Printer Error", "Could not initialize printer. Please check the device.", "OK");
+                    return;
+                }
+
+                var receiptContent = BuildReprintReceiptContent(parcel);
+
+                var printResult = await _printerService.PrintTextAsync(receiptContent);
+                if (printResult)
+                {
+                    if (!string.IsNullOrEmpty(parcel.WaybillNumber))
+                    {
+                        try { await _printerService.PrintQRCodeAsync(parcel.WaybillNumber, 300, 300); }
+                        catch (Exception qrEx) { _logger.LogWarning(qrEx, "QR code print skipped"); }
+                    }
+
+                    await _printerService.StartPrintJobAsync();
+                }
+                else
+                {
+                    await Application.Current.MainPage.DisplayAlert("Printer Error", "Failed to send receipt to printer.", "OK");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error reprinting waybill {Waybill}", parcel.WaybillNumber);
+                await Application.Current.MainPage.DisplayAlert("Error", "Failed to reprint receipt.", "OK");
+            }
+        }
+
+        private string BuildReprintReceiptContent(Parcel parcel)
+        {
+            var username = Preferences.Get("CurrentUsername", "Staff");
+
+            var content = $@"
+    FICMA HOME LOGISTICS
+        0707136852
+ficmahomelogistics19@gmail.com
+       WAYBILL RECEIPT
+
+Waybill Number: {parcel.WaybillNumber}
+Date: {parcel.CreatedAt:yyyy-MM-dd HH:mm:ss}
+
+Item: {parcel.Description}
+From: {parcel.Sender}
+To: {parcel.Receiver}
+Destination: {parcel.Destination}
+Quantity: {parcel.Quantity}
+Rate: Ksh {parcel.Rate:N2}
+Amount: Ksh {parcel.Amount:N2}
+
+Payment Method: {parcel.PaymentMethods}
+Total Amount: Ksh {parcel.TotalAmount:N2}
+--------------------------------
+
+Processed by: {username}
+
+PAYMENT INFORMATION:
+Paybill: 247247
+Account: 889404
+
+NB:
+1. Contents not checked.
+2. Customers are advised to insu
+   re their goods if the value exce
+   eds Ksh 500.
+3. All mirrors/boards are carrie
+   d at owner's risk.
+4. Cash is not accepted as a cou
+   rier, and the company will not b
+   e held liable.
+
+--------------------------------
+  This is a reprint of a receipt
+Reprinted: {DateTime.Now:yyyy-MM-dd HH:mm:ss}
+--------------------------------
+
+";
+            return content;
         }
 
         /// <summary>

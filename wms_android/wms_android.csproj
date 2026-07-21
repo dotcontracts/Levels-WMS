@@ -119,7 +119,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AndroidPosSdk\AndroidPosSdk.csproj" />
-    <!-- <ProjectReference Include="..\CH10PosSdk\CH10PosSdk.csproj" /> -->
+    <ProjectReference Include="..\CH10PosSdk\CH10PosSdk.csproj" />
     <ProjectReference Include="..\wms_android.data\wms_android.data.csproj" />
     <ProjectReference Include="..\wms_android.shared\wms_android.shared.csproj" />
     <ProjectReference Include="..\VanstonePosSdk\VanstonePosSdk.csproj" />

@@ -1,20 +1,18 @@
+using Android.Content;
+using Android.OS;
+using CH10PosSdk.Additions;
 using Microsoft.Extensions.Logging;
-using wms_android.Interfaces;
-using wms_android.shared.Models;
-using System.Collections.Generic;
+using Recieptservice.Com.Recieptservice;
+
 
 namespace wms_android.Services
 {
-    /// <summary>
-    /// CH10 printer initialization strategy for CH10 POS terminals
-    /// </summary>
     public class CH10PrinterInitializationStrategy : IPrinterInitializationStrategy
     {
-        private const string TAG = "CH10PrinterInit";
         private readonly ILogger _logger;
 
         public string StrategyName => "CH10 Printer with AIDL Service";
-        public int Priority => 1; // High priority for specific device support
+        public int Priority => 1;
 
         public CH10PrinterInitializationStrategy(ILogger logger)
         {
@@ -25,30 +23,22 @@ namespace wms_android.Services
         {
             try
             {
-                // Check if this is a CH10 device by looking at device model/manufacturer
-                var deviceModel = Android.OS.Build.Model;
-                var deviceManufacturer = Android.OS.Build.Manufacturer;
-                
-                _logger.LogDebug($"CH10Strategy: Device Model: {deviceModel}, Manufacturer: {deviceManufacturer}");
-                
-                // CH10 devices typically have specific model names or manufacturers
-                // You may need to adjust these values based on actual CH10 device properties
-                bool isCH10Device = deviceModel?.Contains("CH10") == true || 
-                                   deviceModel?.Contains("H10") == true ||
-                                   deviceManufacturer?.ToLower().Contains("sunmi") == true ||
-                                   deviceManufacturer?.ToLower().Contains("ch") == true;
+                var deviceModel = Android.OS.Build.Model ?? string.Empty;
+                var deviceManufacturer = Android.OS.Build.Manufacturer ?? string.Empty;
+
+                _logger.LogDebug("CH10Strategy: Device Model: {Model}, Manufacturer: {Manufacturer}",
+                    deviceModel, deviceManufacturer);
+
+                bool isCH10Device = deviceModel.Contains("CH10", StringComparison.OrdinalIgnoreCase) ||
+                                    deviceModel.Contains("H10", StringComparison.OrdinalIgnoreCase) ||
+                                    deviceManufacturer.Contains("sunmi", StringComparison.OrdinalIgnoreCase) ||
+                                    deviceManufacturer.Contains("CH", StringComparison.OrdinalIgnoreCase);
 
                 if (isCH10Device)
-                {
-                    _logger.LogInformation($"CH10Strategy: Detected CH10-compatible device - Model: {deviceModel}, Manufacturer: {deviceManufacturer}");
-                }
+                    _logger.LogInformation("CH10Strategy: Detected CH10-compatible device");
                 else
-                {
-                    _logger.LogDebug($"CH10Strategy: Not a CH10 device - Model: {deviceModel}, Manufacturer: {deviceManufacturer}");
-                }
+                    _logger.LogDebug("CH10Strategy: Not a CH10 device - trying anyway");
 
-                // For testing purposes, always return true to test CH10 service availability
-                // In production, you would want to check specific device properties
                 return true;
             }
             catch (System.Exception ex)
@@ -61,14 +51,37 @@ namespace wms_android.Services
         public async Task<PrinterInitializationResult> InitializeAsync()
         {
             var result = new PrinterInitializationResult { StrategyUsed = StrategyName };
-            
+
             try
             {
-                _logger.LogInformation("CH10Strategy: CH10 SDK is currently unavailable - skipping initialization");
-                
-                // CH10 SDK is unavailable - return failure to trigger fallback
-                result.ErrorMessage = "CH10 SDK reference has been removed";
-                result.Success = false;
+                var context = Android.App.Application.Context;
+                var intent = CH10PrinterHelper.CreatePrinterServiceIntent();
+
+                var tcs = new TaskCompletionSource<bool>();
+                var connection = new OneTimeServiceConnection(tcs, _logger);
+
+                bool bindResult = context.BindService(intent, connection, Bind.AutoCreate);
+                if (!bindResult)
+                {
+                    _logger.LogWarning("CH10Strategy: BindService returned false - printer service not available");
+                    result.ErrorMessage = "Printer service not found on this device";
+                    result.Success = false;
+                    return result;
+                }
+
+                using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(5));
+                cts.Token.Register(() => tcs.TrySetResult(false));
+
+                bool connected = await tcs.Task;
+
+                context.UnbindService(connection);
+
+                result.Success = connected;
+                if (!connected)
+                    result.ErrorMessage = "Timed out waiting for printer service connection";
+                else
+                    _logger.LogInformation("CH10Strategy: Printer service bound successfully");
+
                 return result;
             }
             catch (System.Exception ex)
@@ -80,15 +93,35 @@ namespace wms_android.Services
             }
         }
 
-        public IPrinterService CreatePrinterService()
+        private class OneTimeServiceConnection : Java.Lang.Object, Android.Content.IServiceConnection
         {
-            _logger.LogInformation("CH10Strategy: CH10 SDK unavailable - returning stub implementation");
-            return new CH10PrinterService(); // Return stub service
-        }
+            private readonly TaskCompletionSource<bool> _tcs;
+            private readonly ILogger _logger;
 
-        public PosDeviceType GetDeviceType()
-        {
-            return PosDeviceType.CH10;
+            public OneTimeServiceConnection(TaskCompletionSource<bool> tcs, ILogger logger)
+            {
+                _tcs = tcs;
+                _logger = logger;
+            }
+
+            public void OnServiceConnected(ComponentName? name, IBinder? service)
+            {
+                try
+                {
+                    var printerInterface = IPrinterInterface.Stub.AsInterface(service);
+                    _tcs.TrySetResult(printerInterface != null);
+                }
+                catch (System.Exception ex)
+                {
+                    _logger.LogError(ex, "CH10Strategy: Error in OnServiceConnected");
+                    _tcs.TrySetResult(false);
+                }
+            }
+
+            public void OnServiceDisconnected(ComponentName? name)
+            {
+                _logger.LogDebug("CH10Strategy: Service disconnected during probe");
+            }
         }
     }
 }

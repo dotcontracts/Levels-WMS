@@ -36,6 +36,15 @@ export interface Parcel {
   transactionCode?: string;
   paymentUpdatedAt?: string;
   paymentUpdatedBy?: number;
+  // History tracking fields
+  confirmedById?: number;
+  confirmedByName?: string;
+  confirmedAt?: string;
+  dispatchedById?: number;
+  dispatchedByName?: string;
+  deliveredById?: number;
+  deliveredByName?: string;
+  deliveredAt?: string;
 }
 
 export interface Dispatch {

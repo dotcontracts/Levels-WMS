@@ -196,7 +196,15 @@ namespace wms_android.api.Controllers
                             ReceiverTelephone = p.ReceiverTelephone,
                             PaymentMethods = p.PaymentMethods,
                             Quantity = p.Quantity,
-                            Description = p.Description
+                            Description = p.Description,
+                            ConfirmedById = p.ConfirmedById,
+                            ConfirmedAt = p.ConfirmedAt,
+                            ConfirmedByName = p.ConfirmedById != null ? p.ConfirmedBy.FirstName + " " + p.ConfirmedBy.LastName : null,
+                            DispatchedById = p.DispatchedById,
+                            DispatchedByName = p.DispatchedById != null ? p.DispatchedBy.FirstName + " " + p.DispatchedBy.LastName : null,
+                            DeliveredById = p.DeliveredById,
+                            DeliveredAt = p.DeliveredAt,
+                            DeliveredByName = p.DeliveredById != null ? p.DeliveredBy.FirstName + " " + p.DeliveredBy.LastName : null,
                         })
                         .ToListAsync();
                     return new ParcelPageWrapper { Parcels = parcels };
@@ -672,7 +680,7 @@ namespace wms_android.api.Controllers
         {
             try
             {
-                await _parcelService.UpdateParcelStatusAsync(id, statusUpdate.Status, statusUpdate.ConfirmedById);
+                await _parcelService.UpdateParcelStatusAsync(id, statusUpdate.Status, statusUpdate.ConfirmedById, statusUpdate.DeliveredById);
                 return Ok(new { message = $"Parcel status updated to {statusUpdate.Status}" });
             }
             catch (Exception ex)
@@ -1333,6 +1341,7 @@ namespace wms_android.api.Controllers
     {
         public ParcelStatus Status { get; set; }
         public int? ConfirmedById { get; set; }
+        public int? DeliveredById { get; set; }
     }
 
     public class BatchStatusUpdateDto

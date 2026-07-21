@@ -53,6 +53,7 @@ namespace wms_android.shared.Models
         public DateTime? ToDate { get; set; }
         public string? CreatedByUsername { get; set; }
         public string? SearchTerm { get; set; }
+        public string? PaymentMethod { get; set; }
 
         /// <summary>
         /// Validates the pagination parameters

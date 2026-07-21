@@ -83,20 +83,22 @@
         </StackLayout>
 
         <!-- Status and Parcels List -->
-        <StackLayout Grid.Row="1" IsVisible="{Binding IsLoading, Converter={StaticResource InvertedBoolConverter}}">
+        <Grid Grid.Row="1" RowDefinitions="Auto,*,Auto"
+              IsVisible="{Binding IsLoading, Converter={StaticResource InvertedBoolConverter}}">
             <!-- Status Text -->
-            <Label Text="{Binding StatusText}" 
+            <Label Grid.Row="0"
+                   Text="{Binding StatusText}" 
                    FontSize="12" 
                    TextColor="{StaticResource PrimaryDark}"
                    HorizontalOptions="Center"
                    Padding="10,5"
                    IsVisible="{Binding StatusText, Converter={StaticResource StringToBoolConverter}}" />
             
-            <CollectionView ItemsSource="{Binding Parcels}"
+            <CollectionView Grid.Row="1"
+                            ItemsSource="{Binding Parcels}"
                             BackgroundColor="{StaticResource Background}"
                             RemainingItemsThreshold="20"
-                            RemainingItemsThresholdReachedCommand="{Binding LoadNextPageCommand}"
-                            ItemSizingStrategy="MeasureFirstItem">
+                            RemainingItemsThresholdReachedCommand="{Binding LoadNextPageCommand}">
             <CollectionView.EmptyView>
                 <StackLayout HorizontalOptions="Center" VerticalOptions="Center">
                     <Label Text="No parcels found" 
@@ -118,7 +120,7 @@
                                CornerRadius="10"
                                Padding="15"
                                HasShadow="True">
-                            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="8">
+                            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="8">
                                 
                                 <!-- Header: Waybill and Status -->
                                 <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
@@ -180,6 +182,18 @@
                                        FontSize="10" 
                                        TextColor="{StaticResource Secondary}"
                                        HorizontalOptions="End" />
+
+                                <!-- Reprint Button -->
+                                <Button Grid.Row="5"
+                                        Text="Reprint Receipt"
+                                        FontSize="12"
+                                        HeightRequest="36"
+                                        BackgroundColor="{StaticResource PrimaryDark}"
+                                        TextColor="White"
+                                        CornerRadius="6"
+                                        HorizontalOptions="End"
+                                        Command="{Binding Source={RelativeSource AncestorType={x:Type viewmodels:AllParcelsViewModel}}, Path=ReprintWaybillCommand}"
+                                        CommandParameter="{Binding .}" />
                             </Grid>
                         </Frame>
                     </Grid>
@@ -187,17 +201,14 @@
             </CollectionView.ItemTemplate>
             </CollectionView>
             
-            <!-- Skeleton Loading Indicator for Scroll -->
-            <StackLayout IsVisible="{Binding IsLoadingMore}" Padding="10">
+            <!-- Loading More Indicator -->
+            <StackLayout Grid.Row="2" IsVisible="{Binding IsLoadingMore}" Padding="10">
                 <controls:SkeletonLoading />
                 <controls:SkeletonLoading />
+                <ActivityIndicator IsRunning="{Binding IsLoadingMore}"
+                                   HorizontalOptions="Center"
+                                   Margin="10" />
             </StackLayout>
-            
-            <!-- Simple Loading More Indicator as fallback -->
-            <ActivityIndicator IsRunning="{Binding IsLoadingMore}"
-                               IsVisible="{Binding IsLoadingMore}"
-                               HorizontalOptions="Center"
-                               Margin="10" />
-        </StackLayout>
+        </Grid>
     </Grid>
 </ContentPage>

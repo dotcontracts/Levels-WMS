@@ -226,7 +226,8 @@ namespace wms_android.ViewModels
                         try
                         {
                             Debug.WriteLine($"Attempting to mark parcel as delivered - ID: {parcel.Id}, Waybill: {parcel.WaybillNumber}");
-                            await _parcelService.UpdateParcelStatusAsync(parcel.Id, ParcelStatus.Delivered); // Mark parcel as delivered
+                            var deliveredByUserId = Preferences.Get("CurrentUserId", 0);
+                            await _parcelService.UpdateParcelStatusAsync(parcel.Id, ParcelStatus.Delivered, deliveredById: deliveredByUserId > 0 ? deliveredByUserId : null);
                             Debug.WriteLine($"Parcel {parcel.WaybillNumber} marked as delivered successfully via ParcelService.");
                             currentParcelDeliverySuccess = true;
                             successfulDeliveries.Add(parcel.WaybillNumber ?? parcel.Id.ToString());

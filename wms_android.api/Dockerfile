@@ -3,6 +3,8 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine AS base
 WORKDIR /app
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
+ENV Redis__ConnectionString=""
+ENV Redis__InstanceName="wms:prod:"
 
 # Use multi-stage build with optimized SDK image
 FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build

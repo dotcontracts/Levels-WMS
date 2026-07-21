@@ -73,19 +73,29 @@ namespace wms_android.Services
                 var fontResult = await Task.Run(() => _printerHelper.PrintSetFont((sbyte)fontSize, (sbyte)fontSize, (sbyte)(isBold ? 1 : 0)));
                 if (fontResult != 0)
                 {
-                    _logger.LogError($"Failed to set font: {fontResult}");
-                    return false;
+                    _logger.LogWarning($"PrintSetFont returned {fontResult}, continuing anyway");
                 }
 
-                // Print text (prepare for printing, but don't start the print job yet)
-                var printResult = await Task.Run(() => _printerHelper.PrintStr(text));
-                if (printResult != 0)
+                // Split into lines and print each one individually.
+                // PrnStr_Api has a buffer limit and fails on large strings sent at once.
+                var lines = text.Split('\n');
+                bool anyFailed = false;
+                foreach (var line in lines)
                 {
-                    _logger.LogError($"Failed to print text: {printResult}");
+                    var lineResult = await Task.Run(() => _printerHelper.PrintStr(line + "\n"));
+                    if (lineResult != 0)
+                    {
+                        _logger.LogWarning($"PrintStr returned {lineResult} for line: {(line.Length > 30 ? line[..30] : line)}");
+                        anyFailed = true;
+                    }
+                }
+
+                if (anyFailed)
+                {
+                    _logger.LogError("One or more lines failed to print");
                     return false;
                 }
 
-                // Don't call PrintStart here - let the caller decide when to start printing
                 return true;
             }
             catch (Exception ex)

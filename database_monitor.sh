@@ -3,11 +3,7 @@
 # Database Connection Monitor and Cleanup Script
 # Run this periodically to prevent connection exhaustion
 
-DB_HOST="139.59.12.69"
-DB_PORT="5432"
-DB_NAME="ficma_wms"
-DB_USER="wms_user"
-DB_PASS="2019@_Ficma"
+ 
 
 echo "🔍 Database Connection Monitor - $(date)"
 echo "==============================================="

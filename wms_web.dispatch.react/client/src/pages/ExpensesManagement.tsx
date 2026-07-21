@@ -26,6 +26,7 @@ import { Card, Button, Badge, Input, Modal, Select } from '../components/ui';
 import { VirtualScrollTable } from '../components/VirtualScrollTable';
 import { wmsApi, DailyExpense, CreateDailyExpenseDto, ApproveExpenseDto } from '../services/wmsApi';
 import { useAuth } from '../context/AuthContext';
+import { fmtDate } from '../utils/dateUtils';
 
 interface ExpenseFilters {
   search: string;
@@ -177,9 +178,7 @@ const ExpensesManagement: React.FC = () => {
     }).format(amount);
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-KE');
-  };
+  const formatDate = (dateString: string) => fmtDate(dateString);
 
   const getCategoryIcon = (category: string) => {
     const categoryConfig = expenseCategories.find(cat => cat.value === category);
@@ -854,7 +853,7 @@ const ExpensesManagement: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                <p className="text-sm text-gray-900">{new Date(selectedExpense.date).toLocaleDateString()}</p>
+                <p className="text-sm text-gray-900">{fmtDate(selectedExpense.date)}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>

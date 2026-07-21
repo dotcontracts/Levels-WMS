@@ -74,11 +74,37 @@ namespace wms_android.shared.Models
         public int? ConfirmedById { get; set; }
         
         [ForeignKey("ConfirmedById")]
-        [JsonIgnore] // Ignore navigation property to prevent circular reference
+        [JsonIgnore]
         public virtual User? ConfirmedBy { get; set; }
+
+        [NotMapped]
+        public string? ConfirmedByName { get; set; }
         
         [Column(TypeName = "timestamp with time zone")]
         public DateTime? ConfirmedAt { get; set; }
+
+        // Dispatch tracking fields
+        public int? DispatchedById { get; set; }
+
+        [ForeignKey("DispatchedById")]
+        [JsonIgnore]
+        public virtual User? DispatchedBy { get; set; }
+
+        [NotMapped]
+        public string? DispatchedByName { get; set; }
+
+        // Delivery tracking fields
+        public int? DeliveredById { get; set; }
+
+        [ForeignKey("DeliveredById")]
+        [JsonIgnore]
+        public virtual User? DeliveredBy { get; set; }
+
+        [NotMapped]
+        public string? DeliveredByName { get; set; }
+
+        [Column(TypeName = "timestamp with time zone")]
+        public DateTime? DeliveredAt { get; set; }
         
         // Status
         public ParcelStatus Status { get; set; } = ParcelStatus.Pending;

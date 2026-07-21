@@ -76,11 +76,11 @@ namespace wms_android.api.Controllers
                     existingParcel.DispatchedAt = dispatch.DispatchTime;
                     existingParcel.DispatchTrackingCode = dispatch.DispatchCode;
                     
-                    // Track who confirmed the status change
                     if (currentUserId.HasValue)
                     {
                         existingParcel.ConfirmedById = currentUserId.Value;
                         existingParcel.ConfirmedAt = DateTime.UtcNow;
+                        existingParcel.DispatchedById = currentUserId.Value;
                     }
                     
                     Console.WriteLine($"[DispatchesController] Updated parcel {existingParcel.WaybillNumber} to InTransit status, confirmed by user {currentUserId}");

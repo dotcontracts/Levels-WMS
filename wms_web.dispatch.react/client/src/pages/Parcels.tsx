@@ -8,6 +8,7 @@ import { wmsApi, Parcel } from '../services/wmsApi';
 import { generateQRCode } from '../utils/qrCode';
 import { exportParcelsToPDF, generateFilterSummary } from '../utils/pdfExport';
 import { exportParcelsToCSV, exportParcelsToXLSX, generateFilterSummary as generateExportFilterSummary } from '../utils/exportUtils';
+import { fmtDate, fmtTime } from '../utils/dateUtils';
 
 interface ParcelFilterState {
   search: string;
@@ -1013,11 +1014,63 @@ const Parcels: React.FC = () => {
       render: (parcel: Parcel) => (
         <div>
           <div className="text-xs text-gray-500">
-            {new Date(parcel.createdAt).toLocaleDateString()}
+            {fmtDate(parcel.createdAt)}
           </div>
           <div className="text-xs text-gray-400">
-            {new Date(parcel.createdAt).toLocaleTimeString()}
+            {fmtTime(parcel.createdAt)}
           </div>
+        </div>
+      )
+    },
+    {
+      key: 'history',
+      header: 'History',
+      width: 180,
+      render: (parcel: Parcel) => (
+        <div className="space-y-1">
+          {parcel.createdBy?.username && (
+            <div className="flex items-start gap-1">
+              <span className="inline-block mt-0.5 w-2 h-2 rounded-full bg-gray-400 flex-shrink-0" />
+              <div className="text-xs leading-tight">
+                <span className="text-gray-500">Raised by </span>
+                <span className="font-medium text-gray-700 dark:text-gray-300">{parcel.createdBy.username}</span>
+                <div className="text-gray-400">{fmtDate(parcel.createdAt)} {fmtTime(parcel.createdAt)}</div>
+              </div>
+            </div>
+          )}
+          {parcel.confirmedByName && parcel.confirmedAt && (
+            <div className="flex items-start gap-1">
+              <span className="inline-block mt-0.5 w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" />
+              <div className="text-xs leading-tight">
+                <span className="text-gray-500">Confirmed by </span>
+                <span className="font-medium text-gray-700 dark:text-gray-300">{parcel.confirmedByName}</span>
+                <div className="text-gray-400">{fmtDate(parcel.confirmedAt)} {fmtTime(parcel.confirmedAt)}</div>
+              </div>
+            </div>
+          )}
+          {parcel.dispatchedByName && parcel.dispatchedAt && (
+            <div className="flex items-start gap-1">
+              <span className="inline-block mt-0.5 w-2 h-2 rounded-full bg-orange-400 flex-shrink-0" />
+              <div className="text-xs leading-tight">
+                <span className="text-gray-500">Dispatched by </span>
+                <span className="font-medium text-gray-700 dark:text-gray-300">{parcel.dispatchedByName}</span>
+                <div className="text-gray-400">{fmtDate(parcel.dispatchedAt)} {fmtTime(parcel.dispatchedAt)}</div>
+              </div>
+            </div>
+          )}
+          {parcel.deliveredByName && parcel.deliveredAt && (
+            <div className="flex items-start gap-1">
+              <span className="inline-block mt-0.5 w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
+              <div className="text-xs leading-tight">
+                <span className="text-gray-500">Delivered by </span>
+                <span className="font-medium text-gray-700 dark:text-gray-300">{parcel.deliveredByName}</span>
+                <div className="text-gray-400">{fmtDate(parcel.deliveredAt)} {fmtTime(parcel.deliveredAt)}</div>
+              </div>
+            </div>
+          )}
+          {!parcel.createdBy?.username && !parcel.confirmedByName && !parcel.dispatchedByName && !parcel.deliveredByName && (
+            <span className="text-xs text-gray-400">—</span>
+          )}
         </div>
       )
     },
@@ -1307,22 +1360,40 @@ const Parcels: React.FC = () => {
                   <div className="space-y-2 text-sm">
                     <div>
                       <div className="text-gray-500 dark:text-gray-400">Created:</div>
-                      <div className="text-gray-900 dark:text-white">
-                        {new Date(selectedParcel.createdAt).toLocaleDateString()}
-                      </div>
-                      <div className="text-gray-600 dark:text-gray-300 text-xs">
-                        {new Date(selectedParcel.createdAt).toLocaleTimeString()}
-                      </div>
+                      <div className="text-gray-900 dark:text-white">{fmtDate(selectedParcel.createdAt)}</div>
+                      <div className="text-gray-600 dark:text-gray-300 text-xs">{fmtTime(selectedParcel.createdAt)}</div>
+                      {selectedParcel.createdBy?.username && (
+                        <div className="text-gray-400 text-xs">by {selectedParcel.createdBy.username}</div>
+                      )}
                     </div>
+                    {selectedParcel.confirmedAt && (
+                      <div>
+                        <div className="text-gray-500 dark:text-gray-400">Confirmed:</div>
+                        <div className="text-gray-900 dark:text-white">{fmtDate(selectedParcel.confirmedAt)}</div>
+                        <div className="text-gray-600 dark:text-gray-300 text-xs">{fmtTime(selectedParcel.confirmedAt)}</div>
+                        {selectedParcel.confirmedByName && (
+                          <div className="text-gray-400 text-xs">by {selectedParcel.confirmedByName}</div>
+                        )}
+                      </div>
+                    )}
                     {selectedParcel.dispatchedAt && (
                       <div>
                         <div className="text-gray-500 dark:text-gray-400">Dispatched:</div>
-                        <div className="text-gray-900 dark:text-white">
-                          {new Date(selectedParcel.dispatchedAt).toLocaleDateString()}
-                        </div>
-                        <div className="text-gray-600 dark:text-gray-300 text-xs">
-                          {new Date(selectedParcel.dispatchedAt).toLocaleTimeString()}
-                        </div>
+                        <div className="text-gray-900 dark:text-white">{fmtDate(selectedParcel.dispatchedAt)}</div>
+                        <div className="text-gray-600 dark:text-gray-300 text-xs">{fmtTime(selectedParcel.dispatchedAt)}</div>
+                        {selectedParcel.dispatchedByName && (
+                          <div className="text-gray-400 text-xs">by {selectedParcel.dispatchedByName}</div>
+                        )}
+                      </div>
+                    )}
+                    {selectedParcel.deliveredAt && (
+                      <div>
+                        <div className="text-gray-500 dark:text-gray-400">Delivered:</div>
+                        <div className="text-gray-900 dark:text-white">{fmtDate(selectedParcel.deliveredAt)}</div>
+                        <div className="text-gray-600 dark:text-gray-300 text-xs">{fmtTime(selectedParcel.deliveredAt)}</div>
+                        {selectedParcel.deliveredByName && (
+                          <div className="text-gray-400 text-xs">by {selectedParcel.deliveredByName}</div>
+                        )}
                       </div>
                     )}
                   </div>

@@ -79,8 +79,8 @@ namespace wms_android.ViewModels
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error navigating to AllParcelsView");
-                Debug.WriteLine($"Error navigating to AllParcelsView: {ex.Message}");
-                await Application.Current.MainPage.DisplayAlert("Error", "Failed to open parcels view. Please try again.", "OK");
+                Debug.WriteLine($"Error navigating to AllParcelsView: {ex.Message}\n{ex.StackTrace}");
+                await Application.Current.MainPage.DisplayAlert("Error", $"Failed to open parcels view: {ex.Message}", "OK");
             }
         }
 

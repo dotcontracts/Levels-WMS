@@ -32,6 +32,7 @@ import {
 import Chart from 'react-apexcharts';
 import { Card, Button, Badge, Table, FilterPanel, FilterField } from '../components/ui';
 import { VirtualScrollTable } from '../components/VirtualScrollTable';
+import { fmtDate, fmtTime, fmtDateTime } from '../utils/dateUtils';
 
 interface ReportFilters {
   startDate: string;
@@ -2028,7 +2029,7 @@ const Reports: React.FC = () => {
               <tbody>
                 ${branchSummary.transactions.map(transaction => `
                   <tr>
-                    <td>${new Date(transaction.date).toLocaleDateString()}</td>
+                    <td>${fmtDate(transaction.date)}</td>
                     <td class="amount">KSh ${transaction.codTotal.toLocaleString()}</td>
                     <td class="amount">KSh ${transaction.depositedAmount.toLocaleString()}</td>
                     <td class="amount ${(transaction.codTotal - transaction.depositedAmount) > 0 ? 'debt-positive' : 'debt-negative'}">
@@ -2041,7 +2042,7 @@ const Reports: React.FC = () => {
             </table>
 
             <div class="footer">
-              <p>Generated on ${new Date().toLocaleString()} | Ficma Home Logistics Branch Management System</p>
+              <p>Generated on ${fmtDateTime(new Date())} EAT | Ficma Home Logistics Branch Management System</p>
               <p>Total Transactions: ${branchSummary.transactions.length}</p>
             </div>
           </body>
@@ -2226,7 +2227,7 @@ const Reports: React.FC = () => {
                       const t = row.data as ClerkDebitTransaction;
                       return `
                         <tr>
-                          <td>${new Date(t.date).toLocaleDateString()}</td>
+                          <td>${fmtDate(t.date)}</td>
                           <td><span class="badge badge-parcel">Parcel</span></td>
                           <td>${t.waybillNumber}<br/><span style="font-size:9px;color:#666">${t.sender} &rarr; ${t.receiver}</span></td>
                           <td>${t.destination}</td>
@@ -2241,7 +2242,7 @@ const Reports: React.FC = () => {
                       const e = row.data as DailyExpense;
                       return `
                         <tr class="row-expense">
-                          <td>${new Date(e.date).toLocaleDateString()}</td>
+                          <td>${fmtDate(e.date)}</td>
                           <td><span class="badge badge-expense">Expense</span></td>
                           <td>${e.description}<br/><span style="font-size:9px;color:#92400e">${e.category.replace('_',' ')}${e.vendor ? ' &middot; ' + e.vendor : ''}</span></td>
                           <td>&mdash;</td>
@@ -2257,7 +2258,7 @@ const Reports: React.FC = () => {
             </table>
 
             <div class="footer">
-              <p>Generated on ${new Date().toLocaleString()} | Ficma Home Logistics Clerk Management System</p>
+              <p>Generated on ${fmtDateTime(new Date())} EAT | Ficma Home Logistics Clerk Management System</p>
               <p>Parcels: ${clerkData.parcelCount} | Approved Expenses: ${(clerkData.approvedExpenseItems || []).length}</p>
             </div>
           </body>
@@ -2451,13 +2452,7 @@ const Reports: React.FC = () => {
   ], [destinations, clerks]);
 
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
+  const formatDate = (dateString: string) => fmtDate(dateString);
 
   const getPerformanceBadge = (performance: string) => {
     const variants = {
@@ -2877,7 +2872,7 @@ const Reports: React.FC = () => {
             <Card padding={false}>
               <div className="p-6 border-b border-gray-200">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Clerk Cash-in Summary for {new Date(cashInDate).toLocaleDateString()}
+                  Clerk Cash-in Summary for {fmtDate(cashInDate)}
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   Showing paid parcels and deposit tracking for clerks on the selected date
@@ -3086,7 +3081,7 @@ const Reports: React.FC = () => {
                                     <Calendar className="w-4 h-4 text-gray-400" />
                                     <div>
                                       <div className="font-medium text-gray-900 dark:text-white">
-                                        {new Date(dayData.date).toLocaleDateString()}
+                                        {fmtDate(dayData.date)}
                                       </div>
                                       <div className="text-sm text-gray-500 dark:text-gray-400">
                                         {dayData.parcelCount} parcel{dayData.parcelCount !== 1 ? 's' : ''}
@@ -3908,7 +3903,7 @@ const Reports: React.FC = () => {
                               <Table.Row key={`p-${t.parcelId}`}>
                                 <Table.Cell>
                                   <div className="text-sm text-gray-900 dark:text-white">
-                                    {new Date(t.date).toLocaleDateString()}
+                                    {fmtDate(t.date)}
                                   </div>
                                 </Table.Cell>
                                 <Table.Cell>
@@ -3942,7 +3937,7 @@ const Reports: React.FC = () => {
                               <Table.Row key={`e-${e.id}`} className="bg-orange-50 dark:bg-orange-900/10">
                                 <Table.Cell>
                                   <div className="text-sm text-gray-900 dark:text-white">
-                                    {new Date(e.date).toLocaleDateString()}
+                                    {fmtDate(e.date)}
                                   </div>
                                 </Table.Cell>
                                 <Table.Cell>
@@ -4140,10 +4135,10 @@ const Reports: React.FC = () => {
       render: (parcel: Parcel) => (
         <div>
           <div className="text-sm text-gray-500">
-            {new Date(parcel.createdAt).toLocaleDateString()}
+            {fmtDate(parcel.createdAt)}
           </div>
           <div className="text-sm text-gray-400">
-            {new Date(parcel.createdAt).toLocaleTimeString()}
+            {fmtTime(parcel.createdAt)}
           </div>
         </div>
       )
@@ -4234,7 +4229,7 @@ const Reports: React.FC = () => {
                       <td>KSh ${parcel.totalAmount.toLocaleString()}</td>
                       <td><span class="status status-${getStatusText(parcel.status).toLowerCase()}">${getStatusText(parcel.status)}</span></td>
                       <td>${getClerkName(parcel)}</td>
-                      <td>${new Date(parcel.createdAt).toLocaleDateString()}</td>
+                      <td>${fmtDate(parcel.createdAt)}</td>
                     </tr>
                   `).join('')}
                 </tbody>
@@ -4733,7 +4728,7 @@ const Reports: React.FC = () => {
                           {parcel.waybillNumber}
                         </div>
                         <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {new Date(parcel.createdAt).toLocaleDateString()}
+                          {fmtDate(parcel.createdAt)}
                         </div>
                       </Table.Cell>
                       <Table.Cell>{parcel.sender}</Table.Cell>

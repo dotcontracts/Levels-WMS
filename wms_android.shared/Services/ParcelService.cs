@@ -637,9 +637,9 @@ namespace wms_android.shared.Services
             response.EnsureSuccessStatusCode();
         }
 
-        public async Task UpdateParcelStatusAsync(Guid parcelId, ParcelStatus status, int? confirmedById = null)
+        public async Task UpdateParcelStatusAsync(Guid parcelId, ParcelStatus status, int? confirmedById = null, int? deliveredById = null)
         {
-            var statusUpdate = new { Status = status, ConfirmedById = confirmedById };
+            var statusUpdate = new { Status = status, ConfirmedById = confirmedById, DeliveredById = deliveredById };
             var json = JsonSerializer.Serialize(statusUpdate);
             var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
             var response = await _httpClient.PutAsync($"/api/parcels/{parcelId}/status", content);
@@ -1225,6 +1225,9 @@ namespace wms_android.shared.Services
 
             if (!string.IsNullOrWhiteSpace(queryParams.SearchTerm))
                 parameters.Add($"search={Uri.EscapeDataString(queryParams.SearchTerm)}");
+
+            if (!string.IsNullOrWhiteSpace(queryParams.PaymentMethod))
+                parameters.Add($"paymentMethod={Uri.EscapeDataString(queryParams.PaymentMethod)}");
 
             return string.Join("&", parameters);
         }

@@ -16,6 +16,7 @@
             <!-- Add the converter resource -->
             <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
             <converters:InvertedBoolConverter x:Key="InvertedBoolConverter" />
+            <converters:StringToBoolConverter x:Key="StringToBoolConverter" />
             <converters:StatusToColorConverter x:Key="StatusToColorConverter" />
             <converters:BoolToConfirmationBorderColorConverter x:Key="BoolToConfirmationBorderColorConverter" />
             <converters:BoolToConfirmationTextColorConverter x:Key="BoolToConfirmationTextColorConverter" />
