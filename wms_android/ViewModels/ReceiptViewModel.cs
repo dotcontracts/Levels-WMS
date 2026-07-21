@@ -377,7 +377,7 @@ namespace wms_android.ViewModels
             
             var content = $@"
     FICMA HOME LOGISTICS
-        0707136852
+        0712442434
 ficmahomelogistics19@gmail.com
        WAYBILL RECEIPT
 
@@ -433,7 +433,7 @@ NB:
             
             var content = $@"
     FICMA HOME LOGISTICS
-        0707136852
+        0712442434
 ficmahomelogistics19@gmail.com
        WAYBILL RECEIPT
 

@@ -340,7 +340,8 @@ const Parcels: React.FC = () => {
             <div style="text-align: center; border: 1px solid #000; padding: 10px; margin-top: 20px;">
               <strong>FICMA HOME LOGISTICS - Service beyond customer's expectation</strong><br>
               This is an official computer-generated document.<br>
-              For inquiries, contact your nearest branch office.<br>
+              For inquiries, call: 0712442434 | Email: ficmahomelogistics19@gmail.com<br>
+              Address: Hillocks Godowns, Off Enterprise Road, Godown No 5<br>
               <strong>Document Generated: ${currentDate}</strong>
             </div>
           </div>

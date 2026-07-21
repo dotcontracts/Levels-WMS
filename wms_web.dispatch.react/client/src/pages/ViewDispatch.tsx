@@ -641,6 +641,7 @@ const ViewDispatch: React.FC = () => {
                 
                 <div style="text-align: center; margin-top: 20px; font-size: 9px; color: #666;">
                   <p style="margin: 0;">Thank you for choosing FICMA HOME LOGISTICS - Service beyond customer's expectation</p>
+                  <p style="margin: 5px 0 0 0;">Phone: 0712442434 | Email: ficmahomelogistics19@gmail.com | Address: Hillocks Godowns, Off Enterprise Road, Godown No 5</p>
                   <p style="margin: 5px 0 0 0;">Generated: ${new Date().toLocaleDateString('en-KE')} | Dispatch: ${dispatch.dispatchCode}</p>
                 </div>
               </body>

@@ -335,7 +335,7 @@ namespace wms_android.ViewModels
             
             // Header
             sb.AppendLine("    FICMA HOME LOGISTICS");
-            sb.AppendLine("        0707136852");
+            sb.AppendLine("        0712442434");
             sb.AppendLine("ficmahomelogistics19@gmail.com");
             sb.AppendLine("    *** DELIVERY RECEIPT ***");
             sb.AppendLine();

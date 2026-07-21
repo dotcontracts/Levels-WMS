@@ -110,9 +110,8 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice }) =
             <h1 className="print-company-name">FICMA HOME LOGISTICS</h1>
             <p className="text-gray-600">Service beyond customer's expectation</p>
             <p className="text-sm text-gray-500 mt-2">
-              Phone: 0707136852 | Email: ficmahomelogistics19@gmail.com<br/>
-              P.O. BOX 42606-00100, Nairobi<br/>
-              Address: SMK Business Park, Off Enterprise Road, 1st Floor, Room A13
+              Phone: 0712442434 | Email: ficmahomelogistics19@gmail.com<br/>
+              Address: Hillocks Godowns, Off Enterprise Road, Godown No 5
             </p>
           </div>
           <div className="text-right">
@@ -427,7 +426,7 @@ const generateInvoiceHTML = (invoice: Invoice) => {
       <div class="company-info">
         <h1>FICMA HOME LOGISTICS</h1>
         <p>Service beyond customer's expectation</p>
-        <p style="margin-top: 5px; color: #666;">Phone: 0707136852 | Email: ficmahomelogistics19@gmail.com<br/>P.O. BOX 42606-00100, Nairobi<br/>Address: SMK Business Park, Off Enterprise Road, 1st Floor, Room A13</p>
+        <p style="margin-top: 5px; color: #666;">Phone: 0712442434 | Email: ficmahomelogistics19@gmail.com<br/>Address: Hillocks Godowns, Off Enterprise Road, Godown No 5</p>
       </div>
       <div class="invoice-info">
         <h2>INVOICE</h2>
