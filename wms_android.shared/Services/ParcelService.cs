@@ -87,19 +87,9 @@ namespace wms_android.shared.Services
             {
                 try 
                 {
-                    // On retry attempts, clear the waybill number to let the server generate a fresh one
-                    if (retryAttempt > 0)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[ParcelService MAUI Client] Retry attempt {retryAttempt}: Clearing waybill number to let server generate fresh one");
-                        parcel.WaybillNumber = null;
-                        parcel.QRCode = null;
-                    }
-                    // On first attempt, generate waybill number locally if not provided
-                    else if (string.IsNullOrEmpty(parcel.WaybillNumber))
-                    {
-                        parcel.WaybillNumber = await GenerateWaybillNumberAsync();
-                        parcel.QRCode = parcel.WaybillNumber;
-                    }
+                    parcel.WaybillNumber = null;
+                    parcel.QRCode = null;
+                    System.Diagnostics.Debug.WriteLine($"[ParcelService MAUI Client] Cleared waybill/QR - server will generate FHL waybill.");
                     
                     // Ensure CreatedAt is current UTC time before sending to the API
                     System.Diagnostics.Debug.WriteLine($"[ParcelService MAUI Client] Method Entry. parcel.CreatedAt: {parcel.CreatedAt}, Kind: {parcel.CreatedAt.Kind}");
@@ -149,10 +139,7 @@ namespace wms_android.shared.Services
                         throw new Exception("Failed to deserialize parcel data from API response");
                     }
 
-                    // Always use our original waybill number and QR code
-                    // This ensures server-generated values don't override our format
-                    savedParcel.WaybillNumber = parcel.WaybillNumber;
-                    savedParcel.QRCode = parcel.WaybillNumber;
+                    System.Diagnostics.Debug.WriteLine($"[ParcelService MAUI Client] Using server-assigned waybill: {savedParcel.WaybillNumber}");
                     
                     // Log the final parcel data - use the same options as deserialization to handle cycles
                     System.Diagnostics.Debug.WriteLine($"Final parcel data: {JsonSerializer.Serialize(savedParcel, options)}");
@@ -238,7 +225,7 @@ namespace wms_android.shared.Services
         {
             try
             {
-                // Generate a waybill number locally with the format "WB" + 5 random alphanumeric characters
+                // Generate a waybill number locally with the format "FHL" + 5 random alphanumeric characters
                 System.Diagnostics.Debug.WriteLine("Generating local waybill number...");
                 
                 const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -246,7 +233,7 @@ namespace wms_android.shared.Services
                 var randomString = new string(Enumerable.Repeat(chars, 5)
                     .Select(s => s[random.Next(s.Length)]).ToArray());
                 
-                var waybillNumber = $"WB{randomString}";
+                var waybillNumber = $"FHL{randomString}";
                 
                 System.Diagnostics.Debug.WriteLine($"Generated waybill number: {waybillNumber}");
                 return waybillNumber;

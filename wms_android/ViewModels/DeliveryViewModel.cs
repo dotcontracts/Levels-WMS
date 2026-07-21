@@ -159,11 +159,10 @@ namespace wms_android.ViewModels
             ScannedResult = null; // Clear any previous scan result
             ShowScannedResult = false;
 
-            // Auto-prefix with WB if user entered only alphanumeric characters (no WB prefix)
             string waybillToLookup = ManualWaybillNumber.Trim().ToUpper();
-            if (!waybillToLookup.StartsWith("WB") && Regex.IsMatch(waybillToLookup, @"^[A-Z0-9]+$"))
+            if (!waybillToLookup.StartsWith("FHL") && !waybillToLookup.StartsWith("WB") && Regex.IsMatch(waybillToLookup, @"^[A-Z0-9]+$"))
             {
-                waybillToLookup = $"WB{waybillToLookup}";
+                waybillToLookup = $"FHL{waybillToLookup}";
                 Debug.WriteLine($"Auto-prefixed waybill: {ManualWaybillNumber} -> {waybillToLookup}");
             }
 

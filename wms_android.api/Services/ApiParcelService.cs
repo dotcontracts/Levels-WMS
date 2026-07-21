@@ -67,8 +67,10 @@ namespace wms_android.api.Services
             string shipmentWaybillNumber = parcelInitialState.WaybillNumber;
             bool waybillGeneratedByServer = false;
 
-            if (string.IsNullOrEmpty(shipmentWaybillNumber))
+            if (string.IsNullOrEmpty(shipmentWaybillNumber) || shipmentWaybillNumber.StartsWith("WB", StringComparison.OrdinalIgnoreCase))
             {
+                if (!string.IsNullOrEmpty(shipmentWaybillNumber))
+                    System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] Client sent WB-prefixed waybill '{shipmentWaybillNumber}', replacing with server-generated FHL waybill.");
                 shipmentWaybillNumber = await GeneratePotentiallyNonUniqueWaybillNumberAsync();
                 waybillGeneratedByServer = true;
                 System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] Server generated initial WaybillNumber for Shipment: {shipmentWaybillNumber}");
