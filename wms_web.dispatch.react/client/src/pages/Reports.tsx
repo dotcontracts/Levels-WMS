@@ -242,6 +242,9 @@ const Reports: React.FC = () => {
   const [selectedDebitClerk, setSelectedDebitClerk] = useState<ClerkDebitData | null>(null);
   const [showDebitDetailsModal, setShowDebitDetailsModal] = useState(false);
 
+  const [undeliveredPage, setUndeliveredPage] = useState(1);
+  const UNDELIVERED_PAGE_SIZE = 15;
+
   // Daily Sales related state
   const [usersList, setUsersList] = useState<UserDailySales[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserDailySales | null>(null);
@@ -1523,6 +1526,7 @@ const Reports: React.FC = () => {
           break;
         case 'undelivered-parcels':
           data.undeliveredParcels = generateUndeliveredParcelData(dispatchesData, filteredParcels);
+          setUndeliveredPage(1);
           break;
         case 'cod-delivered': {
           const [generatedData, allExpenses] = await Promise.all([
@@ -3209,12 +3213,20 @@ const Reports: React.FC = () => {
   const renderUndeliveredParcels = () => {
     if (!reportData?.undeliveredParcels) return null;
 
+    const allItems: UndeliveredParcelData[] = reportData.undeliveredParcels;
+    const totalPages = Math.ceil(allItems.length / UNDELIVERED_PAGE_SIZE);
+    const safePage = Math.min(undeliveredPage, totalPages || 1);
+    const pageItems = allItems.slice((safePage - 1) * UNDELIVERED_PAGE_SIZE, safePage * UNDELIVERED_PAGE_SIZE);
+
     return (
       <Card padding={false}>
-        <div className="p-6 border-b border-gray-200">
+        <div className="p-6 border-b border-gray-200 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             Undelivered Parcels by Dispatch
           </h3>
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            {allItems.length} dispatch{allItems.length !== 1 ? 'es' : ''}
+          </span>
         </div>
         <Table>
           <Table.Header>
@@ -3230,7 +3242,7 @@ const Reports: React.FC = () => {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {reportData.undeliveredParcels.map((dispatch: UndeliveredParcelData, index: number) => (
+            {pageItems.map((dispatch: UndeliveredParcelData, index: number) => (
               <Table.Row key={index}>
                 <Table.Cell>
                   <div className="font-medium text-gray-900 dark:text-white">
@@ -3257,6 +3269,31 @@ const Reports: React.FC = () => {
             ))}
           </Table.Body>
         </Table>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-6 py-3 border-t border-gray-200 dark:border-gray-700">
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              Page {safePage} of {totalPages} &mdash; showing {(safePage - 1) * UNDELIVERED_PAGE_SIZE + 1}–{Math.min(safePage * UNDELIVERED_PAGE_SIZE, allItems.length)} of {allItems.length}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={safePage <= 1}
+                onClick={() => setUndeliveredPage(p => Math.max(1, p - 1))}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={safePage >= totalPages}
+                onClick={() => setUndeliveredPage(p => Math.min(totalPages, p + 1))}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
     );
   };
