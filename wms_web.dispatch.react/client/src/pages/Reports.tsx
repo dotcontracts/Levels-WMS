@@ -854,7 +854,7 @@ const Reports: React.FC = () => {
         if (parcel.createdById) {
           const userId = parcel.createdById;
           const parcelDate = parcel.createdAt ? new Date(parcel.createdAt).toISOString().split('T')[0] : '';
-          const amount = parcel.amount || 0;
+          const amount = parcel.totalAmount || parcel.amount || 0;
 
           if (userSalesMap[userId] && parcelDate) {
             const existingDay = userSalesMap[userId].dailySales.find(day => day.date === parcelDate);
