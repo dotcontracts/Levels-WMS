@@ -372,7 +372,7 @@ namespace wms_android.ViewModels
                 var dispatchCode = GenerateDispatchCode();
 
                 // Get current user's branch for SourceBranch
-                var currentBranch = "Main Branch"; // Default fallback
+                var currentBranch = "Head Office"; // Default fallback
 
                 try
                 {

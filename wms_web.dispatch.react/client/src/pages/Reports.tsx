@@ -64,6 +64,7 @@ interface DeliveryRateData {
 interface UndeliveredParcelData {
   dispatchCode: string;
   destination: string;
+  sourceBranch: string;
   driver: string;
   vehicleNumber: string;
   totalParcels: number;
@@ -1083,16 +1084,19 @@ const Reports: React.FC = () => {
   const generateUndeliveredParcelData = useCallback((dispatches: Dispatch[], parcels: Parcel[]): UndeliveredParcelData[] => {
     return dispatches.map(dispatch => {
       const normalizedParcelIds = normalizeParcelIds(dispatch.parcelIds);
-      const dispatchParcels = parcels.filter(p =>
-        normalizedParcelIds.includes(p.id) && p.status !== 3
-      );
+      const allDispatchParcels = parcels.filter(p => normalizedParcelIds.includes(p.id));
+      const dispatchParcels = allDispatchParcels.filter(p => p.status !== 3);
+
+      const uniqueDestinations = allDispatchParcels.map(p => p.destination).filter(Boolean).filter((d, i, arr) => arr.indexOf(d) === i);
+      const destination = dispatch.destination || uniqueDestinations.join(', ') || 'N/A';
 
       return {
         dispatchCode: dispatch.dispatchCode,
-        destination: dispatch.destination,
+        destination,
+        sourceBranch: dispatch.sourceBranch || 'N/A',
         driver: dispatch.driver,
         vehicleNumber: dispatch.vehicleNumber,
-        totalParcels: dispatch.totalParcels || 0,
+        totalParcels: normalizedParcelIds.length || dispatch.totalParcels || 0,
         undeliveredParcels: dispatchParcels.length,
         totalAmount: dispatchParcels.reduce((sum, p) => sum + (p.totalAmount || 0), 0),
         dispatchDate: dispatch.dispatchTime
@@ -3232,6 +3236,7 @@ const Reports: React.FC = () => {
           <Table.Header>
             <Table.Row>
               <Table.Head>Dispatch Code</Table.Head>
+              <Table.Head>Source</Table.Head>
               <Table.Head>Destination</Table.Head>
               <Table.Head>Driver</Table.Head>
               <Table.Head>Vehicle</Table.Head>
@@ -3247,6 +3252,11 @@ const Reports: React.FC = () => {
                 <Table.Cell>
                   <div className="font-medium text-gray-900 dark:text-white">
                     {dispatch.dispatchCode}
+                  </div>
+                </Table.Cell>
+                <Table.Cell>
+                  <div className="text-sm text-gray-700 dark:text-gray-300">
+                    {dispatch.sourceBranch}
                   </div>
                 </Table.Cell>
                 <Table.Cell>

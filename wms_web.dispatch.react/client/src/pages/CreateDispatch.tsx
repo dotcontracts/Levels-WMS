@@ -62,7 +62,7 @@ const CreateDispatch: React.FC = () => {
 
   const [formData, setFormData] = useState<CreateDispatchFormData>({
     dispatchCode: '',
-    sourceBranch: user?.branch?.name || 'Unknown Branch',
+    sourceBranch: user?.branch?.name || 'Head Office',
     destination: '',
     driverName: '',
     driverPhone: '',
@@ -540,7 +540,7 @@ const CreateDispatch: React.FC = () => {
         // Reset form
         setFormData({
           dispatchCode: '',
-          sourceBranch: user?.branch?.name || 'Unknown Branch',
+          sourceBranch: user?.branch?.name || 'Head Office',
           destination: '',
           driverName: '',
           driverPhone: '',
