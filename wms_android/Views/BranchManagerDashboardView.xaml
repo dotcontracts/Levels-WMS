@@ -1,0 +1,262 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:wms_android.Controls"
+             x:Class="wms_android.Views.BranchManagerDashboardView"
+             xmlns:viewmodels="clr-namespace:wms_android.ViewModels"
+             xmlns:fa="clr-namespace:UraniumUI.Icons.FontAwesome;assembly=UraniumUI.Icons.FontAwesome"
+             x:DataType="viewmodels:BranchManagerDashboardViewModel"
+             BackgroundColor="{StaticResource Background}"
+             Title="Dashboard">
+
+    <Grid>
+        <!-- Main content (blurred when hard-locked) -->
+        <Grid RowDefinitions="Auto,Auto,*" Padding="20" Opacity="{Binding IsLocked, Converter={StaticResource BoolToOpacityConverter}}">
+
+            <!-- Pending approval banner (non-blocking) -->
+            <Frame Grid.Row="0"
+                   IsVisible="{Binding ShowPendingApprovalBanner}"
+                   BackgroundColor="#FFF8E1" BorderColor="#F9A825"
+                   CornerRadius="8" Padding="10" Margin="0,0,0,10">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Label Grid.Column="0" Text="&#xf017;" FontFamily="FASolid" FontSize="16"
+                           TextColor="#F9A825" VerticalOptions="Center" Margin="0,0,8,0"/>
+                    <VerticalStackLayout Grid.Column="1" Spacing="2">
+                        <Label Text="Declaration Pending Approval" FontAttributes="Bold"
+                               FontSize="12" TextColor="#E65100"/>
+                        <Label Text="{Binding LockPreviousDate, StringFormat='COD declaration for {0} is awaiting admin approval.'}"
+                               FontSize="11" TextColor="#5D4037"/>
+                    </VerticalStackLayout>
+                </Grid>
+            </Frame>
+
+            <ActivityIndicator Grid.Row="1" Grid.RowSpan="2"
+                               IsRunning="{Binding IsLoading}"
+                               IsVisible="{Binding IsLoading}"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+
+            <ScrollView Grid.Row="2" IsVisible="{Binding IsLoading, Converter={StaticResource InvertedBoolConverter}}">
+                <VerticalStackLayout Spacing="20">
+                    <Label Text="{Binding BranchName, StringFormat='Branch: {0}'}"
+                           FontSize="13" FontAttributes="Bold"
+                           TextColor="{StaticResource PrimaryDark}"
+                           HorizontalOptions="Center" />
+
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="15" RowSpacing="15">
+                        <Frame Grid.Row="0" Grid.Column="0" BackgroundColor="{StaticResource Primary}" BorderColor="Transparent" CornerRadius="10" Padding="15">
+                            <VerticalStackLayout>
+                                <Label Text="Yesterday COD Sales" TextColor="White" FontSize="13" HorizontalOptions="Center"/>
+                                <Label Text="(COD destined here)" TextColor="White" FontSize="10" HorizontalOptions="Center" Opacity="0.8"/>
+                                <Label Text="{Binding PreviousDayCodSales, StringFormat='Ksh {0:N2}'}" TextColor="White" FontSize="10" FontAttributes="Bold" HorizontalOptions="Center"/>
+                            </VerticalStackLayout>
+                        </Frame>
+                        <Frame Grid.Row="0" Grid.Column="1" BackgroundColor="{StaticResource PrimaryDark}" BorderColor="Transparent" CornerRadius="10" Padding="15">
+                            <VerticalStackLayout>
+                                <Label Text="COD Amount Owed" TextColor="White" FontSize="13" HorizontalOptions="Center"/>
+                                <Label Text="(After yesterday deposit)" TextColor="White" FontSize="10" HorizontalOptions="Center" Opacity="0.8"/>
+                                <Label Text="{Binding PreviousDayCodAmountOwed, StringFormat='Ksh {0:N2}'}" TextColor="White" FontSize="10" FontAttributes="Bold" HorizontalOptions="Center"/>
+                            </VerticalStackLayout>
+                        </Frame>
+                        <Frame Grid.Row="1" Grid.Column="0" BackgroundColor="{StaticResource PrimaryLight}" BorderColor="Transparent" CornerRadius="10" Padding="15">
+                            <VerticalStackLayout>
+                                <Label Text="Today Live Sales" TextColor="{StaticResource PrimaryDark}" FontSize="13" HorizontalOptions="Center"/>
+                                <Label Text="(All payment types)" TextColor="{StaticResource PrimaryDark}" FontSize="10" HorizontalOptions="Center" Opacity="0.7"/>
+                                <Label Text="{Binding TodayLiveSales, StringFormat='Ksh {0:N2}'}" TextColor="{StaticResource PrimaryDark}" FontSize="10" FontAttributes="Bold" HorizontalOptions="Center"/>
+                            </VerticalStackLayout>
+                        </Frame>
+                        <Frame Grid.Row="1" Grid.Column="1" BackgroundColor="{StaticResource Secondary}" BorderColor="Transparent" CornerRadius="10" Padding="15">
+                            <VerticalStackLayout>
+                                <Label Text="Monthly Debit" TextColor="{StaticResource PrimaryDark}" FontSize="13" HorizontalOptions="Center"/>
+                                <Label Text="(Running COD debt)" TextColor="{StaticResource PrimaryDark}" FontSize="10" HorizontalOptions="Center" Opacity="0.7"/>
+                                <Label Text="{Binding MonthlyDebit, StringFormat='Ksh {0:N2}'}" TextColor="{StaticResource PrimaryDark}" FontSize="10" FontAttributes="Bold" HorizontalOptions="Center"/>
+                            </VerticalStackLayout>
+                        </Frame>
+                    </Grid>
+
+                    <Label Text="Quick Actions" FontSize="16" FontAttributes="Bold" TextColor="{StaticResource PrimaryDark}" Margin="0,20,0,10"/>
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="10">
+                        <Button Grid.Row="0" Grid.Column="0" Text="Deliver" Command="{Binding NavigateToDeliveryCommand}" BackgroundColor="{StaticResource Primary}" TextColor="White" HeightRequest="50">
+                            <Button.ImageSource><FontImageSource FontFamily="FASolid" Glyph="&#xf0d1;" Color="White" Size="18" /></Button.ImageSource>
+                        </Button>
+                        <Button Grid.Row="0" Grid.Column="1" Text="View All" Command="{Binding NavigateToViewAllParcelsCommand}" BackgroundColor="{StaticResource PrimaryDark}" TextColor="White" HeightRequest="50">
+                            <Button.ImageSource><FontImageSource FontFamily="FASolid" Glyph="&#xf03a;" Color="White" Size="18" /></Button.ImageSource>
+                        </Button>
+                        <Button Grid.Row="1" Grid.Column="0" Text="Collect" Command="{Binding NavigateToAddParcelCommand}" BackgroundColor="{StaticResource Primary}" TextColor="White" HeightRequest="50">
+                            <Button.ImageSource><FontImageSource FontFamily="FASolid" Glyph="&#xf466;" Color="White" Size="18" /></Button.ImageSource>
+                        </Button>
+                        <Button Grid.Row="1" Grid.Column="1" Text="Reports" Command="{Binding GenerateReportCommand}" BackgroundColor="{StaticResource PrimaryDark}" TextColor="White" HeightRequest="50">
+                            <Button.ImageSource><FontImageSource FontFamily="FASolid" Glyph="&#xf201;" Color="White" Size="18" /></Button.ImageSource>
+                        </Button>
+                        <Button Grid.Row="2" Grid.Column="0" Text="Confirm" Command="{Binding NavigateToParcelConfirmationCommand}" BackgroundColor="{StaticResource Secondary}" TextColor="{StaticResource PrimaryDark}" HeightRequest="50">
+                            <Button.ImageSource><FontImageSource FontFamily="FASolid" Glyph="&#xf058;" Color="{StaticResource PrimaryDark}" Size="18" /></Button.ImageSource>
+                        </Button>
+                        <Button Grid.Row="2" Grid.Column="1" Text="Dispatch" Command="{Binding NavigateToDispatchCommand}" BackgroundColor="{StaticResource Primary}" TextColor="White" HeightRequest="50" IsVisible="{Binding CanDispatch}">
+                            <Button.ImageSource><FontImageSource FontFamily="FASolid" Glyph="&#xf0d1;" Color="White" Size="18" /></Button.ImageSource>
+                        </Button>
+                    </Grid>
+                </VerticalStackLayout>
+            </ScrollView>
+        </Grid>
+
+        <!-- Lock overlay — shown only for pending_submission or rejected -->
+        <Grid IsVisible="{Binding IsLocked}"
+              BackgroundColor="#CC000000"
+              VerticalOptions="Fill"
+              HorizontalOptions="Fill">
+            <ScrollView VerticalOptions="Center" Margin="20">
+                <Frame BackgroundColor="White" CornerRadius="12" Padding="20" Margin="0">
+                    <VerticalStackLayout Spacing="15">
+
+                        <Label Text="&#xf023;" FontFamily="FASolid" FontSize="36"
+                               TextColor="#E53935" HorizontalOptions="Center"/>
+
+                        <Label Text="Account Locked" FontSize="20" FontAttributes="Bold"
+                               TextColor="#E53935" HorizontalOptions="Center"/>
+
+                        <Label Text="{Binding LockPreviousDate, StringFormat='COD balance from {0} is unresolved.'}"
+                               FontSize="13" HorizontalOptions="Center" TextColor="#333"/>
+
+                        <Label Text="{Binding LockCodTotal, StringFormat='COD Total: Ksh {0:N2}'}"
+                               FontSize="14" FontAttributes="Bold" HorizontalOptions="Center" TextColor="#333"/>
+
+                        <!-- DEPOSIT SECTION -->
+                        <BoxView HeightRequest="1" BackgroundColor="#E0E0E0" Margin="0,4"/>
+
+                        <Label Text="Deposit Declaration" FontSize="14" FontAttributes="Bold"
+                               TextColor="{StaticResource PrimaryDark}"/>
+
+                        <!-- Deposit approved (read-only) -->
+                        <Frame BackgroundColor="#F1F8E9" BorderColor="#66BB6A" CornerRadius="6" Padding="10"
+                               IsVisible="{Binding DepositApproved}">
+                            <Grid ColumnDefinitions="Auto,*">
+                                <Label Grid.Column="0" Text="&#xf058;" FontFamily="FASolid" FontSize="16"
+                                       TextColor="#388E3C" VerticalOptions="Center" Margin="0,0,8,0"/>
+                                <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                    <Label Text="Deposit Approved" FontAttributes="Bold" TextColor="#2E7D32" FontSize="13"/>
+                                    <Label Text="{Binding ApprovedDepositAmount, StringFormat='Amount: Ksh {0:N2}'}"
+                                           TextColor="#388E3C" FontSize="12"/>
+                                </VerticalStackLayout>
+                            </Grid>
+                        </Frame>
+
+                        <!-- Deposit rejected (editable) -->
+                        <VerticalStackLayout Spacing="10" IsVisible="{Binding DepositRejected}">
+                            <Frame BackgroundColor="#FFF3F3" BorderColor="#E53935" CornerRadius="6" Padding="10">
+                                <VerticalStackLayout Spacing="2">
+                                    <Label Text="Deposit Rejected — please amend" FontAttributes="Bold"
+                                           TextColor="#E53935" FontSize="13"/>
+                                    <Label Text="{Binding DepositRejectionReason}" TextColor="#B71C1C" FontSize="12"/>
+                                </VerticalStackLayout>
+                            </Frame>
+                            <Label Text="Deposit Amount (Ksh)" FontSize="13" TextColor="#555"/>
+                            <Entry Placeholder="Enter corrected deposit amount"
+                                   Text="{Binding DepositAmountInput}"
+                                   Keyboard="Numeric"
+                                   BackgroundColor="#F5F5F5"/>
+                        </VerticalStackLayout>
+
+                        <!-- Deposit not yet submitted (first time) -->
+                        <VerticalStackLayout Spacing="10"
+                            IsVisible="{Binding DepositRejected, Converter={StaticResource InvertedBoolConverter}}">
+                            <VerticalStackLayout IsVisible="{Binding DepositApproved, Converter={StaticResource InvertedBoolConverter}}"
+                                                 Spacing="10">
+                                <Label Text="Deposit Amount (Ksh)" FontSize="13" TextColor="#555"/>
+                                <Entry Placeholder="Enter amount deposited"
+                                       Text="{Binding DepositAmountInput}"
+                                       Keyboard="Numeric"
+                                       BackgroundColor="#F5F5F5"/>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+
+                        <!-- EXPENSE SECTION -->
+                        <BoxView HeightRequest="1" BackgroundColor="#E0E0E0" Margin="0,4"/>
+
+                        <Label Text="Delivery Expenses (optional)" FontSize="14" FontAttributes="Bold"
+                               TextColor="{StaticResource PrimaryDark}"/>
+
+                        <!-- Expense approved (read-only) -->
+                        <Frame BackgroundColor="#F1F8E9" BorderColor="#66BB6A" CornerRadius="6" Padding="10"
+                               IsVisible="{Binding ExpenseApproved}">
+                            <Grid ColumnDefinitions="Auto,*">
+                                <Label Grid.Column="0" Text="&#xf058;" FontFamily="FASolid" FontSize="16"
+                                       TextColor="#388E3C" VerticalOptions="Center" Margin="0,0,8,0"/>
+                                <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                    <Label Text="Expense Approved" FontAttributes="Bold" TextColor="#2E7D32" FontSize="13"/>
+                                    <Label Text="{Binding ApprovedExpenseAmount, StringFormat='Amount: Ksh {0:N2}'}"
+                                           TextColor="#388E3C" FontSize="12"/>
+                                </VerticalStackLayout>
+                            </Grid>
+                        </Frame>
+
+                        <!-- Expense rejected (editable) -->
+                        <VerticalStackLayout Spacing="10" IsVisible="{Binding ExpenseRejected}">
+                            <Frame BackgroundColor="#FFF3F3" BorderColor="#E53935" CornerRadius="6" Padding="10">
+                                <VerticalStackLayout Spacing="2">
+                                    <Label Text="Expense Rejected — please resubmit" FontAttributes="Bold"
+                                           TextColor="#E53935" FontSize="13"/>
+                                    <Label Text="{Binding ExpenseRejectionReason}" TextColor="#B71C1C" FontSize="12"/>
+                                </VerticalStackLayout>
+                            </Frame>
+                            <Label Text="Category" FontSize="13" TextColor="#555"/>
+                            <Picker Title="Select category"
+                                    ItemsSource="{Binding ExpenseCategories}"
+                                    SelectedItem="{Binding ExpenseCategory}"
+                                    BackgroundColor="#F5F5F5"/>
+                            <Label Text="Amount (Ksh)" FontSize="13" TextColor="#555"/>
+                            <Entry Placeholder="Enter corrected expense amount"
+                                   Text="{Binding ExpenseAmountInput}"
+                                   Keyboard="Numeric"
+                                   BackgroundColor="#F5F5F5"/>
+                            <Label Text="Description" FontSize="13" TextColor="#555"/>
+                            <Entry Placeholder="e.g. Fuel Ksh 2000 + Casual Ksh 500"
+                                   Text="{Binding ExpenseDescription}"
+                                   BackgroundColor="#F5F5F5"/>
+                        </VerticalStackLayout>
+
+                        <!-- No existing expense — optional entry -->
+                        <VerticalStackLayout Spacing="10"
+                            IsVisible="{Binding ExpenseRejected, Converter={StaticResource InvertedBoolConverter}}">
+                            <VerticalStackLayout IsVisible="{Binding ExpenseApproved, Converter={StaticResource InvertedBoolConverter}}"
+                                                 Spacing="10">
+                                <Label Text="Category" FontSize="13" TextColor="#555"/>
+                                <Picker Title="Select category"
+                                        ItemsSource="{Binding ExpenseCategories}"
+                                        SelectedItem="{Binding ExpenseCategory}"
+                                        BackgroundColor="#F5F5F5"/>
+                                <Label Text="Amount (Ksh)" FontSize="13" TextColor="#555"/>
+                                <Entry Placeholder="Leave blank if no expenses"
+                                       Text="{Binding ExpenseAmountInput}"
+                                       Keyboard="Numeric"
+                                       BackgroundColor="#F5F5F5"/>
+                                <Label Text="Description" FontSize="13" TextColor="#555"/>
+                                <Entry Placeholder="e.g. Fuel Ksh 2000 + Casual Ksh 500"
+                                       Text="{Binding ExpenseDescription}"
+                                       BackgroundColor="#F5F5F5"/>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+
+                        <!-- Error and submit -->
+                        <Label Text="{Binding SubmitError}" TextColor="#E53935" FontSize="12"
+                               IsVisible="{Binding SubmitError, Converter={StaticResource StringNotEmptyConverter}}"/>
+
+                        <Button Text="Submit Declaration"
+                                Command="{Binding SubmitDepositCommand}"
+                                IsEnabled="{Binding IsSubmitting, Converter={StaticResource InvertedBoolConverter}}"
+                                BackgroundColor="{StaticResource Primary}"
+                                TextColor="White"
+                                CornerRadius="8"
+                                HeightRequest="50"/>
+
+                        <ActivityIndicator IsRunning="{Binding IsSubmitting}"
+                                           IsVisible="{Binding IsSubmitting}"
+                                           HorizontalOptions="Center"/>
+
+                    </VerticalStackLayout>
+                </Frame>
+            </ScrollView>
+        </Grid>
+
+        <controls:LoadingOverlay />
+    </Grid>
+</ContentPage>

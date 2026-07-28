@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:viewmodels="clr-namespace:wms_android.ViewModels"
+             xmlns:shared="clr-namespace:wms_android.shared.DTOs;assembly=wms_android.shared"
+             x:Class="wms_android.Views.BranchManagerReportView"
+             x:DataType="viewmodels:BranchManagerReportViewModel"
+             BackgroundColor="{StaticResource Background}"
+             Title="COD Report">
+
+    <Grid RowDefinitions="Auto,*" Padding="20">
+        <ActivityIndicator Grid.RowSpan="2"
+                           IsRunning="{Binding IsLoading}"
+                           IsVisible="{Binding IsLoading}"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+
+        <ScrollView Grid.Row="1"
+                    IsVisible="{Binding IsLoading, Converter={StaticResource InvertedBoolConverter}}">
+            <VerticalStackLayout Spacing="16">
+
+                <Label Text="{Binding ReportMonth, StringFormat='COD Report — {0}'}"
+                       FontSize="18" FontAttributes="Bold"
+                       TextColor="{StaticResource PrimaryDark}"
+                       HorizontalOptions="Center" />
+
+                <Label Text="{Binding BranchName, StringFormat='Branch: {0}'}"
+                       FontSize="13" TextColor="#666"
+                       HorizontalOptions="Center" />
+
+                <!-- Monthly summary cards -->
+                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
+                    <Frame Grid.Column="0" BackgroundColor="{StaticResource Primary}"
+                           BorderColor="Transparent" CornerRadius="10" Padding="12">
+                        <VerticalStackLayout>
+                            <Label Text="COD Total" TextColor="White" FontSize="11" HorizontalOptions="Center"/>
+                            <Label Text="{Binding MonthlyCodTotal, StringFormat='Ksh {0:N2}'}"
+                                   TextColor="White" FontSize="12" FontAttributes="Bold" HorizontalOptions="Center"/>
+                        </VerticalStackLayout>
+                    </Frame>
+                    <Frame Grid.Column="1" BackgroundColor="#27ae60"
+                           BorderColor="Transparent" CornerRadius="10" Padding="12">
+                        <VerticalStackLayout>
+                            <Label Text="Deposited" TextColor="White" FontSize="11" HorizontalOptions="Center"/>
+                            <Label Text="{Binding MonthlyDeposited, StringFormat='Ksh {0:N2}'}"
+                                   TextColor="White" FontSize="12" FontAttributes="Bold" HorizontalOptions="Center"/>
+                        </VerticalStackLayout>
+                    </Frame>
+                    <Frame Grid.Column="2" BackgroundColor="#e74c3c"
+                           BorderColor="Transparent" CornerRadius="10" Padding="12">
+                        <VerticalStackLayout>
+                            <Label Text="Balance" TextColor="White" FontSize="11" HorizontalOptions="Center"/>
+                            <Label Text="{Binding MonthlyBalance, StringFormat='Ksh {0:N2}'}"
+                                   TextColor="White" FontSize="12" FontAttributes="Bold" HorizontalOptions="Center"/>
+                        </VerticalStackLayout>
+                    </Frame>
+                </Grid>
+
+                <!-- Today's declaration form -->
+                <Frame BackgroundColor="White" BorderColor="{StaticResource Primary}" CornerRadius="10" Padding="16">
+                    <VerticalStackLayout Spacing="12">
+                        <Label Text="Today's COD Declaration"
+                               FontSize="15" FontAttributes="Bold"
+                               TextColor="{StaticResource PrimaryDark}"/>
+
+                        <!-- COD parcels info -->
+                        <Frame BackgroundColor="#EEF4FF" BorderColor="#90C2FF" CornerRadius="8" Padding="10">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <VerticalStackLayout Grid.Column="0">
+                                    <Label Text="{Binding PreviousDayLabel, StringFormat='COD parcels from {0}'}"
+                                           FontSize="12" TextColor="#1565C0" FontAttributes="Bold"/>
+                                    <Label Text="(Parcels booked yesterday, delivered today)"
+                                           FontSize="11" TextColor="#555"/>
+                                </VerticalStackLayout>
+                                <Label Grid.Column="1"
+                                       Text="{Binding PreviousDayCodTotal, StringFormat='Ksh {0:N2}'}"
+                                       FontSize="14" FontAttributes="Bold"
+                                       TextColor="{StaticResource PrimaryDark}"
+                                       VerticalOptions="Center"/>
+                            </Grid>
+                        </Frame>
+
+                        <!-- Deposit amount -->
+                        <Label Text="Amount Deposited (Ksh)" FontSize="13" TextColor="#555"/>
+                        <Entry Placeholder="Enter amount deposited to bank/head office"
+                               Text="{Binding DepositAmountInput}"
+                               Keyboard="Numeric"
+                               BackgroundColor="#F5F5F5"/>
+
+                        <!-- Expenses (optional) -->
+                        <Label Text="Delivery Expenses Today (optional)"
+                               FontSize="14" FontAttributes="Bold"
+                               TextColor="{StaticResource PrimaryDark}" Margin="0,8,0,0"/>
+
+                        <Label Text="Category" FontSize="13" TextColor="#555"/>
+                        <Picker Title="Select category"
+                                ItemsSource="{Binding ExpenseCategories}"
+                                SelectedItem="{Binding ExpenseCategory}"
+                                BackgroundColor="#F5F5F5"/>
+
+                        <Label Text="Amount (Ksh)" FontSize="13" TextColor="#555"/>
+                        <Entry Placeholder="Leave blank if no expenses"
+                               Text="{Binding ExpenseAmountInput}"
+                               Keyboard="Numeric"
+                               BackgroundColor="#F5F5F5"/>
+
+                        <Label Text="Description" FontSize="13" TextColor="#555"/>
+                        <Entry Placeholder="e.g. Fuel Ksh 2000 + Casual Ksh 500"
+                               Text="{Binding ExpenseDescription}"
+                               BackgroundColor="#F5F5F5"/>
+
+                        <Label Text="{Binding SubmitError}" TextColor="#E53935" FontSize="12"
+                               IsVisible="{Binding SubmitError, Converter={StaticResource StringNotEmptyConverter}}"/>
+                        <Label Text="{Binding SubmitSuccess}" TextColor="#27ae60" FontSize="12"
+                               IsVisible="{Binding SubmitSuccess, Converter={StaticResource StringNotEmptyConverter}}"/>
+
+                        <Button Text="Submit Declaration"
+                                Command="{Binding SubmitDepositCommand}"
+                                IsEnabled="{Binding IsSubmitting, Converter={StaticResource InvertedBoolConverter}}"
+                                BackgroundColor="{StaticResource Primary}"
+                                TextColor="White"
+                                CornerRadius="8"
+                                HeightRequest="46"/>
+
+                        <ActivityIndicator IsRunning="{Binding IsSubmitting}"
+                                           IsVisible="{Binding IsSubmitting}"
+                                           HorizontalOptions="Center"/>
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Monthly deposit records -->
+                <Label Text="Monthly Records" FontSize="15" FontAttributes="Bold"
+                       TextColor="{StaticResource PrimaryDark}" Margin="0,8,0,0"/>
+
+                <CollectionView ItemsSource="{Binding Deposits}"
+                                EmptyView="No deposit records for this month.">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="shared:BranchDepositDto" xmlns:shared="clr-namespace:wms_android.shared.DTOs;assembly=wms_android.shared">
+                            <Frame Margin="0,4" Padding="12"
+                                   BorderColor="#E0E0E0" CornerRadius="8"
+                                   BackgroundColor="White">
+                                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+                                    <Label Grid.Row="0" Grid.Column="0"
+                                           Text="{Binding Date, StringFormat='{0:dd MMM yyyy}'}"
+                                           FontAttributes="Bold" FontSize="13"/>
+                                    <Label Grid.Row="1" Grid.Column="0"
+                                           Text="{Binding CodTotal, StringFormat='COD: Ksh {0:N2}'}"
+                                           FontSize="12" TextColor="#555"/>
+                                    <Label Grid.Row="2" Grid.Column="0"
+                                           Text="{Binding DepositAmount, StringFormat='Deposited: Ksh {0:N2}'}"
+                                           FontSize="12" TextColor="#27ae60"/>
+
+                                    <Frame Grid.Row="0" Grid.Column="1" Grid.RowSpan="3"
+                                           Padding="8,4" CornerRadius="6"
+                                           BorderColor="Transparent"
+                                           BackgroundColor="{Binding Status, Converter={StaticResource StatusToColorConverter}}"
+                                           VerticalOptions="Center">
+                                        <Label Text="{Binding Status}"
+                                               TextColor="White" FontSize="11"
+                                               HorizontalOptions="Center"/>
+                                    </Frame>
+                                </Grid>
+                            </Frame>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentPage>
