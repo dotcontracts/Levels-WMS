@@ -160,9 +160,9 @@ namespace wms_android.ViewModels
             ShowScannedResult = false;
 
             string waybillToLookup = ManualWaybillNumber.Trim().ToUpper();
-            if (!waybillToLookup.StartsWith("FHL") && !waybillToLookup.StartsWith("WB") && Regex.IsMatch(waybillToLookup, @"^[A-Z0-9]+$"))
+            if (!waybillToLookup.StartsWith("WB") && Regex.IsMatch(waybillToLookup, @"^[A-Z0-9]+$"))
             {
-                waybillToLookup = $"FHL{waybillToLookup}";
+                waybillToLookup = $"WB{waybillToLookup}";
                 Debug.WriteLine($"Auto-prefixed waybill: {ManualWaybillNumber} -> {waybillToLookup}");
             }
 

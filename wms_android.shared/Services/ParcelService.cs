@@ -87,9 +87,7 @@ namespace wms_android.shared.Services
             {
                 try 
                 {
-                    parcel.WaybillNumber = null;
-                    parcel.QRCode = null;
-                    System.Diagnostics.Debug.WriteLine($"[ParcelService MAUI Client] Cleared waybill/QR - server will generate FHL waybill.");
+                    System.Diagnostics.Debug.WriteLine($"[ParcelService MAUI Client] Sending client-generated waybill: {parcel.WaybillNumber}");
                     
                     // Ensure CreatedAt is current UTC time before sending to the API
                     System.Diagnostics.Debug.WriteLine($"[ParcelService MAUI Client] Method Entry. parcel.CreatedAt: {parcel.CreatedAt}, Kind: {parcel.CreatedAt.Kind}");
@@ -233,7 +231,7 @@ namespace wms_android.shared.Services
                 var randomString = new string(Enumerable.Repeat(chars, 5)
                     .Select(s => s[random.Next(s.Length)]).ToArray());
                 
-                var waybillNumber = $"FHL{randomString}";
+                var waybillNumber = $"WB{randomString}";
                 
                 System.Diagnostics.Debug.WriteLine($"Generated waybill number: {waybillNumber}");
                 return waybillNumber;
@@ -1527,6 +1525,46 @@ namespace wms_android.shared.Services
                     System.Diagnostics.Debug.WriteLine($"Inner exception: {ex.InnerException.Message}");
                 }
                 return null;
+            }
+        }
+
+        public async Task<BranchCodLockStatusDto> GetBranchCodLockStatusAsync(string branchName, DateTime date)
+        {
+            try
+            {
+                var encodedBranch = Uri.EscapeDataString(branchName);
+                var encodedDate = Uri.EscapeDataString(date.ToString("yyyy-MM-dd"));
+                var response = await _httpClient.GetAsync($"/api/parcels/branch-cod-lock-status?branchName={encodedBranch}&date={encodedDate}");
+                response.EnsureSuccessStatusCode();
+                var content = await response.Content.ReadAsStringAsync();
+                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                return System.Text.Json.JsonSerializer.Deserialize<BranchCodLockStatusDto>(content, options)
+                       ?? new BranchCodLockStatusDto { IsLocked = false, Reason = "none" };
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error fetching COD lock status for {branchName}: {ex.Message}");
+                return new BranchCodLockStatusDto { IsLocked = false, Reason = "none" };
+            }
+        }
+
+        public async Task<BranchManagerDashboardDto> GetBranchManagerDashboardAsync(string branchName, DateTime date)
+        {
+            try
+            {
+                var encodedBranch = Uri.EscapeDataString(branchName);
+                var encodedDate = Uri.EscapeDataString(date.ToString("yyyy-MM-dd"));
+                var response = await _httpClient.GetAsync($"/api/parcels/branch-manager-dashboard?branchName={encodedBranch}&date={encodedDate}");
+                response.EnsureSuccessStatusCode();
+                var content = await response.Content.ReadAsStringAsync();
+                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                return System.Text.Json.JsonSerializer.Deserialize<BranchManagerDashboardDto>(content, options)
+                       ?? new BranchManagerDashboardDto();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error fetching branch manager dashboard for {branchName}: {ex.Message}");
+                return new BranchManagerDashboardDto();
             }
         }
     }
