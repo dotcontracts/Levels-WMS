@@ -806,6 +806,23 @@ namespace wms_android.api.Controllers
             }
         }
 
+        [HttpGet("clerk-lock-status")]
+        public async Task<ActionResult<ClerkLockStatusDto>> GetClerkLockStatus([FromQuery] int userId, [FromQuery] DateTime? date)
+        {
+            try
+            {
+                if (userId <= 0)
+                    return BadRequest("userId is required.");
+                var result = await _parcelService.GetClerkLockStatusAsync(userId, date ?? DateTime.UtcNow);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error getting clerk lock status for user {userId}: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
         [HttpGet("branch-manager-dashboard")]
         public async Task<ActionResult<BranchManagerDashboardDto>> GetBranchManagerDashboard([FromQuery] string branchName, [FromQuery] DateTime date)
         {

@@ -1259,5 +1259,75 @@ namespace wms_android.api.Services
             dto.Reason = depositRecord.Status == "pending" ? "pending_approval" : "none";
             return dto;
         }
+
+        public async Task<ClerkLockStatusDto> GetClerkLockStatusAsync(int userId, DateTime date)
+        {
+            var yesterday = date.Date.AddDays(-1);
+            var yesterdayStart = yesterday.ToUniversalTime();
+            var yesterdayEnd = yesterday.AddDays(1).ToUniversalTime();
+
+            var yesterdayPaidTotal = await _context.Parcels
+                .Where(p => p.CreatedById == userId &&
+                            p.PaymentMethods.ToLower().Contains("paid") &&
+                            p.CreatedAt >= yesterdayStart &&
+                            p.CreatedAt < yesterdayEnd)
+                .SumAsync(p => (decimal?)p.TotalAmount) ?? 0m;
+
+            var dto = new ClerkLockStatusDto
+            {
+                PreviousDate = yesterday,
+                YesterdayPaidTotal = yesterdayPaidTotal
+            };
+
+            if (yesterdayPaidTotal <= 0)
+            {
+                dto.IsLocked = false;
+                dto.Reason = "none";
+                return dto;
+            }
+
+            var depositRecord = await _context.DailyExpenses
+                .Where(e => e.ClerkId == userId &&
+                            e.Category == "clerk_deposit" &&
+                            e.Date >= yesterday && e.Date < yesterday.AddDays(1))
+                .FirstOrDefaultAsync();
+
+            if (depositRecord == null)
+            {
+                dto.IsLocked = true;
+                dto.Reason = "pending_submission";
+                return dto;
+            }
+
+            dto.DepositRecordId = depositRecord.Id;
+            dto.DepositStatus = depositRecord.Status;
+            dto.DepositAmount = depositRecord.Amount;
+            dto.DepositRejectionReason = depositRecord.RejectionReason;
+
+            var expenseRecord = await _context.DailyExpenses
+                .Where(e => e.ClerkId == userId &&
+                            e.Category == "clerk_expense" &&
+                            e.Date >= yesterday && e.Date < yesterday.AddDays(1))
+                .FirstOrDefaultAsync();
+
+            if (expenseRecord != null)
+            {
+                dto.ExpenseRecordId = expenseRecord.Id;
+                dto.ExpenseStatus = expenseRecord.Status;
+                dto.ExpenseAmount = expenseRecord.Amount;
+                dto.ExpenseRejectionReason = expenseRecord.RejectionReason;
+            }
+
+            if (depositRecord.Status == "rejected" || expenseRecord?.Status == "rejected")
+            {
+                dto.IsLocked = true;
+                dto.Reason = "rejected";
+                return dto;
+            }
+
+            dto.IsLocked = false;
+            dto.Reason = depositRecord.Status == "pending" ? "pending_approval" : "none";
+            return dto;
+        }
     }
 } 
