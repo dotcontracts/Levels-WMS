@@ -85,7 +85,8 @@ const ExpensesManagement: React.FC = () => {
     { value: 'office_supplies', label: 'Office Supplies', icon: FileText },
     { value: 'utilities', label: 'Utilities', icon: Building2 },
     { value: 'transport', label: 'Transport', icon: Car },
-    { value: 'other', label: 'Other', icon: Receipt }
+    { value: 'other', label: 'Other', icon: Receipt },
+    { value: 'cod_expense', label: 'COD Delivery Expense', icon: Receipt }
   ];
 
   useEffect(() => {

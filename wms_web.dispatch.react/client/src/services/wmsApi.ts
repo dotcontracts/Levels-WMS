@@ -2509,6 +2509,65 @@ class WMSApiService {
     }
   }
 
+  async approveBranchDeposit(depositId: number): Promise<void> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/BranchDeposits/${depositId}/approve`, {
+        method: 'PUT',
+        headers: this.getHeaders(),
+        signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to approve branch deposit: ${response.status} - ${errorText}`);
+      }
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async rejectBranchDeposit(depositId: number, rejectionReason: string): Promise<void> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/BranchDeposits/${depositId}/reject`, {
+        method: 'PUT',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ rejectionReason }),
+        signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to reject branch deposit: ${response.status} - ${errorText}`);
+      }
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async getBranchCodLockStatus(branchName: string): Promise<{
+    isLocked: boolean;
+    reason: string;
+    previousDayCodTotal: number;
+    previousDate: string;
+    depositRecordId?: number;
+    depositStatus?: string;
+    depositAmount?: number;
+    depositRejectionReason?: string;
+  }> {
+    try {
+      const params = new URLSearchParams({ branchName });
+      const response = await fetch(`${API_BASE_URL}/Parcels/branch-cod-lock-status?${params}`, {
+        headers: this.getHeaders(),
+        signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to get COD lock status: ${response.status} - ${errorText}`);
+      }
+      return await response.json();
+    } catch (error) {
+      throw error;
+    }
+  }
+
   // ParcelDeposit API methods
   async getParcelDeposits(date?: string, clerkId?: number, destination?: string): Promise<ParcelDepositDto[]> {
     try {

@@ -84,6 +84,8 @@ interface BranchDebitData {
   updatedAt?: string;
   createdById?: number;
   createdByName?: string;
+  status?: string;
+  rejectionReason?: string;
 }
 
 interface BranchDebitSummary {
@@ -181,7 +183,8 @@ type ReportType =
   | 'cod-delivered'
   | 'delivery-rate'
   | 'parcel-list'
-  | 'clerk-debit';
+  | 'clerk-debit'
+  | 'branch-cod-report';
 
 const Reports: React.FC = () => {
   const { 
@@ -231,6 +234,10 @@ const Reports: React.FC = () => {
   const [activeBranchTab, setActiveBranchTab] = useState<string>('');
   const [loadingDeposits, setLoadingDeposits] = useState(false);
   const [savingDeposit, setSavingDeposit] = useState(false);
+  const [approvingDepositId, setApprovingDepositId] = useState<number | null>(null);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectDepositId, setRejectDepositId] = useState<number | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   const [approvedExpenses, setApprovedExpenses] = useState<DailyExpense[]>([]);
 
@@ -271,7 +278,24 @@ const Reports: React.FC = () => {
     paymentMethod: ''
   });
 
-  const { user, isAccountant } = useAuth();
+  const { user, isAccountant, isBranchManager } = useAuth();
+
+  const [managerDeposits, setManagerDeposits] = useState<any[]>([]);
+  const [managerCodLoading, setManagerCodLoading] = useState(false);
+  const [managerCodMonth, setManagerCodMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [managerDepositInput, setManagerDepositInput] = useState('');
+  const [managerSubmitting, setManagerSubmitting] = useState(false);
+  const [managerSubmitError, setManagerSubmitError] = useState('');
+  const [managerSubmitSuccess, setManagerSubmitSuccess] = useState('');
+
+  useEffect(() => {
+    if (isBranchManager()) {
+      setCurrentReport('branch-cod-report');
+    }
+  }, [user]);
 
   // Format currency helper
   const formatCurrency = useCallback((amount: number) => {
@@ -1258,7 +1282,9 @@ const Reports: React.FC = () => {
             createdAt: record.createdAt,
             updatedAt: record.updatedAt,
             createdById: record.createdById,
-            createdByName: record.createdByName
+            createdByName: record.createdByName,
+            status: record.status,
+            rejectionReason: record.rejectionReason
           };
 
           groupedApiData[branch].transactions.push(transaction);
@@ -1290,10 +1316,15 @@ const Reports: React.FC = () => {
 
             console.log(`Branch ${branch}: COD=${codTotal}, Deposited=${totalDeposited}, Debt=${mergedData[branch].totalDebt}`);
 
-            // Update transactions with deposit amounts and IDs
+            // Update transactions with deposit amounts and IDs.
+            // Deposits are dated T+1 (declaration day) but belong to T (parcel booking day).
+            // Match the deposit against the parcel row one day earlier (T = deposit.date - 1).
             branchApiData.transactions.forEach((apiTransaction: any) => {
+              const depositDate = new Date(apiTransaction.date);
+              depositDate.setDate(depositDate.getDate() - 1);
+              const parcelDate = depositDate.toISOString().split('T')[0];
               const localTransaction = mergedData[branch].transactions.find(
-                t => t.date === apiTransaction.date
+                t => t.date === parcelDate
               );
               if (localTransaction) {
                 localTransaction.id = apiTransaction.id;
@@ -1303,6 +1334,8 @@ const Reports: React.FC = () => {
                 localTransaction.updatedAt = apiTransaction.updatedAt;
                 localTransaction.createdById = apiTransaction.createdById;
                 localTransaction.createdByName = apiTransaction.createdByName;
+                localTransaction.status = apiTransaction.status;
+                localTransaction.rejectionReason = apiTransaction.rejectionReason;
               }
             });
           } else {
@@ -3308,6 +3341,186 @@ const Reports: React.FC = () => {
     );
   };
 
+  const renderBranchManagerCodReport = () => {
+    const branchName = user && typeof (user as any).branch === 'object' ? (user as any).branch?.name : undefined;
+
+    const loadManagerDeposits = async () => {
+      if (!branchName) return;
+      setManagerCodLoading(true);
+      setManagerSubmitError('');
+      setManagerSubmitSuccess('');
+      try {
+        const [year, month] = managerCodMonth.split('-');
+        const deposits = await wmsApi.getBranchDeposits(branchName);
+        const filtered = (deposits || []).filter((d: any) => {
+          const date = new Date(d.date);
+          return date.getFullYear() === parseInt(year) && (date.getMonth() + 1) === parseInt(month);
+        });
+        setManagerDeposits(filtered);
+      } catch (e) {
+        console.error('Failed to load COD report', e);
+      } finally {
+        setManagerCodLoading(false);
+      }
+    };
+
+    const monthlyCodTotal = managerDeposits.reduce((s: number, d: any) => s + (d.codTotal || 0), 0);
+    const monthlyDeposited = managerDeposits.reduce((s: number, d: any) => s + (d.depositAmount || 0), 0);
+    const monthlyBalance = monthlyCodTotal - monthlyDeposited;
+
+    const handleManagerDepositSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setManagerSubmitError('');
+      setManagerSubmitSuccess('');
+      const amount = parseFloat(managerDepositInput);
+      if (isNaN(amount) || amount < 0) {
+        setManagerSubmitError('Please enter a valid deposit amount.');
+        return;
+      }
+      setManagerSubmitting(true);
+      try {
+        const previousDate = new Date();
+        previousDate.setDate(previousDate.getDate() - 1);
+        const dateStr = previousDate.toISOString().split('T')[0];
+        await wmsApi.createBranchDeposit({
+          branch: branchName!,
+          date: dateStr,
+          codTotal: 0,
+          depositAmount: amount,
+        });
+        setManagerDepositInput('');
+        setManagerSubmitSuccess('Deposit submitted for approval.');
+        loadManagerDeposits();
+      } catch {
+        setManagerSubmitError('Submission failed. Please try again.');
+      } finally {
+        setManagerSubmitting(false);
+      }
+    };
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <input
+            type="month"
+            value={managerCodMonth}
+            onChange={e => setManagerCodMonth(e.target.value)}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+          />
+          <Button onClick={loadManagerDeposits} disabled={managerCodLoading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${managerCodLoading ? 'animate-spin' : ''}`} />
+            Load Report
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card>
+            <div className="flex items-center">
+              <div className="p-3 rounded-lg bg-blue-100 dark:bg-blue-500/20">
+                <DollarSign className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">COD Total</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatCurrency(monthlyCodTotal)}</p>
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <div className="flex items-center">
+              <div className="p-3 rounded-lg bg-green-100 dark:bg-green-500/20">
+                <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Deposited</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatCurrency(monthlyDeposited)}</p>
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <div className="flex items-center">
+              <div className="p-3 rounded-lg bg-red-100 dark:bg-red-500/20">
+                <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Balance</p>
+                <p className="text-2xl font-bold text-red-600">{formatCurrency(monthlyBalance)}</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        <Card>
+          <div className="p-6">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Submit Yesterday's Deposit</h3>
+            <form onSubmit={handleManagerDepositSubmit} className="flex flex-col sm:flex-row gap-3 max-w-lg">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={managerDepositInput}
+                onChange={e => setManagerDepositInput(e.target.value)}
+                placeholder="Deposit amount (Ksh)"
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                required
+              />
+              <Button type="submit" disabled={managerSubmitting}>
+                {managerSubmitting ? 'Submitting...' : 'Submit Deposit'}
+              </Button>
+            </form>
+            {managerSubmitError && <p className="text-red-600 text-sm mt-2">{managerSubmitError}</p>}
+            {managerSubmitSuccess && <p className="text-green-600 text-sm mt-2">{managerSubmitSuccess}</p>}
+          </div>
+        </Card>
+
+        <Card>
+          <div className="p-6">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Monthly Records</h3>
+            {managerCodLoading ? (
+              <div className="text-center py-8 text-gray-500">Loading...</div>
+            ) : managerDeposits.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">No records for this month.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-700">
+                      <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-gray-400">Date</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-600 dark:text-gray-400">COD Total</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-600 dark:text-gray-400">Deposited</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-600 dark:text-gray-400">Running Debt</th>
+                      <th className="text-center py-3 px-4 font-medium text-gray-600 dark:text-gray-400">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {managerDeposits.map((d: any) => (
+                      <tr key={d.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <td className="py-3 px-4 text-gray-900 dark:text-white">
+                          {new Date(d.date).toLocaleDateString('en-KE', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        </td>
+                        <td className="py-3 px-4 text-right text-gray-700 dark:text-gray-300">{formatCurrency(d.codTotal)}</td>
+                        <td className="py-3 px-4 text-right text-green-600 dark:text-green-400">{formatCurrency(d.depositAmount)}</td>
+                        <td className="py-3 px-4 text-right text-red-600 dark:text-red-400">{formatCurrency(d.runningDebt ?? (d.codTotal - d.depositAmount))}</td>
+                        <td className="py-3 px-4 text-center">
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                            d.status === 'approved' ? 'bg-green-100 text-green-700' :
+                            d.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                            'bg-yellow-100 text-yellow-700'
+                          }`}>
+                            {d.status ?? 'pending'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+    );
+  };
+
   const renderBranchDebit = () => {
     const branchSummaries = Object.values(branchDebitData);
 
@@ -3532,14 +3745,61 @@ const Reports: React.FC = () => {
                             })()}
                           </Table.Cell>
                           <Table.Cell>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openDepositModal(transaction)}
-                            >
-                              <DollarSign className="w-4 h-4 mr-1" />
-                              Update Deposit
-                            </Button>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openDepositModal(transaction)}
+                              >
+                                <DollarSign className="w-4 h-4 mr-1" />
+                                Update
+                              </Button>
+                              {transaction.id && !isAccountant() && (
+                                <>
+                                  {transaction.status !== 'approved' && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      disabled={approvingDepositId === transaction.id}
+                                      onClick={async () => {
+                                        if (!transaction.id) return;
+                                        setApprovingDepositId(transaction.id);
+                                        try {
+                                          await wmsApi.approveBranchDeposit(transaction.id);
+                                          await fetchReportData();
+                                        } finally {
+                                          setApprovingDepositId(null);
+                                        }
+                                      }}
+                                      className="text-green-700 border-green-400 hover:bg-green-50"
+                                    >
+                                      {approvingDepositId === transaction.id ? '...' : 'Approve'}
+                                    </Button>
+                                  )}
+                                  {transaction.status !== 'rejected' && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        setRejectDepositId(transaction.id!);
+                                        setRejectReason('');
+                                        setShowRejectModal(true);
+                                      }}
+                                      className="text-red-700 border-red-400 hover:bg-red-50"
+                                    >
+                                      Reject
+                                    </Button>
+                                  )}
+                                  {transaction.status && (
+                                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                                      transaction.status === 'approved' ? 'bg-green-100 text-green-700' :
+                                      transaction.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                                      'bg-yellow-100 text-yellow-700'
+                                    }`}>{transaction.status}</span>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </Table.Cell>
                         </Table.Row>
                       ))}
@@ -3550,6 +3810,52 @@ const Reports: React.FC = () => {
             )}
           </div>
         </Card>
+
+        {/* Reject Deposit Modal */}
+        {showRejectModal && rejectDepositId && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Reject Deposit</h3>
+                <button onClick={() => setShowRejectModal(false)} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Rejection Reason
+                  </label>
+                  <textarea
+                    value={rejectReason}
+                    onChange={e => setRejectReason(e.target.value)}
+                    rows={3}
+                    placeholder="Enter reason for rejection..."
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                </div>
+                <div className="flex gap-3 justify-end">
+                  <Button variant="outline" onClick={() => setShowRejectModal(false)}>Cancel</Button>
+                  <Button
+                    onClick={async () => {
+                      if (!rejectDepositId) return;
+                      try {
+                        await wmsApi.rejectBranchDeposit(rejectDepositId, rejectReason);
+                        setShowRejectModal(false);
+                        await fetchReportData();
+                      } catch (err) {
+                        console.error('Failed to reject deposit', err);
+                      }
+                    }}
+                    className="bg-red-600 text-white hover:bg-red-700"
+                  >
+                    Confirm Rejection
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Deposit Modal */}
         {showDepositModal && selectedBranchDebit && (
@@ -4503,6 +4809,8 @@ const Reports: React.FC = () => {
         return renderClerkDebit();
       case 'parcel-list':
         return renderParcelList();
+      case 'branch-cod-report':
+        return renderBranchManagerCodReport();
       default:
         return (
           <Card>
@@ -4521,14 +4829,17 @@ const Reports: React.FC = () => {
   };
 
   const reportTypes = [
-    { key: 'dashboard', label: 'Dashboard', icon: BarChart },
-    { key: 'sales-per-clerk', label: 'Sales per Clerk', icon: Users },
-    { key: 'delivery-rate', label: 'Delivery Rate', icon: CheckCircle },
-    { key: 'undelivered-parcels', label: 'Undelivered Parcels', icon: AlertCircle },
-    { key: 'contract-invoices', label: 'Contract Invoices', icon: FileText },
-    { key: 'cod-delivered', label: 'Branch debit', icon: DollarSign },
-    { key: 'clerk-debit', label: 'Clerk Debit Management', icon: User },
-    { key: 'parcel-list', label: 'Parcel List', icon: Package }
+    ...(isBranchManager() ? [{ key: 'branch-cod-report', label: 'COD Report', icon: DollarSign }] : []),
+    ...(!isBranchManager() ? [
+      { key: 'dashboard', label: 'Dashboard', icon: BarChart },
+      { key: 'sales-per-clerk', label: 'Sales per Clerk', icon: Users },
+      { key: 'delivery-rate', label: 'Delivery Rate', icon: CheckCircle },
+      { key: 'undelivered-parcels', label: 'Undelivered Parcels', icon: AlertCircle },
+      { key: 'contract-invoices', label: 'Contract Invoices', icon: FileText },
+      { key: 'cod-delivered', label: 'Branch debit', icon: DollarSign },
+      { key: 'clerk-debit', label: 'Clerk Debit Management', icon: User },
+      { key: 'parcel-list', label: 'Parcel List', icon: Package },
+    ] : [])
   ];
 
   if (loading) {

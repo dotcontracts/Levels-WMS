@@ -1,13 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { SessionProvider } from './context/SessionContext';
-import { SidebarProvider } from './context/SidebarContext';
 import { ReportsDataProvider } from './context/ReportsDataContext';
 import { ParcelsDataProvider } from './context/ParcelsDataContext';
 import { useAuth } from './context/AuthContext';
-import AppHeader from './layout/AppHeader';
-import AppSidebar from './layout/AppSidebar';
+import AppLayout from './layout/AppLayout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Parcels from './pages/Parcels';
@@ -48,35 +46,6 @@ const ProtectedRoute: React.FC<{
   return <>{children}</>;
 };
 
-// Modern Layout with Green Theme - Like Django but better
-const ModernLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [darkMode, setDarkMode] = useState(false);
-
-  const toggleDarkMode = () => {
-    setDarkMode(!darkMode);
-    document.documentElement.classList.toggle('dark');
-  };
-
-  return (
-    <SidebarProvider>
-      <div className={`min-h-screen bg-gray-50 dark:bg-gray-900 ${darkMode ? 'dark' : ''}`}>
-        {/* Green-themed Sidebar like Django */}
-        <AppSidebar />
-        
-        {/* Main content area */}
-        <div className="lg:ml-[290px] transition-all duration-300">
-          {/* Header */}
-          <AppHeader darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
-          
-          {/* Page content */}
-          <main className="p-6">
-            {children}
-          </main>
-        </div>
-      </div>
-    </SidebarProvider>
-  );
-};
 
 const App: React.FC = () => {
   return (
@@ -92,9 +61,9 @@ const App: React.FC = () => {
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <ModernLayout>
+                <AppLayout>
                   <Dashboard />
-                </ModernLayout>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -102,11 +71,11 @@ const App: React.FC = () => {
             path="/parcels"
             element={
               <ProtectedRoute>
-                <ModernLayout>
+                <AppLayout>
                   <ParcelsDataProvider>
                     <Parcels />
                   </ParcelsDataProvider>
-                </ModernLayout>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -114,9 +83,9 @@ const App: React.FC = () => {
             path="/branch-parcels"
             element={
               <ProtectedRoute>
-                <ModernLayout>
+                <AppLayout>
                   <BranchParcels />
-                </ModernLayout>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -124,9 +93,9 @@ const App: React.FC = () => {
             path="/dispatches/create"
             element={
               <ProtectedRoute>
-                <ModernLayout>
+                <AppLayout>
                   <CreateDispatch />
-                </ModernLayout>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -134,9 +103,9 @@ const App: React.FC = () => {
             path="/dispatches/view"
             element={
               <ProtectedRoute>
-                <ModernLayout>
+                <AppLayout>
                   <ViewDispatch />
-                </ModernLayout>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -144,9 +113,9 @@ const App: React.FC = () => {
             path="/contract-customers"
             element={
               <ProtectedRoute>
-                <ModernLayout>
+                <AppLayout>
                   <ContractCustomers />
-                </ModernLayout>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -154,9 +123,9 @@ const App: React.FC = () => {
             path="/financial-dashboard"
             element={
               <ProtectedRoute>
-                <ModernLayout>
+                <AppLayout>
                   <FinancialDashboard />
-                </ModernLayout>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -164,9 +133,9 @@ const App: React.FC = () => {
             path="/invoices"
             element={
               <ProtectedRoute>
-                <ModernLayout>
+                <AppLayout>
                   <Invoices />
-                </ModernLayout>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -174,9 +143,9 @@ const App: React.FC = () => {
             path="/invoices/create"
             element={
               <ProtectedRoute>
-                <ModernLayout>
+                <AppLayout>
                   <CreateInvoice />
-                </ModernLayout>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -184,9 +153,9 @@ const App: React.FC = () => {
             path="/payments"
             element={
               <ProtectedRoute>
-                <ModernLayout>
+                <AppLayout>
                   <PaymentsManagement />
-                </ModernLayout>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -194,9 +163,9 @@ const App: React.FC = () => {
             path="/expenses"
             element={
               <ProtectedRoute>
-                <ModernLayout>
+                <AppLayout>
                   <ExpensesManagement />
-                </ModernLayout>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -204,11 +173,11 @@ const App: React.FC = () => {
             path="/reports"
             element={
               <ProtectedRoute>
-                <ModernLayout>
+                <AppLayout>
                   <ReportsDataProvider>
                     <Reports />
                   </ReportsDataProvider>
-                </ModernLayout>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -216,9 +185,9 @@ const App: React.FC = () => {
             path="/sms-messaging"
             element={
               <ProtectedRoute>
-                <ModernLayout>
+                <AppLayout>
                   <SMSMessaging />
-                </ModernLayout>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -226,9 +195,9 @@ const App: React.FC = () => {
             path="/user-management"
             element={
               <ProtectedRoute>
-                <ModernLayout>
+                <AppLayout>
                   <UserManagement />
-                </ModernLayout>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -236,9 +205,9 @@ const App: React.FC = () => {
             path="/admin/parcels"
             element={
               <ProtectedRoute>
-                <ModernLayout>
+                <AppLayout>
                   <AdminParcelManagement />
-                </ModernLayout>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
@@ -246,9 +215,9 @@ const App: React.FC = () => {
             path="/settings"
             element={
               <ProtectedRoute>
-                <ModernLayout>
+                <AppLayout>
                   <NotFound />
-                </ModernLayout>
+                </AppLayout>
               </ProtectedRoute>
             }
           />
