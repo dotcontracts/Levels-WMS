@@ -127,7 +127,7 @@ namespace wms_android
                 try
                 {
                     await DisplayAlert("Session Expired", "Your session has expired due to inactivity. Please log in again.", "OK");
-                    await Shell.Current.GoToAsync("//LoginPage");
+                    NavigateToLogin();
                 }
                 catch (Exception ex)
                 {
@@ -142,13 +142,19 @@ namespace wms_android
             {
                 try
                 {
-                    await Shell.Current.GoToAsync("//LoginPage");
+                    NavigateToLogin();
                 }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"Error handling logout: {ex.Message}");
                 }
             });
+        }
+
+        private void NavigateToLogin()
+        {
+            MainPage = new AppShell();
+            Shell.Current.GoToAsync("//LoginPage");
         }
 
         private async void ValidateSessionOnStartup()

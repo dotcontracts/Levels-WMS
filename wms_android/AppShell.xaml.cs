@@ -33,6 +33,7 @@ namespace wms_android
             Routing.RegisterRoute("ParcelConfirmationView", typeof(ParcelConfirmationView));
             // Add route for DispatchView
             Routing.RegisterRoute(nameof(DispatchView), typeof(DispatchView));
+            Routing.RegisterRoute(nameof(BranchManagerReportView), typeof(BranchManagerReportView));
         }
     }
 }

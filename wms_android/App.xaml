@@ -20,6 +20,9 @@
             <converters:StatusToColorConverter x:Key="StatusToColorConverter" />
             <converters:BoolToConfirmationBorderColorConverter x:Key="BoolToConfirmationBorderColorConverter" />
             <converters:BoolToConfirmationTextColorConverter x:Key="BoolToConfirmationTextColorConverter" />
+            <converters:BoolToOpacityConverter x:Key="BoolToOpacityConverter" />
+            <converters:StringEqualsConverter x:Key="StringEqualsConverter" />
+            <converters:StringNotEmptyConverter x:Key="StringNotEmptyConverter" />
             <utils:DateTimeConverter x:Key="DateTimeConverter" />
 
         </ResourceDictionary>

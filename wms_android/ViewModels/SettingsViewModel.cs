@@ -113,7 +113,9 @@ namespace wms_android.ViewModels
                 // Show logout success message
                 await _dialogService.ShowAlertAsync("Logged Out", "You have been successfully logged out.");
 
-                // Navigate to login page
+                // Reset lock state and navigate to login
+                ManagerShell.IsManagerLocked = false;
+                Application.Current.MainPage = new AppShell();
                 await Shell.Current.GoToAsync("//LoginPage");
 
                 Debug.WriteLine("SettingsViewModel: Logout completed successfully");

@@ -54,8 +54,17 @@ namespace wms_android.Views
             
             _hasNavigated = true;
             
-            // Navigate to the main dashboard page
-            await Shell.Current.GoToAsync("//ClerkDashboardView");
+            var role = Microsoft.Maui.Storage.Preferences.Get("UserRole", string.Empty);
+            if (role == "Manager")
+            {
+                Application.Current.MainPage = new wms_android.ManagerShell();
+                await Shell.Current.GoToAsync("//BranchManagerDashboardView");
+            }
+            else
+            {
+                Application.Current.MainPage = new wms_android.AppShell();
+                await Shell.Current.GoToAsync("//ClerkDashboardView");
+            }
         }
     }
 } 

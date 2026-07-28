@@ -151,10 +151,16 @@ namespace wms_android.ViewModels
                             loginResponse.Username, 
                             loginResponse.SessionExpiresAt);
 
-                        // Use a different navigation approach for the login->dashboard transition
-                        // Since this is a shell reset, we can use absolute navigation here
-                        Application.Current.MainPage = new AppShell();
-                        await Shell.Current.GoToAsync("//ClerkDashboardView");
+                        if (loginResponse.Role == "Manager")
+                        {
+                            Application.Current.MainPage = new ManagerShell();
+                            await Shell.Current.GoToAsync("//BranchManagerDashboardView");
+                        }
+                        else
+                        {
+                            Application.Current.MainPage = new AppShell();
+                            await Shell.Current.GoToAsync("//ClerkDashboardView");
+                        }
 
                         // Show success notification
                         var firstName = !string.IsNullOrWhiteSpace(loginResponse.Username) ? loginResponse.Username : "User";
