@@ -1586,5 +1586,24 @@ namespace wms_android.shared.Services
                 return new BranchManagerDashboardDto();
             }
         }
+
+        public async Task<ClerkReportDto> GetClerkReportAsync(int userId, DateTime date)
+        {
+            try
+            {
+                var encodedDate = Uri.EscapeDataString(date.ToString("yyyy-MM-dd"));
+                var response = await _httpClient.GetAsync($"/api/parcels/clerk-report?userId={userId}&date={encodedDate}");
+                response.EnsureSuccessStatusCode();
+                var content = await response.Content.ReadAsStringAsync();
+                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                return System.Text.Json.JsonSerializer.Deserialize<ClerkReportDto>(content, options)
+                       ?? new ClerkReportDto();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error fetching clerk report for user {userId}: {ex.Message}");
+                return new ClerkReportDto();
+            }
+        }
     }
 }

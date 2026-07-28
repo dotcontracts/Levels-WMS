@@ -75,5 +75,8 @@ namespace wms_android.shared.Interfaces
 
         // Clerk lock status
         Task<ClerkLockStatusDto> GetClerkLockStatusAsync(int userId, DateTime date);
+
+        // Clerk report
+        Task<ClerkReportDto> GetClerkReportAsync(int userId, DateTime date);
     }
 } 
