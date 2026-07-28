@@ -80,6 +80,6 @@ namespace wms_android.shared.Models
         /// (Parcel total amount - deposited amount - expenses)
         /// </summary>
         [NotMapped]
-        public decimal RemainingDebt => (Parcel?.TotalAmount ?? 0) - DepositedAmount + Expenses;
+        public decimal RemainingDebt => (Parcel?.TotalAmount ?? 0) - DepositedAmount - Expenses;
     }
 }
