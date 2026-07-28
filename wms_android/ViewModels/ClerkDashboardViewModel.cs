@@ -2,14 +2,19 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using Microsoft.Maui.Controls;
+using System.Globalization;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using wms_android.shared.Models;
 using wms_android.Views;
 using wms_android.shared.Interfaces;
+using Microsoft.Maui.Controls;
 using Microsoft.Maui.Storage;
+using wms_android.Extensions;
 
 namespace wms_android.ViewModels
 {
@@ -17,48 +22,73 @@ namespace wms_android.ViewModels
     {
         private readonly IParcelService _parcelService;
         private readonly IUserService _userService;
+        private readonly HttpClient _httpClient;
         private readonly ILogger<ClerkDashboardViewModel> _logger;
         public INavigation Navigation { get; set; }
 
-        [ObservableProperty]
-        private bool _isLoading;
+        [ObservableProperty] private bool _isLoading;
+        [ObservableProperty] private double _amountOwed;
+        [ObservableProperty] private double _cashIn;
+        [ObservableProperty] private double _dailySales;
+        [ObservableProperty] private double _monthlySales;
+        [ObservableProperty] private string _userName;
+        [ObservableProperty] private string _userRole;
+        [ObservableProperty] private bool _canDispatch;
 
-        [ObservableProperty]
-        private double _amountOwed;
+        // Lock state
+        [ObservableProperty] private bool _isLocked;
+        [ObservableProperty] private string _lockReason = "none";
+        [ObservableProperty] private decimal _lockPaidTotal;
+        [ObservableProperty] private string _lockPreviousDate;
+        [ObservableProperty] private int? _existingDepositId;
+        [ObservableProperty] private int? _existingExpenseId;
 
-        [ObservableProperty]
-        private double _cashIn; // Outstanding debit from clerk summary for current month
+        // Pending approval banner (non-blocking)
+        [ObservableProperty] private bool _showPendingApprovalBanner;
 
-        [ObservableProperty]
-        private double _dailySales;
+        // Deposit approval state
+        [ObservableProperty] private bool _depositRejected;
+        [ObservableProperty] private bool _depositApproved;
+        [ObservableProperty] private string _depositRejectionReason = "";
+        [ObservableProperty] private decimal _approvedDepositAmount;
 
-        [ObservableProperty]
-        private double _monthlySales;
+        // Expense approval state
+        [ObservableProperty] private bool _expenseRejected;
+        [ObservableProperty] private bool _expenseApproved;
+        [ObservableProperty] private bool _hasExistingExpense;
+        [ObservableProperty] private string _expenseRejectionReason = "";
+        [ObservableProperty] private decimal _approvedExpenseAmount;
 
-        [ObservableProperty]
-        private string _userName;
+        // Form inputs
+        [ObservableProperty] private string _depositAmountInput = "";
+        [ObservableProperty] private string _expenseAmountInput = "";
+        [ObservableProperty] private string _expenseCategory = "other";
+        [ObservableProperty] private string _expenseDescription = "";
+        [ObservableProperty] private bool _isSubmitting;
+        [ObservableProperty] private string _submitError = "";
 
-        [ObservableProperty]
-        private string _userRole;
+        private DateTime _declarationDate;
 
-        [ObservableProperty]
-        private bool _canDispatch;
-        
+        public List<string> ExpenseCategories { get; } = new()
+        {
+            "fuel", "casual_labor", "hired_cars", "maintenance",
+            "office_supplies", "utilities", "transport", "other"
+        };
+
         public ClerkDashboardViewModel(
-            IParcelService parcelService, 
+            IParcelService parcelService,
             IUserService userService,
+            HttpClient httpClient,
             ILogger<ClerkDashboardViewModel> logger)
         {
             _parcelService = parcelService;
             _userService = userService;
+            _httpClient = httpClient;
             _logger = logger;
             _logger.LogInformation("ClerkDashboardViewModel initialized");
-            
-            // Default values - show a more friendly loading message
             UserName = "User";
             UserRole = "";
-            // Temporarily set to true for testing - will be overridden when user data loads
-            CanDispatch = false; // Default to false, will be set based on user permissions
+            CanDispatch = false;
         }
 
         [RelayCommand]
@@ -112,98 +142,219 @@ namespace wms_android.ViewModels
             await Shell.Current.GoToAsync(nameof(DispatchView));
         }
 
+        [RelayCommand]
+        private async Task SubmitDeposit()
+        {
+            SubmitError = "";
+            var userId = Preferences.Get("CurrentUserId", 0);
+            var depositDate = _declarationDate != default ? _declarationDate.Date : DateTime.Today.AddDays(-1);
+
+            var token = Preferences.Get("AuthToken", string.Empty);
+            if (!string.IsNullOrEmpty(token))
+                _httpClient.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            IsSubmitting = true;
+            try
+            {
+                await _httpClient.AddSessionHeaderAsync();
+
+                if (!DepositApproved)
+                {
+                    if (!decimal.TryParse(DepositAmountInput, NumberStyles.Any, CultureInfo.InvariantCulture, out var depositAmount) || depositAmount < 0)
+                    {
+                        SubmitError = "Please enter a valid deposit amount.";
+                        return;
+                    }
+
+                    if (ExistingDepositId.HasValue)
+                    {
+                        var deleteResp = await _httpClient.DeleteAsync($"/api/Expenses/{ExistingDepositId}");
+                        if (!deleteResp.IsSuccessStatusCode)
+                            _logger.LogWarning("Could not delete rejected deposit {Id}: {Status}", ExistingDepositId, deleteResp.StatusCode);
+                    }
+
+                    var depositPayload = new
+                    {
+                        category = "clerk_deposit",
+                        description = $"Daily deposit for {depositDate:dd MMM yyyy}",
+                        amount = depositAmount,
+                        date = depositDate.ToString("yyyy-MM-ddTHH:mm:ss"),
+                        clerkId = userId,
+                        clerkName = UserName
+                    };
+                    var depositJson = JsonSerializer.Serialize(depositPayload);
+                    var depositContent = new StringContent(depositJson, Encoding.UTF8, "application/json");
+                    var depositResp = await _httpClient.PostAsync("/api/Expenses", depositContent);
+                    if (!depositResp.IsSuccessStatusCode)
+                    {
+                        var err = await depositResp.Content.ReadAsStringAsync();
+                        _logger.LogError("Deposit POST failed {Status}: {Body}", depositResp.StatusCode, err);
+                        SubmitError = "Deposit submission failed. Please try again.";
+                        return;
+                    }
+                }
+
+                if (ExpenseRejected)
+                {
+                    if (!string.IsNullOrWhiteSpace(ExpenseAmountInput) &&
+                        decimal.TryParse(ExpenseAmountInput, NumberStyles.Any, CultureInfo.InvariantCulture, out var expenseAmount) && expenseAmount > 0)
+                    {
+                        if (ExistingExpenseId.HasValue)
+                        {
+                            var deleteResp = await _httpClient.DeleteAsync($"/api/Expenses/{ExistingExpenseId}");
+                            if (!deleteResp.IsSuccessStatusCode)
+                                _logger.LogWarning("Could not delete rejected expense {Id}: {Status}", ExistingExpenseId, deleteResp.StatusCode);
+                        }
+
+                        var description = string.IsNullOrWhiteSpace(ExpenseDescription) ? "Delivery expenses" : ExpenseDescription;
+                        var expensePayload = new
+                        {
+                            category = ExpenseCategory,
+                            description,
+                            amount = expenseAmount,
+                            date = depositDate.ToString("yyyy-MM-ddTHH:mm:ss"),
+                            clerkId = userId,
+                            clerkName = UserName
+                        };
+                        var expenseJson = JsonSerializer.Serialize(expensePayload);
+                        var expenseContent = new StringContent(expenseJson, Encoding.UTF8, "application/json");
+                        var expenseResp = await _httpClient.PostAsync("/api/Expenses", expenseContent);
+                        if (!expenseResp.IsSuccessStatusCode)
+                        {
+                            SubmitError = "Deposit saved but expense failed. Please try again.";
+                            return;
+                        }
+                    }
+                }
+                else if (!HasExistingExpense)
+                {
+                    if (!string.IsNullOrWhiteSpace(ExpenseAmountInput) &&
+                        decimal.TryParse(ExpenseAmountInput, NumberStyles.Any, CultureInfo.InvariantCulture, out var expenseAmount) && expenseAmount > 0)
+                    {
+                        var description = string.IsNullOrWhiteSpace(ExpenseDescription) ? "Delivery expenses" : ExpenseDescription;
+                        var expensePayload = new
+                        {
+                            category = ExpenseCategory,
+                            description,
+                            amount = expenseAmount,
+                            date = depositDate.ToString("yyyy-MM-ddTHH:mm:ss"),
+                            clerkId = userId,
+                            clerkName = UserName
+                        };
+                        var expenseJson = JsonSerializer.Serialize(expensePayload);
+                        var expenseContent = new StringContent(expenseJson, Encoding.UTF8, "application/json");
+                        var expenseResp = await _httpClient.PostAsync("/api/Expenses", expenseContent);
+                        if (!expenseResp.IsSuccessStatusCode)
+                        {
+                            SubmitError = "Deposit saved but expense failed. Please try again.";
+                            return;
+                        }
+                    }
+                }
+
+                IsLocked = false;
+                LockReason = "pending_approval";
+                AppShell.IsClerkLocked = false;
+                ShowPendingApprovalBanner = true;
+                DepositRejected = false;
+                ExpenseRejected = false;
+                DepositAmountInput = "";
+                ExpenseAmountInput = "";
+                ExpenseCategory = "other";
+                ExpenseDescription = "";
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error submitting clerk declaration");
+                SubmitError = "Submission failed. Please try again.";
+            }
+            finally
+            {
+                IsSubmitting = false;
+            }
+        }
+
         public async Task LoadDashboardData()
         {
             try
             {
                 IsLoading = true;
-                
-                // Get today's date
+
                 var today = DateTime.Today;
-                
-                // Get current user ID
                 var currentUserId = Preferences.Get("CurrentUserId", 0);
                 if (currentUserId == 0)
                 {
                     _logger.LogWarning("No current user ID found for dashboard metrics");
                     return;
                 }
-                
-                // Get user-specific metrics for today
-                AmountOwed = await _parcelService.GetAmountOwedByUserAsync(currentUserId, today);
-                
-                // Get outstanding debit from clerk summary for current month + 7 days of next month
-                _logger.LogInformation($"Fetching clerk summary for user {currentUserId} on date {today:yyyy-MM-dd}");
-                var clerkSummary = await _parcelService.GetClerkCashInSummaryAsync(currentUserId, today);
-                
-                if (clerkSummary != null)
+
+                var lockStatus = await _parcelService.GetClerkLockStatusAsync(currentUserId, today);
+                LockPaidTotal = lockStatus.YesterdayPaidTotal;
+                _declarationDate = lockStatus.PreviousDate;
+                LockPreviousDate = lockStatus.PreviousDate.ToString("dd MMM yyyy");
+                ExistingDepositId = lockStatus.DepositRecordId;
+                ExistingExpenseId = lockStatus.ExpenseRecordId;
+
+                DepositRejected = lockStatus.DepositStatus == "rejected";
+                DepositApproved = lockStatus.DepositStatus == "approved";
+                DepositRejectionReason = lockStatus.DepositRejectionReason ?? "";
+                ApprovedDepositAmount = DepositApproved ? (lockStatus.DepositAmount ?? 0m) : 0m;
+
+                if (DepositRejected)
+                    DepositAmountInput = (lockStatus.DepositAmount ?? 0m).ToString(CultureInfo.InvariantCulture);
+
+                HasExistingExpense = lockStatus.ExpenseRecordId.HasValue;
+                ExpenseRejected = lockStatus.ExpenseStatus == "rejected";
+                ExpenseApproved = lockStatus.ExpenseStatus == "approved";
+                ExpenseRejectionReason = lockStatus.ExpenseRejectionReason ?? "";
+                ApprovedExpenseAmount = ExpenseApproved ? (lockStatus.ExpenseAmount ?? 0m) : 0m;
+
+                if (ExpenseRejected)
+                    ExpenseAmountInput = (lockStatus.ExpenseAmount ?? 0m).ToString(CultureInfo.InvariantCulture);
+
+                var isHardLocked = lockStatus.Reason == "pending_submission" || lockStatus.Reason == "rejected";
+                IsLocked = isHardLocked;
+                LockReason = lockStatus.Reason;
+                AppShell.IsClerkLocked = isHardLocked;
+                ShowPendingApprovalBanner = lockStatus.Reason == "pending_approval";
+
+                if (!isHardLocked)
                 {
-                    CashIn = (double)clerkSummary.RemainingDebt;
-                    _logger.LogInformation($"Clerk summary found - RemainingDebt: {clerkSummary.RemainingDebt}, TotalPaidAmount: {clerkSummary.TotalPaidAmount}, ParcelCount: {clerkSummary.ParcelCount}");
+                    AmountOwed = await _parcelService.GetAmountOwedByUserAsync(currentUserId, today);
+
+                    var clerkSummary = await _parcelService.GetClerkCashInSummaryAsync(currentUserId, today);
+                    CashIn = clerkSummary != null ? (double)clerkSummary.RemainingDebt : 0.0;
+
+                    DailySales = await _parcelService.GetDailySalesByUserAsync(currentUserId, today);
+                    MonthlySales = await _parcelService.GetMonthlySalesByUserAsync(currentUserId, today);
                 }
-                else
-                {
-                    CashIn = 0.0;
-                    _logger.LogWarning($"No clerk summary found for user {currentUserId}");
-                }
-                
-                DailySales = await _parcelService.GetDailySalesByUserAsync(currentUserId, today);
-                MonthlySales = await _parcelService.GetMonthlySalesByUserAsync(currentUserId, today);
-                
-                // Try to get current user info from preferences or cache
+
                 var username = Preferences.Get("CurrentUsername", string.Empty);
-                _logger.LogInformation($"Retrieved username from preferences: '{username}'");
-                Debug.WriteLine($"[ClerkDashboard] Retrieved username from preferences: '{username}'");
-                
                 if (!string.IsNullOrEmpty(username))
                 {
                     var user = await _userService.GetUserByUsernameAsync(username);
-                    _logger.LogInformation($"User service returned: {(user != null ? $"User found - ID: {user.Id}, Username: {user.Username}, Role: {user.Role?.Name}" : "null")}");
-                    Debug.WriteLine($"[ClerkDashboard] User service returned: {(user != null ? $"User found - ID: {user.Id}, Username: {user.Username}, Role: {user.Role?.Name}" : "null")}");
-                    
                     if (user != null)
                     {
-                        // Use FirstName if available, fallback to Username if FirstName is null/empty
                         UserName = !string.IsNullOrWhiteSpace(user.FirstName) ? user.FirstName : user.Username;
                         UserRole = user.Role?.Name ?? "User";
-                        
-                        // Set dispatch permission based on role permissions
-                        var roleName = user.Role?.Name ?? "Unknown";
-                        Debug.WriteLine($"[ClerkDashboard] Role name: '{roleName}', RoleId: {user.Role?.Id}");
                         CanDispatch = user.CanDispatch || (user.Role?.CanDispatch ?? false);
-                        _logger.LogInformation($"User role: '{roleName}', CanDispatch: {CanDispatch} (user-level: {user.CanDispatch}, role-level: {user.Role?.CanDispatch})");
-                        Debug.WriteLine($"[ClerkDashboard] User role: '{roleName}', CanDispatch: {CanDispatch}");
-                    }
-                    else
-                    {
-                        Debug.WriteLine($"[ClerkDashboard] User not found for username: '{username}'");
-                        _logger.LogWarning($"User not found for username: '{username}'");
                     }
                 }
-                else
-                {
-                    Debug.WriteLine("[ClerkDashboard] No username found in preferences");
-                    _logger.LogWarning("No username found in preferences");
-                }
-                
-                _logger.LogInformation($"Dashboard data loaded for user {currentUserId}: Amount Owed: Ksh {AmountOwed:N2}, Outstanding Debit: Ksh {CashIn:N2}, Daily Sales: Ksh {DailySales:N2}, Monthly Sales: Ksh {MonthlySales:N2}");
+
+                _logger.LogInformation($"Dashboard loaded - Locked: {IsLocked}, Reason: {LockReason}, PaidTotal: {LockPaidTotal:N2}");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error loading dashboard data");
                 Debug.WriteLine($"Error loading dashboard data: {ex.Message}");
-                
-                // Ensure we have a fallback name even if there's an error
                 if (string.IsNullOrWhiteSpace(UserName) || UserName == "User")
-                {
                     UserName = "User";
-                }
             }
             finally
             {
                 IsLoading = false;
             }
         }
-
     }
-} 
+}

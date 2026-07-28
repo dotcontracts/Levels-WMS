@@ -5,9 +5,10 @@ namespace wms_android
 {
     public partial class AppShell : Shell
     {
-        // Reference to loading service to ensure it's initialized
         private readonly LoadingService _loadingService = LoadingService.Instance;
-        
+
+        public static bool IsClerkLocked { get; set; } = false;
+
         public AppShell()
         {
             InitializeComponent();
@@ -34,6 +35,21 @@ namespace wms_android
             // Add route for DispatchView
             Routing.RegisterRoute(nameof(DispatchView), typeof(DispatchView));
             Routing.RegisterRoute(nameof(BranchManagerReportView), typeof(BranchManagerReportView));
+        }
+
+        protected override void OnNavigating(ShellNavigatingEventArgs args)
+        {
+            if (IsClerkLocked &&
+                (args.Source == ShellNavigationSource.ShellSectionChanged ||
+                 args.Source == ShellNavigationSource.ShellItemChanged ||
+                 args.Source == ShellNavigationSource.ShellContentChanged))
+            {
+                args.Cancel();
+            }
+            else
+            {
+                base.OnNavigating(args);
+            }
         }
     }
 }
