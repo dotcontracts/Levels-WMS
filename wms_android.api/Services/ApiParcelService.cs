@@ -67,10 +67,8 @@ namespace wms_android.api.Services
             string shipmentWaybillNumber = parcelInitialState.WaybillNumber;
             bool waybillGeneratedByServer = false;
 
-            if (string.IsNullOrEmpty(shipmentWaybillNumber) || shipmentWaybillNumber.StartsWith("WB", StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrEmpty(shipmentWaybillNumber))
             {
-                if (!string.IsNullOrEmpty(shipmentWaybillNumber))
-                    System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] Client sent WB-prefixed waybill '{shipmentWaybillNumber}', replacing with server-generated FHL waybill.");
                 shipmentWaybillNumber = await GeneratePotentiallyNonUniqueWaybillNumberAsync();
                 waybillGeneratedByServer = true;
                 System.Diagnostics.Debug.WriteLine($"[CreateParcelAsync] Server generated initial WaybillNumber for Shipment: {shipmentWaybillNumber}");
@@ -270,7 +268,7 @@ namespace wms_android.api.Services
         public async Task<string> GeneratePotentiallyNonUniqueWaybillNumberAsync(int attemptOffset = 0)
         {
             var suffix = new string(Enumerable.Range(0, 5).Select(_ => AlphanumericChars[_random.Next(AlphanumericChars.Length)]).ToArray());
-            var waybillNumber = $"FHL{suffix}";
+            var waybillNumber = $"WB{suffix}";
             System.Diagnostics.Debug.WriteLine($"Generated potential WaybillNumber for Shipment: {waybillNumber} (Attempt offset: {attemptOffset})");
             return waybillNumber;
         }
@@ -1099,26 +1097,167 @@ namespace wms_android.api.Services
 
             if (!deposits.Any())
             {
-                // Return null if no deposits exist for this user in the date range
                 return null;
             }
 
-            // Calculate summary for the user
+            var approvedExpenses = await _context.DailyExpenses
+                .Where(e => e.ClerkId == userId &&
+                            e.Status == "approved" &&
+                            e.Date >= startDate &&
+                            e.Date < endDate)
+                .SumAsync(e => (decimal?)e.Amount) ?? 0m;
+
+            var totalPaid = deposits.Sum(pd => pd.Parcel.TotalAmount);
+            var totalDeposited = deposits.Sum(pd => pd.DepositedAmount);
+
             var summary = new ClerkCashInSummaryDto
             {
                 ClerkId = userId,
-                ClerkName = deposits.First().Parcel.CreatedBy != null ? 
+                ClerkName = deposits.First().Parcel.CreatedBy != null ?
                     $"{deposits.First().Parcel.CreatedBy.FirstName} {deposits.First().Parcel.CreatedBy.LastName}" : "Unknown",
                 ClerkUsername = deposits.First().Parcel.CreatedBy?.Username ?? "unknown",
-                TotalPaidAmount = deposits.Sum(pd => pd.Parcel.TotalAmount),
-                TotalDeposited = deposits.Sum(pd => pd.DepositedAmount),
-                TotalExpenses = deposits.Sum(pd => pd.Expenses),
-                RemainingDebt = deposits.Sum(pd => pd.RemainingDebt),
+                TotalPaidAmount = totalPaid,
+                TotalDeposited = totalDeposited,
+                TotalExpenses = approvedExpenses,
+                RemainingDebt = totalPaid - totalDeposited - approvedExpenses,
                 ParcelCount = deposits.Count(),
                 LastUpdateDate = deposits.Max(pd => pd.UpdatedAt)
             };
 
             return summary;
+        }
+
+        public async Task<BranchManagerDashboardDto> GetBranchManagerDashboardAsync(string branchName, DateTime date)
+        {
+            var yesterday = date.Date.AddDays(-1);
+            var yesterdayStart = yesterday.ToUniversalTime();
+            var yesterdayEnd = yesterday.AddDays(1).ToUniversalTime();
+            var todayStart = date.Date.ToUniversalTime();
+            var todayEnd = todayStart.AddDays(1);
+            var monthStart = new DateTime(date.Year, date.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+            var branchNameLower = branchName.ToLower();
+
+            var previousDayCodSales = await _context.Parcels
+                .Where(p => p.Destination.ToLower() == branchNameLower &&
+                            p.PaymentMethods.ToLower().Contains("cod") &&
+                            p.CreatedAt >= yesterdayStart &&
+                            p.CreatedAt < yesterdayEnd)
+                .SumAsync(p => (decimal?)p.TotalAmount) ?? 0m;
+
+            var previousDayDeposited = await _context.BranchDeposits
+                .Where(bd => bd.Branch.ToLower() == branchNameLower &&
+                             bd.Date == yesterday.Date)
+                .SumAsync(bd => (decimal?)bd.DepositAmount) ?? 0m;
+
+            var previousDayCodAmountOwed = previousDayCodSales - previousDayDeposited;
+            if (previousDayCodAmountOwed < 0) previousDayCodAmountOwed = 0m;
+
+            var todayLiveSales = await _context.Parcels
+                .Where(p => p.Destination.ToLower() == branchNameLower &&
+                            p.CreatedAt >= todayStart &&
+                            p.CreatedAt < todayEnd)
+                .SumAsync(p => (decimal?)p.TotalAmount) ?? 0m;
+
+            var monthlyCodTotal = await _context.Parcels
+                .Where(p => p.Destination.ToLower() == branchNameLower &&
+                            p.PaymentMethods.ToLower().Contains("cod") &&
+                            p.CreatedAt >= monthStart)
+                .SumAsync(p => (decimal?)p.TotalAmount) ?? 0m;
+            var monthlyDeposited = await _context.BranchDeposits
+                .Where(bd => bd.Branch.ToLower() == branchNameLower &&
+                             bd.Date >= monthStart.Date)
+                .SumAsync(bd => (decimal?)bd.DepositAmount) ?? 0m;
+            var monthlyApprovedExpenses = await _context.DailyExpenses
+                .Where(e => e.BranchName.ToLower() == branchNameLower &&
+                            e.Date >= monthStart.Date &&
+                            e.Status == "approved")
+                .SumAsync(e => (decimal?)e.Amount) ?? 0m;
+            var monthlyDebit = monthlyCodTotal - monthlyDeposited - monthlyApprovedExpenses;
+
+            return new BranchManagerDashboardDto
+            {
+                PreviousDayCodSales = previousDayCodSales,
+                PreviousDayCodAmountOwed = previousDayCodAmountOwed,
+                TodayLiveSales = todayLiveSales,
+                MonthlyDebit = monthlyDebit
+            };
+        }
+
+        public async Task<BranchCodLockStatusDto> GetBranchCodLockStatusAsync(string branchName, DateTime date)
+        {
+            // T   = two days ago  — the day COD parcels were booked at origin
+            // T+1 = yesterday     — the day parcels were delivered and manager must declare
+            // T+2 = today (date)  — lock triggers if T+1 declaration was not submitted
+            var codDate = date.Date.AddDays(-2);           // T: parcel booking day
+            var declarationDate = date.Date.AddDays(-1);   // T+1: delivery & declaration day
+            var codDateStart = codDate.ToUniversalTime();
+            var codDateEnd = codDate.AddDays(1).ToUniversalTime();
+            var branchNameLower = branchName.ToLower();
+
+            var codTotal = await _context.Parcels
+                .Where(p => p.Destination.ToLower() == branchNameLower &&
+                            p.PaymentMethods.ToLower().Contains("cod") &&
+                            p.CreatedAt >= codDateStart &&
+                            p.CreatedAt < codDateEnd)
+                .SumAsync(p => (decimal?)p.TotalAmount) ?? 0m;
+
+            var dto = new BranchCodLockStatusDto
+            {
+                PreviousDate = declarationDate,   // T+1: the delivery day the manager must declare
+                PreviousDayCodTotal = codTotal
+            };
+
+            if (codTotal <= 0)
+            {
+                dto.IsLocked = false;
+                dto.Reason = "none";
+                return dto;
+            }
+
+            // BranchDeposit.Date is a 'date' column — use range to avoid timezone edge cases
+            var depositRecord = await _context.BranchDeposits
+                .Where(bd => bd.Branch.ToLower() == branchNameLower &&
+                             bd.Date >= declarationDate && bd.Date < declarationDate.AddDays(1))
+                .FirstOrDefaultAsync();
+
+            if (depositRecord == null)
+            {
+                dto.IsLocked = true;
+                dto.Reason = "pending_submission";
+                return dto;
+            }
+
+            dto.DepositRecordId = depositRecord.Id;
+            dto.DepositStatus = depositRecord.Status;
+            dto.DepositAmount = depositRecord.DepositAmount;
+            dto.DepositRejectionReason = depositRecord.RejectionReason;
+
+            // DailyExpense.Date has no 'date' column type — use range comparison
+            var expenseRecord = await _context.DailyExpenses
+                .Where(e => e.BranchName.ToLower() == branchNameLower &&
+                            e.Date >= declarationDate && e.Date < declarationDate.AddDays(1) &&
+                            e.Category == "cod_expense")
+                .FirstOrDefaultAsync();
+
+            if (expenseRecord != null)
+            {
+                dto.ExpenseRecordId = expenseRecord.Id;
+                dto.ExpenseStatus = expenseRecord.Status;
+                dto.ExpenseAmount = expenseRecord.Amount;
+                dto.ExpenseRejectionReason = expenseRecord.RejectionReason;
+            }
+
+            if (depositRecord.Status == "rejected" || expenseRecord?.Status == "rejected")
+            {
+                dto.IsLocked = true;
+                dto.Reason = "rejected";
+                return dto;
+            }
+
+            dto.IsLocked = false;
+            dto.Reason = depositRecord.Status == "pending" ? "pending_approval" : "none";
+            return dto;
         }
     }
 } 
