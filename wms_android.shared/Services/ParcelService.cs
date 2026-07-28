@@ -1548,6 +1548,25 @@ namespace wms_android.shared.Services
             }
         }
 
+        public async Task<ClerkLockStatusDto> GetClerkLockStatusAsync(int userId, DateTime date)
+        {
+            try
+            {
+                var encodedDate = Uri.EscapeDataString(date.ToString("yyyy-MM-dd"));
+                var response = await _httpClient.GetAsync($"/api/parcels/clerk-lock-status?userId={userId}&date={encodedDate}");
+                response.EnsureSuccessStatusCode();
+                var content = await response.Content.ReadAsStringAsync();
+                var options = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                return System.Text.Json.JsonSerializer.Deserialize<ClerkLockStatusDto>(content, options)
+                       ?? new ClerkLockStatusDto { IsLocked = false, Reason = "none" };
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error fetching clerk lock status for user {userId}: {ex.Message}");
+                return new ClerkLockStatusDto { IsLocked = false, Reason = "none" };
+            }
+        }
+
         public async Task<BranchManagerDashboardDto> GetBranchManagerDashboardAsync(string branchName, DateTime date)
         {
             try

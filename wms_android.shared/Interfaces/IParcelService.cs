@@ -72,5 +72,8 @@ namespace wms_android.shared.Interfaces
 
         // Branch COD lock status
         Task<BranchCodLockStatusDto> GetBranchCodLockStatusAsync(string branchName, DateTime date);
+
+        // Clerk lock status
+        Task<ClerkLockStatusDto> GetClerkLockStatusAsync(int userId, DateTime date);
     }
 } 
