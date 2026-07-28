@@ -66,5 +66,11 @@ namespace wms_android.shared.Interfaces
         
         // ParcelDeposits methods
         Task<ClerkCashInSummaryDto?> GetClerkCashInSummaryAsync(int userId, DateTime date);
+        
+        // Branch manager dashboard
+        Task<BranchManagerDashboardDto> GetBranchManagerDashboardAsync(string branchName, DateTime date);
+
+        // Branch COD lock status
+        Task<BranchCodLockStatusDto> GetBranchCodLockStatusAsync(string branchName, DateTime date);
     }
 } 

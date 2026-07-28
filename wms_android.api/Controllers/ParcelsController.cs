@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using wms_android.shared.Models;
 using wms_android.shared.Interfaces;
 using wms_android.shared.Services;
+using wms_android.shared.DTOs;
 using Newtonsoft.Json;
 using Microsoft.EntityFrameworkCore;
 using wms_android.shared.Data;
@@ -784,6 +785,41 @@ namespace wms_android.api.Controllers
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error getting monthly sales for user {userId}: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpGet("branch-cod-lock-status")]
+        public async Task<ActionResult<BranchCodLockStatusDto>> GetBranchCodLockStatus([FromQuery] string branchName, [FromQuery] DateTime? date)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(branchName))
+                    return BadRequest("branchName is required.");
+                var result = await _parcelService.GetBranchCodLockStatusAsync(branchName, date ?? DateTime.UtcNow);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error getting COD lock status for {branchName}: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpGet("branch-manager-dashboard")]
+        public async Task<ActionResult<BranchManagerDashboardDto>> GetBranchManagerDashboard([FromQuery] string branchName, [FromQuery] DateTime date)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(branchName))
+                    return BadRequest("branchName is required.");
+
+                var result = await _parcelService.GetBranchManagerDashboardAsync(branchName, date);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error getting branch manager dashboard for {branchName}: {ex.Message}");
                 return StatusCode(500, new { error = ex.Message });
             }
         }

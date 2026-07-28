@@ -5,18 +5,13 @@ namespace wms_android.shared.DTOs
 {
     public class CreateDailyExpenseDto
     {
-        [Required]
         public string Category { get; set; } // fuel, casual_labor, hired_cars, maintenance, office_supplies, utilities, transport, other
         
-        [Required]
         public string Description { get; set; }
         
-        [Required]
-        [Range(0.01, double.MaxValue)]
         public decimal Amount { get; set; }
         
-        [Required]
-        public DateTime Date { get; set; }
+        public DateTime? Date { get; set; }
         
         public string Vendor { get; set; }
         

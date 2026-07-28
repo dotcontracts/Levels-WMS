@@ -10,6 +10,11 @@ namespace wms_android.shared.DTOs
         public decimal CodTotal { get; set; }
         public decimal DepositAmount { get; set; }
         public decimal RunningDebt { get; set; }
+        public string Status { get; set; }
+        public string? RejectionReason { get; set; }
+        public int? ApprovedById { get; set; }
+        public string? ApprovedByName { get; set; }
+        public DateTime? ApprovedAt { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
         public int? CreatedById { get; set; }
@@ -43,6 +48,11 @@ namespace wms_android.shared.DTOs
         [Required]
         [Range(0, double.MaxValue, ErrorMessage = "Deposit amount must be non-negative")]
         public decimal DepositAmount { get; set; }
+    }
+
+    public class ApproveBranchDepositDto
+    {
+        public string? RejectionReason { get; set; }
     }
 
     public class BranchDepositSummaryDto

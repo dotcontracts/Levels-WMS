@@ -28,6 +28,20 @@ namespace wms_android.shared.Models
         [Column(TypeName = "decimal(18,2)")]
         public decimal RunningDebt { get; set; }
         
+        [Required]
+        [MaxLength(20)]
+        public string Status { get; set; } = "pending"; // pending, approved, rejected
+
+        [MaxLength(500)]
+        public string? RejectionReason { get; set; }
+
+        public int? ApprovedById { get; set; }
+
+        [ForeignKey("ApprovedById")]
+        public virtual User? ApprovedBy { get; set; }
+
+        public DateTime? ApprovedAt { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
         
@@ -55,12 +69,27 @@ namespace wms_android.shared.Models
             modelBuilder.Entity<BranchDeposit>()
                 .HasIndex(bd => bd.Date)
                 .HasDatabaseName("IX_BranchDeposit_Date");
+
+            modelBuilder.Entity<BranchDeposit>()
+                .Property(bd => bd.Status)
+                .HasMaxLength(20)
+                .HasDefaultValue("pending");
+
+            modelBuilder.Entity<BranchDeposit>()
+                .Property(bd => bd.RejectionReason)
+                .HasMaxLength(500);
                 
             // Configure relationships
             modelBuilder.Entity<BranchDeposit>()
                 .HasOne(bd => bd.CreatedBy)
                 .WithMany()
                 .HasForeignKey(bd => bd.CreatedById)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<BranchDeposit>()
+                .HasOne(bd => bd.ApprovedBy)
+                .WithMany()
+                .HasForeignKey(bd => bd.ApprovedById)
                 .OnDelete(DeleteBehavior.SetNull);
         }
     }

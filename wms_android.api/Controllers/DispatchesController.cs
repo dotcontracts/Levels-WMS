@@ -233,13 +233,12 @@ namespace wms_android.api.Controllers
                 Console.WriteLine($"[DispatchesController] Dispatch ID: {d.Id}, SourceBranch: '{d.SourceBranch}', Destination: '{d.Destination}', DispatchCode: '{d.DispatchCode}'");
             }
             
-            // Branch managers should see dispatches going TO their branch (Destination)
-            // as well as dispatches coming FROM their branch (SourceBranch)
-            var dispatches = await _context.Dispatches
-                .Where(d => (!string.IsNullOrEmpty(d.SourceBranch) && d.SourceBranch.ToLower() == branch.ToLower()) ||
-                           (!string.IsNullOrEmpty(d.Destination) && d.Destination.ToLower() == branch.ToLower()))
+            var branchLower = branch.ToLower();
+            var dispatches = allDispatches
+                .Where(d => (!string.IsNullOrEmpty(d.SourceBranch) && d.SourceBranch.ToLower() == branchLower) ||
+                            (!string.IsNullOrEmpty(d.Destination) && d.Destination.ToLower() == branchLower))
                 .OrderByDescending(d => d.DispatchTime)
-                .ToListAsync();
+                .ToList();
 
             Console.WriteLine($"[DispatchesController] Filtered dispatches for branch '{branch}': {dispatches.Count}");
             return Ok(dispatches);

@@ -34,11 +34,18 @@ public class Program
         Console.WriteLine($"Content Root: {builder.Environment.ContentRootPath}");
 
         // Add services to container - Use Newtonsoft.Json for circular reference handling
-        builder.Services.AddControllers().AddNewtonsoftJson(options =>
+        builder.Services.AddControllers(options =>
+        {
+            options.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true;
+        }).AddNewtonsoftJson(options =>
         {
             options.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore;
             options.SerializerSettings.NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore;
             options.SerializerSettings.ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver();
+        });
+        builder.Services.Configure<Microsoft.AspNetCore.Mvc.ApiBehaviorOptions>(options =>
+        {
+            options.SuppressModelStateInvalidFilter = true;
         });
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();

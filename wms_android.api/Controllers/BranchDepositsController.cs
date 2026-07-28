@@ -4,6 +4,7 @@ using System.Security.Claims;
 using wms_android.shared.Data;
 using wms_android.shared.DTOs;
 using wms_android.shared.Models;
+using System.Linq;
 
 namespace wms_android.api.Controllers
 {
@@ -27,6 +28,7 @@ namespace wms_android.api.Controllers
         {
             var query = _context.BranchDeposits
                 .Include(bd => bd.CreatedBy)
+                .Include(bd => bd.ApprovedBy)
                 .AsQueryable();
 
             if (!string.IsNullOrEmpty(branch))
@@ -57,6 +59,11 @@ namespace wms_android.api.Controllers
                 CodTotal = bd.CodTotal,
                 DepositAmount = bd.DepositAmount,
                 RunningDebt = bd.RunningDebt,
+                Status = bd.Status,
+                RejectionReason = bd.RejectionReason,
+                ApprovedById = bd.ApprovedById,
+                ApprovedByName = bd.ApprovedBy != null ? $"{bd.ApprovedBy.FirstName} {bd.ApprovedBy.LastName}" : null,
+                ApprovedAt = bd.ApprovedAt,
                 CreatedAt = bd.CreatedAt,
                 UpdatedAt = bd.UpdatedAt,
                 CreatedById = bd.CreatedById,
@@ -72,6 +79,7 @@ namespace wms_android.api.Controllers
         {
             var branchDeposit = await _context.BranchDeposits
                 .Include(bd => bd.CreatedBy)
+                .Include(bd => bd.ApprovedBy)
                 .FirstOrDefaultAsync(bd => bd.Id == id);
 
             if (branchDeposit == null)
@@ -87,6 +95,11 @@ namespace wms_android.api.Controllers
                 CodTotal = branchDeposit.CodTotal,
                 DepositAmount = branchDeposit.DepositAmount,
                 RunningDebt = branchDeposit.RunningDebt,
+                Status = branchDeposit.Status,
+                RejectionReason = branchDeposit.RejectionReason,
+                ApprovedById = branchDeposit.ApprovedById,
+                ApprovedByName = branchDeposit.ApprovedBy != null ? $"{branchDeposit.ApprovedBy.FirstName} {branchDeposit.ApprovedBy.LastName}" : null,
+                ApprovedAt = branchDeposit.ApprovedAt,
                 CreatedAt = branchDeposit.CreatedAt,
                 UpdatedAt = branchDeposit.UpdatedAt,
                 CreatedById = branchDeposit.CreatedById,
@@ -130,6 +143,38 @@ namespace wms_android.api.Controllers
 
             return Ok(summary);
         }
+        // PUT: api/BranchDeposits/{id}/approve
+        [HttpPut("{id}/approve")]
+        public async Task<IActionResult> ApproveBranchDeposit(int id)
+        {
+            var branchDeposit = await _context.BranchDeposits.FindAsync(id);
+            if (branchDeposit == null) return NotFound();
+
+            branchDeposit.Status = "approved";
+            branchDeposit.RejectionReason = null;
+            branchDeposit.ApprovedById = GetCurrentUserId();
+            branchDeposit.ApprovedAt = DateTime.UtcNow;
+            branchDeposit.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+
+        // PUT: api/BranchDeposits/{id}/reject
+        [HttpPut("{id}/reject")]
+        public async Task<IActionResult> RejectBranchDeposit(int id, ApproveBranchDepositDto dto)
+        {
+            var branchDeposit = await _context.BranchDeposits.FindAsync(id);
+            if (branchDeposit == null) return NotFound();
+
+            branchDeposit.Status = "rejected";
+            branchDeposit.RejectionReason = dto.RejectionReason;
+            branchDeposit.ApprovedById = GetCurrentUserId();
+            branchDeposit.ApprovedAt = DateTime.UtcNow;
+            branchDeposit.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+
         // POST: api/BranchDeposits
         [HttpPost]
         public async Task<ActionResult<BranchDepositDto>> CreateBranchDeposit(CreateBranchDepositDto createDto)
@@ -153,6 +198,7 @@ namespace wms_android.api.Controllers
                 CodTotal = createDto.CodTotal,
                 DepositAmount = createDto.DepositAmount,
                 RunningDebt = runningDebt,
+                Status = "pending",
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
                 CreatedById = GetCurrentUserId()
