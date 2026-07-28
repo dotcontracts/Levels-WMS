@@ -1329,5 +1329,87 @@ namespace wms_android.api.Services
             dto.Reason = depositRecord.Status == "pending" ? "pending_approval" : "none";
             return dto;
         }
+
+        public async Task<ClerkReportDto> GetClerkReportAsync(int userId, DateTime date)
+        {
+            var dto = new ClerkReportDto { ReportDate = date.Date };
+
+            var user = await _context.Users.FindAsync(userId);
+            dto.ClerkName = user != null
+                ? (!string.IsNullOrWhiteSpace(user.FirstName) ? user.FirstName : user.Username)
+                : string.Empty;
+
+            var dayStart = date.Date.ToUniversalTime();
+            var dayEnd = dayStart.AddDays(1);
+
+            dto.DailyParcelCount = await _context.Parcels
+                .CountAsync(p => p.CreatedById == userId &&
+                                 p.CreatedAt >= dayStart && p.CreatedAt < dayEnd &&
+                                 !p.PaymentMethods.ToLower().Contains("contract"));
+
+            dto.DailySalesTotal = await _context.Parcels
+                .Where(p => p.CreatedById == userId &&
+                            p.CreatedAt >= dayStart && p.CreatedAt < dayEnd &&
+                            !p.PaymentMethods.ToLower().Contains("contract"))
+                .SumAsync(p => (decimal?)p.TotalAmount) ?? 0m;
+
+            var monthStart = new DateTime(date.Year, date.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var monthEnd = monthStart.AddMonths(1);
+
+            dto.MonthlyTotal = await _context.Parcels
+                .Where(p => p.CreatedById == userId &&
+                            p.CreatedAt >= monthStart && p.CreatedAt < monthEnd &&
+                            !p.PaymentMethods.ToLower().Contains("contract"))
+                .SumAsync(p => (decimal?)p.TotalAmount) ?? 0m;
+
+            var allClerkTotals = await _context.Parcels
+                .Where(p => p.CreatedById.HasValue &&
+                            p.CreatedAt >= monthStart && p.CreatedAt < monthEnd &&
+                            !p.PaymentMethods.ToLower().Contains("contract"))
+                .GroupBy(p => p.CreatedById)
+                .Select(g => new { ClerkId = g.Key, Total = g.Sum(p => (decimal?)p.TotalAmount) ?? 0m })
+                .OrderByDescending(g => g.Total)
+                .ToListAsync();
+
+            dto.TotalClerksRanked = allClerkTotals.Count;
+            var rankIndex = allClerkTotals.FindIndex(g => g.ClerkId == userId);
+            dto.MonthlyRank = rankIndex >= 0 ? rankIndex + 1 : dto.TotalClerksRanked;
+
+            var deposits = await _context.DailyExpenses
+                .Where(e => e.ClerkId == userId &&
+                            e.Category == "clerk_deposit" &&
+                            e.Date >= date.Date && e.Date < date.Date.AddDays(1))
+                .OrderByDescending(e => e.CreatedAt)
+                .ToListAsync();
+
+            dto.Deposits = deposits.Select(e => new ClerkReportExpenseItem
+            {
+                Id = e.Id,
+                Amount = e.Amount,
+                Status = e.Status,
+                Description = e.Description ?? string.Empty,
+                RejectionReason = e.RejectionReason,
+                Date = e.Date
+            }).ToList();
+
+            var expenses = await _context.DailyExpenses
+                .Where(e => e.ClerkId == userId &&
+                            e.Category == "clerk_expense" &&
+                            e.Date >= date.Date && e.Date < date.Date.AddDays(1))
+                .OrderByDescending(e => e.CreatedAt)
+                .ToListAsync();
+
+            dto.Expenses = expenses.Select(e => new ClerkReportExpenseItem
+            {
+                Id = e.Id,
+                Amount = e.Amount,
+                Status = e.Status,
+                Description = e.Description ?? string.Empty,
+                RejectionReason = e.RejectionReason,
+                Date = e.Date
+            }).ToList();
+
+            return dto;
+        }
     }
 } 
