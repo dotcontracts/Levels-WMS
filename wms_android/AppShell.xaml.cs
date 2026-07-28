@@ -35,6 +35,7 @@ namespace wms_android
             // Add route for DispatchView
             Routing.RegisterRoute(nameof(DispatchView), typeof(DispatchView));
             Routing.RegisterRoute(nameof(BranchManagerReportView), typeof(BranchManagerReportView));
+            Routing.RegisterRoute(nameof(ClerkReportView), typeof(ClerkReportView));
         }
 
         protected override void OnNavigating(ShellNavigatingEventArgs args)

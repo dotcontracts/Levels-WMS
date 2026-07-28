@@ -186,6 +186,7 @@ namespace wms_android
             builder.Services.AddTransient<ParcelConfirmationViewModel>();
             builder.Services.AddTransient<DispatchViewModel>();
             builder.Services.AddTransient<BranchManagerReportViewModel>();
+            builder.Services.AddTransient<ClerkReportViewModel>();
             
             // Register views
             builder.Services.AddTransient<ParcelsView>();
@@ -205,6 +206,7 @@ namespace wms_android
             builder.Services.AddTransient<ParcelConfirmationView>();
             builder.Services.AddTransient<DispatchView>();
             builder.Services.AddTransient<BranchManagerReportView>();
+            builder.Services.AddTransient<ClerkReportView>();
 
             return builder.Build();
         }

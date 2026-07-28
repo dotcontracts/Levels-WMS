@@ -124,8 +124,8 @@ namespace wms_android.ViewModels
         [RelayCommand]
         private async Task GenerateReport()
         {
-            _logger.LogInformation("Generate report");
-            await Shell.Current.GoToAsync(nameof(ReportView));
+            _logger.LogInformation("Navigate to clerk report view");
+            await Shell.Current.GoToAsync(nameof(ClerkReportView));
         }
 
         [RelayCommand]
