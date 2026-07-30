@@ -1085,43 +1085,62 @@ namespace wms_android.api.Services
                 endDate = endOfRange;
             }
 
-            var query = _context.ParcelDeposits
-                .Include(pd => pd.Parcel)
-                .ThenInclude(p => p.CreatedBy)
-                .Where(pd => pd.Parcel.CreatedById == userId && 
-                           pd.Parcel.CreatedAt >= startDate &&
-                           pd.Parcel.CreatedAt < endDate &&
-                           pd.Parcel.PaymentMethods.ToLower().Contains("paid"));
+            var paidParcels = await _context.Parcels
+                .Include(p => p.CreatedBy)
+                .Where(p => p.CreatedById == userId &&
+                            p.CreatedAt >= startDate &&
+                            p.CreatedAt < endDate &&
+                            p.PaymentMethods.ToLower().Contains("paid") &&
+                            !p.PaymentMethods.ToLower().Contains("contract"))
+                .ToListAsync();
 
-            var deposits = await query.ToListAsync();
-
-            if (!deposits.Any())
+            if (!paidParcels.Any())
             {
                 return null;
             }
 
-            var approvedExpenses = await _context.DailyExpenses
+            var totalPaid = paidParcels.Sum(p => p.TotalAmount);
+
+            var legacyDeposited = await _context.ParcelDeposits
+                .Where(pd => pd.Parcel.CreatedById == userId &&
+                             pd.Parcel.CreatedAt >= startDate &&
+                             pd.Parcel.CreatedAt < endDate)
+                .SumAsync(pd => (decimal?)pd.DepositedAmount) ?? 0m;
+
+            var newDeposited = await _context.DailyExpenses
                 .Where(e => e.ClerkId == userId &&
+                            e.Category == "clerk_deposit" &&
                             e.Status == "approved" &&
                             e.Date >= startDate &&
                             e.Date < endDate)
                 .SumAsync(e => (decimal?)e.Amount) ?? 0m;
 
-            var totalPaid = deposits.Sum(pd => pd.Parcel.TotalAmount);
-            var totalDeposited = deposits.Sum(pd => pd.DepositedAmount);
+            var totalDeposited = legacyDeposited + newDeposited;
+
+            var approvedExpenses = await _context.DailyExpenses
+                .Where(e => e.ClerkId == userId &&
+                            e.Category != "clerk_deposit" &&
+                            e.Status == "approved" &&
+                            e.Date >= startDate &&
+                            e.Date < endDate)
+                .SumAsync(e => (decimal?)e.Amount) ?? 0m;
+
+            var clerkUser = paidParcels.First().CreatedBy;
+            var lastExpenseDate = await _context.DailyExpenses
+                .Where(e => e.ClerkId == userId && e.Date >= startDate && e.Date < endDate)
+                .MaxAsync(e => (DateTime?)e.UpdatedAt);
 
             var summary = new ClerkCashInSummaryDto
             {
                 ClerkId = userId,
-                ClerkName = deposits.First().Parcel.CreatedBy != null ?
-                    $"{deposits.First().Parcel.CreatedBy.FirstName} {deposits.First().Parcel.CreatedBy.LastName}" : "Unknown",
-                ClerkUsername = deposits.First().Parcel.CreatedBy?.Username ?? "unknown",
+                ClerkName = clerkUser != null ? $"{clerkUser.FirstName} {clerkUser.LastName}" : "Unknown",
+                ClerkUsername = clerkUser?.Username ?? "unknown",
                 TotalPaidAmount = totalPaid,
                 TotalDeposited = totalDeposited,
                 TotalExpenses = approvedExpenses,
                 RemainingDebt = totalPaid - totalDeposited - approvedExpenses,
-                ParcelCount = deposits.Count(),
-                LastUpdateDate = deposits.Max(pd => pd.UpdatedAt)
+                ParcelCount = paidParcels.Count,
+                LastUpdateDate = lastExpenseDate
             };
 
             return summary;
@@ -1263,15 +1282,16 @@ namespace wms_android.api.Services
         public async Task<ClerkLockStatusDto> GetClerkLockStatusAsync(int userId, DateTime date)
         {
             var yesterday = date.Date.AddDays(-1);
-            var yesterdayStart = yesterday.ToUniversalTime();
-            var yesterdayEnd = yesterday.AddDays(1).ToUniversalTime();
+            var yesterdayStart = DateTime.SpecifyKind(yesterday, DateTimeKind.Utc);
+            var yesterdayEnd = DateTime.SpecifyKind(yesterday.AddDays(1), DateTimeKind.Utc);
 
             var yesterdayPaidTotal = await _context.Parcels
                 .Where(p => p.CreatedById == userId &&
                             p.PaymentMethods.ToLower().Contains("paid") &&
+                            !p.PaymentMethods.ToLower().Contains("contract") &&
                             p.CreatedAt >= yesterdayStart &&
                             p.CreatedAt < yesterdayEnd)
-                .SumAsync(p => (decimal?)p.TotalAmount) ?? 0m;
+                .SumAsync(p => p.TotalAmount);
 
             var dto = new ClerkLockStatusDto
             {
@@ -1290,24 +1310,22 @@ namespace wms_android.api.Services
                 .Where(e => e.ClerkId == userId &&
                             e.Category == "clerk_deposit" &&
                             e.Date >= yesterday && e.Date < yesterday.AddDays(1))
+                .OrderByDescending(e => e.CreatedAt)
                 .FirstOrDefaultAsync();
 
-            if (depositRecord == null)
+            if (depositRecord != null)
             {
-                dto.IsLocked = true;
-                dto.Reason = "pending_submission";
-                return dto;
+                dto.DepositRecordId = depositRecord.Id;
+                dto.DepositStatus = depositRecord.Status;
+                dto.DepositAmount = depositRecord.Amount;
+                dto.DepositRejectionReason = depositRecord.RejectionReason;
             }
-
-            dto.DepositRecordId = depositRecord.Id;
-            dto.DepositStatus = depositRecord.Status;
-            dto.DepositAmount = depositRecord.Amount;
-            dto.DepositRejectionReason = depositRecord.RejectionReason;
 
             var expenseRecord = await _context.DailyExpenses
                 .Where(e => e.ClerkId == userId &&
-                            e.Category == "clerk_expense" &&
+                            e.Category != "clerk_deposit" &&
                             e.Date >= yesterday && e.Date < yesterday.AddDays(1))
+                .OrderByDescending(e => e.CreatedAt)
                 .FirstOrDefaultAsync();
 
             if (expenseRecord != null)
@@ -1318,6 +1336,13 @@ namespace wms_android.api.Services
                 dto.ExpenseRejectionReason = expenseRecord.RejectionReason;
             }
 
+            if (depositRecord == null)
+            {
+                dto.IsLocked = true;
+                dto.Reason = "pending_submission";
+                return dto;
+            }
+
             if (depositRecord.Status == "rejected" || expenseRecord?.Status == "rejected")
             {
                 dto.IsLocked = true;
@@ -1326,7 +1351,8 @@ namespace wms_android.api.Services
             }
 
             dto.IsLocked = false;
-            dto.Reason = depositRecord.Status == "pending" ? "pending_approval" : "none";
+            var hasPending = depositRecord.Status == "pending" || expenseRecord?.Status == "pending";
+            dto.Reason = hasPending ? "pending_approval" : "none";
             return dto;
         }
 

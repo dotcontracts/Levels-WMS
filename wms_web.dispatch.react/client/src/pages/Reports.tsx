@@ -18,6 +18,7 @@ import {
   DollarSign,
   Truck,
   CheckCircle,
+  XCircle,
   AlertCircle,
   Printer,
   RefreshCw,
@@ -114,6 +115,7 @@ interface ClerkCashInData {
   totalExpenses: number;
   remainingDebt: number;
   parcels: ClerkParcelData[];
+  clerkDeposits: DailyExpense[];
 }
 
 interface ClerkParcelData {
@@ -577,7 +579,8 @@ const Reports: React.FC = () => {
             totalDeposited: 0,
             totalExpenses: 0,
             remainingDebt: 0,
-            parcels: []
+            parcels: [],
+            clerkDeposits: []
           };
         }
 
@@ -607,12 +610,11 @@ const Reports: React.FC = () => {
         clerkData[clerkId].totalPaidAmount += parcel.totalAmount;
       });
 
-      // Fetch approved expenses and apply per-clerk (filtered by date if provided)
-      let approvedClerkExpenses: DailyExpense[] = [];
+      // Fetch all expenses (clerk_deposit + clerk_expense categories) filtered by date
+      let allClerkExpenses: DailyExpense[] = [];
       try {
-        const allExpenses = await wmsApi.getDailyExpenses();
-        approvedClerkExpenses = allExpenses.filter(e => {
-          if (e.status !== 'approved') return false;
+        const fetched = await wmsApi.getDailyExpenses();
+        allClerkExpenses = fetched.filter(e => {
           if (filterDate) {
             return e.date.split('T')[0] === filterDate;
           }
@@ -620,9 +622,23 @@ const Reports: React.FC = () => {
         });
       } catch {}
 
-      // Calculate totals for each clerk, applying approved expenses
+      const clerkDepositRecords = allClerkExpenses.filter(e => e.category === ('clerk_deposit' as any));
+      const approvedClerkExpenses = allClerkExpenses.filter(e =>
+        e.category !== ('clerk_deposit' as any) && e.status === 'approved'
+      );
+
+      // Attach clerk_deposit records to each clerk
+      clerkDepositRecords.forEach(dep => {
+        if (dep.clerkId && clerkData[dep.clerkId]) {
+          clerkData[dep.clerkId].clerkDeposits.push(dep);
+        }
+      });
+
+      // Calculate totals for each clerk
       Object.values(clerkData).forEach(clerk => {
-        clerk.totalDeposited = clerk.parcels.reduce((sum, p) => sum + p.depositedAmount, 0);
+        clerk.totalDeposited = clerk.clerkDeposits
+          .filter(d => d.status === 'approved')
+          .reduce((sum, d) => sum + d.amount, 0);
         clerk.totalExpenses = approvedClerkExpenses
           .filter(e => e.clerkId === clerk.clerkId)
           .reduce((sum, e) => sum + e.amount, 0);
@@ -979,7 +995,8 @@ const Reports: React.FC = () => {
           totalDeposited: 0,
           totalExpenses: 0,
           remainingDebt: 0,
-          parcels: []
+          parcels: [],
+          clerkDeposits: []
         };
       }
 
@@ -1826,6 +1843,21 @@ const Reports: React.FC = () => {
     setParcelDepositAmount(parcel.depositedAmount.toString());
     setShowParcelModal(true);
   }, []);
+
+  const handleClerkDepositApproval = useCallback(async (depositId: number, approved: boolean, rejectionReason?: string) => {
+    try {
+      setApprovingDepositId(depositId);
+      await wmsApi.approveExpense({ expenseId: depositId, approved, rejectionReason });
+      const refreshed = await fetchClerkCashInData(cashInDate);
+      setClerkCashInData(refreshed);
+      const updatedClerk = refreshed.find(c => c.clerkDeposits.some(d => d.id === depositId));
+      if (updatedClerk) setSelectedClerk(updatedClerk);
+    } catch (err) {
+      console.error('Failed to update clerk deposit:', err);
+    } finally {
+      setApprovingDepositId(null);
+    }
+  }, [fetchClerkCashInData, cashInDate]);
 
   const handleParcelUpdate = useCallback(async () => {
     if (!selectedClerkParcel || !selectedClerk) return;
@@ -5041,6 +5073,7 @@ const Reports: React.FC = () => {
                   <div className="text-xl font-bold text-blue-900 dark:text-blue-300">
                     {formatCurrency(selectedClerk.totalDeposited)}
                   </div>
+                  <div className="text-xs text-blue-500 mt-1">Approved declarations only</div>
                 </div>
                 <div className="bg-orange-50 dark:bg-orange-500/20 p-4 rounded-lg">
                   <div className="text-sm font-medium text-orange-600 dark:text-orange-400">Approved Expenses</div>
@@ -5124,6 +5157,70 @@ const Reports: React.FC = () => {
                 </Table.Body>
               </Table>
             </div>
+
+            {/* Clerk Deposit Declarations */}
+            {selectedClerk.clerkDeposits.length > 0 && (
+              <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700">
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
+                  Deposit Declarations (from Android app)
+                </h4>
+                <div className="space-y-2">
+                  {selectedClerk.clerkDeposits.map(dep => (
+                    <div key={dep.id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-700">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">
+                            {formatCurrency(dep.amount)}
+                          </span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                            dep.status === 'approved'
+                              ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+                              : dep.status === 'rejected'
+                              ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+                              : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400'
+                          }`}>
+                            {dep.status}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          {dep.description} &bull; {new Date(dep.date).toLocaleDateString()}
+                        </div>
+                        {dep.status === 'rejected' && dep.rejectionReason && (
+                          <div className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                            Reason: {dep.rejectionReason}
+                          </div>
+                        )}
+                      </div>
+                      {dep.status === 'pending' && (
+                        <div className="flex gap-2 ml-4 shrink-0">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleClerkDepositApproval(dep.id, true)}
+                            disabled={approvingDepositId === dep.id}
+                          >
+                            <CheckCircle className="w-4 h-4 mr-1 text-green-600" />
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              const reason = prompt('Rejection reason:');
+                              if (reason !== null) handleClerkDepositApproval(dep.id, false, reason);
+                            }}
+                            disabled={approvingDepositId === dep.id}
+                          >
+                            <XCircle className="w-4 h-4 mr-1 text-red-600" />
+                            Reject
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="p-6 border-t border-gray-200 dark:border-gray-700">
               <div className="flex justify-end">

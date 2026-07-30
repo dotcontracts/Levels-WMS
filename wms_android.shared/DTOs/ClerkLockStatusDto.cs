@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace wms_android.shared.DTOs
 {
     public class ClerkLockStatusDto

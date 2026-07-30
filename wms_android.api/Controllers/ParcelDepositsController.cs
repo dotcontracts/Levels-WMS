@@ -4,6 +4,7 @@ using System.Security.Claims;
 using wms_android.shared.Data;
 using wms_android.shared.DTOs;
 using wms_android.shared.Models;
+using wms_android.shared.Interfaces;
 
 namespace wms_android.api.Controllers
 {
@@ -12,10 +13,12 @@ namespace wms_android.api.Controllers
     public class ParcelDepositsController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly IParcelService _parcelService;
 
-        public ParcelDepositsController(AppDbContext context)
+        public ParcelDepositsController(AppDbContext context, IParcelService parcelService)
         {
             _context = context;
+            _parcelService = parcelService;
         }
 
         // GET: api/ParcelDeposits
@@ -217,53 +220,16 @@ namespace wms_android.api.Controllers
             [FromQuery] DateTime? date = null)
         {
             var queryDate = date ?? DateTime.Today;
-            
-            // Calculate the date range: previous month + first 7 days of current month
-            var startOfCurrentMonth = new DateTime(queryDate.Year, queryDate.Month, 1);
-            var startOfPreviousMonth = startOfCurrentMonth.AddMonths(-1);
-            var endOfRange = startOfCurrentMonth.AddDays(7);
-            
-            DateTime startDate, endDate;
-            
-            // Check if we should show current month only (if current date is past 7th of current month)
-            if (queryDate >= startOfCurrentMonth.AddDays(7))
-            {
-                // Show current month from beginning if we're past the 7-day grace period
-                startDate = startOfCurrentMonth;
-                endDate = startOfCurrentMonth.AddMonths(1); // End of current month
-            }
-            else
-            {
-                // Show previous month + 7 days of current month
-                startDate = startOfPreviousMonth;
-                endDate = endOfRange;
-            }
+            var summary = await _parcelService.GetClerkCashInSummaryAsync(userId, queryDate);
 
-            // Get user info first
-            var userInfo = await _context.Users.FindAsync(userId);
-            if (userInfo == null)
+            if (summary == null)
             {
-                return NotFound(new { message = "User not found." });
-            }
-
-            // Query parcels directly (like React component does) instead of requiring ParcelDeposits
-            // Only include paid parcels (like React component)
-            var parcelsQuery = _context.Parcels
-                .Where(p => p.CreatedById == userId && 
-                           p.CreatedAt >= startDate &&
-                           p.CreatedAt < endDate &&
-                           p.PaymentMethods.ToLower().Contains("paid"));
-
-            var parcels = await parcelsQuery.ToListAsync();
-
-            if (!parcels.Any())
-            {
-                // Return summary with zero values if no parcels exist for this user in the date range
+                var userInfo = await _context.Users.FindAsync(userId);
                 return Ok(new ClerkCashInSummaryDto
                 {
                     ClerkId = userId,
-                    ClerkName = $"{userInfo.FirstName} {userInfo.LastName}",
-                    ClerkUsername = userInfo.Username ?? "unknown",
+                    ClerkName = userInfo != null ? $"{userInfo.FirstName} {userInfo.LastName}" : "Unknown",
+                    ClerkUsername = userInfo?.Username ?? "unknown",
                     TotalPaidAmount = 0,
                     TotalDeposited = 0,
                     TotalExpenses = 0,
@@ -272,36 +238,6 @@ namespace wms_android.api.Controllers
                     LastUpdateDate = null
                 });
             }
-
-            // Calculate totals from parcels (like React component)
-            decimal totalPaidAmount = parcels.Sum(p => p.TotalAmount);
-            
-            // Get corresponding ParcelDeposits if they exist for these parcels
-            var parcelIds = parcels.Select(p => p.Id).ToList();
-            var deposits = await _context.ParcelDeposits
-                .Where(pd => parcelIds.Contains(pd.ParcelId))
-                .ToListAsync();
-
-            // Calculate deposited and expenses from ParcelDeposits
-            decimal totalDeposited = deposits.Sum(pd => pd.DepositedAmount);
-            decimal totalExpenses = deposits.Sum(pd => pd.Expenses);
-
-            // Calculate remaining debt: total collected minus (deposits + expenses)
-            // remainingDebt = totalPaidAmount - (totalDeposited + totalExpenses)
-            decimal remainingDebt = totalPaidAmount - (totalDeposited + totalExpenses);
-
-            var summary = new ClerkCashInSummaryDto
-            {
-                ClerkId = userId,
-                ClerkName = $"{userInfo.FirstName} {userInfo.LastName}",
-                ClerkUsername = userInfo.Username ?? "unknown",
-                TotalPaidAmount = totalPaidAmount,
-                TotalDeposited = totalDeposited,
-                TotalExpenses = totalExpenses,
-                RemainingDebt = remainingDebt,
-                ParcelCount = parcels.Count(),
-                LastUpdateDate = deposits.Any() ? deposits.Max(pd => pd.UpdatedAt) : null
-            };
 
             return Ok(summary);
         }

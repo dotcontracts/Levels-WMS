@@ -2087,6 +2087,19 @@ class WMSApiService {
     }
   }
 
+  async updateExpense(id: number, data: { amount?: number; description?: string; category?: string; vendor?: string; receiptNumber?: string }): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/Expenses/${id}`, {
+      method: 'PUT',
+      headers: { ...this.getHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+      signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Failed to update expense: ${response.status} - ${errorText}`);
+    }
+  }
+
   async approveExpense(approvalData: ApproveExpenseDto): Promise<DailyExpense> {
     try {
       console.log('API: Approving expense with data:', approvalData);

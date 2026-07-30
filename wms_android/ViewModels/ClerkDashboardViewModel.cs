@@ -9,7 +9,7 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
-using wms_android.shared.Models;
+using wms_android.shared.DTOs;
 using wms_android.Views;
 using wms_android.shared.Interfaces;
 using Microsoft.Maui.Controls;
@@ -40,24 +40,23 @@ namespace wms_android.ViewModels
         [ObservableProperty] private string _lockReason = "none";
         [ObservableProperty] private decimal _lockPaidTotal;
         [ObservableProperty] private string _lockPreviousDate;
-        [ObservableProperty] private int? _existingDepositId;
-        [ObservableProperty] private int? _existingExpenseId;
 
         // Pending approval banner (non-blocking)
         [ObservableProperty] private bool _showPendingApprovalBanner;
 
-        // Deposit approval state
+        // Deposit state
         [ObservableProperty] private bool _depositRejected;
         [ObservableProperty] private bool _depositApproved;
         [ObservableProperty] private string _depositRejectionReason = "";
         [ObservableProperty] private decimal _approvedDepositAmount;
+        [ObservableProperty] private int? _existingDepositId;
 
-        // Expense approval state
+        // Expense state
         [ObservableProperty] private bool _expenseRejected;
         [ObservableProperty] private bool _expenseApproved;
-        [ObservableProperty] private bool _hasExistingExpense;
         [ObservableProperty] private string _expenseRejectionReason = "";
         [ObservableProperty] private decimal _approvedExpenseAmount;
+        [ObservableProperty] private int? _existingExpenseId;
 
         // Form inputs
         [ObservableProperty] private string _depositAmountInput = "";
@@ -66,6 +65,7 @@ namespace wms_android.ViewModels
         [ObservableProperty] private string _expenseDescription = "";
         [ObservableProperty] private bool _isSubmitting;
         [ObservableProperty] private string _submitError = "";
+        [ObservableProperty] private bool _isRefreshingLock;
 
         private DateTime _declarationDate;
 
@@ -143,6 +143,37 @@ namespace wms_android.ViewModels
         }
 
         [RelayCommand]
+        private async Task RefreshLockStatus()
+        {
+            var userId = Preferences.Get("CurrentUserId", 0);
+            if (userId == 0) { IsRefreshingLock = false; return; }
+
+            try
+            {
+                var lockStatus = await _parcelService.GetClerkLockStatusAsync(userId, DateTime.Today);
+                ApplyLockStatus(lockStatus);
+
+                if (!IsLocked)
+                {
+                    var today = DateTime.Today;
+                    AmountOwed = await _parcelService.GetAmountOwedByUserAsync(userId, today);
+                    var clerkSummary = await _parcelService.GetClerkCashInSummaryAsync(userId, today);
+                    CashIn = clerkSummary != null ? (double)clerkSummary.RemainingDebt : 0.0;
+                    DailySales = await _parcelService.GetDailySalesByUserAsync(userId, today);
+                    MonthlySales = await _parcelService.GetMonthlySalesByUserAsync(userId, today);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error refreshing lock status");
+            }
+            finally
+            {
+                IsRefreshingLock = false;
+            }
+        }
+
+        [RelayCommand]
         private async Task SubmitDeposit()
         {
             SubmitError = "";
@@ -159,25 +190,38 @@ namespace wms_android.ViewModels
             {
                 await _httpClient.AddSessionHeaderAsync();
 
+                decimal expenseAmount = 0;
+                if (!string.IsNullOrWhiteSpace(ExpenseAmountInput))
+                    decimal.TryParse(ExpenseAmountInput, NumberStyles.Any, CultureInfo.InvariantCulture, out expenseAmount);
+
+                if (expenseAmount < 0)
+                {
+                    SubmitError = "Expense amount cannot be negative.";
+                    return;
+                }
+
                 if (!DepositApproved)
                 {
-                    if (!decimal.TryParse(DepositAmountInput, NumberStyles.Any, CultureInfo.InvariantCulture, out var depositAmount) || depositAmount < 0)
+                    if (string.IsNullOrWhiteSpace(DepositAmountInput))
+                    {
+                        SubmitError = "Please enter the deposit amount.";
+                        return;
+                    }
+
+                    if (!decimal.TryParse(DepositAmountInput, NumberStyles.Any, CultureInfo.InvariantCulture, out var depositAmount) || depositAmount <= 0)
                     {
                         SubmitError = "Please enter a valid deposit amount.";
                         return;
                     }
 
-                    if (ExistingDepositId.HasValue)
-                    {
-                        var deleteResp = await _httpClient.DeleteAsync($"/api/Expenses/{ExistingDepositId}");
-                        if (!deleteResp.IsSuccessStatusCode)
-                            _logger.LogWarning("Could not delete rejected deposit {Id}: {Status}", ExistingDepositId, deleteResp.StatusCode);
-                    }
+                    // Delete rejected deposit before resubmitting
+                    if (ExistingDepositId.HasValue && DepositRejected)
+                        await _httpClient.DeleteAsync($"/api/Expenses/{ExistingDepositId}");
 
                     var depositPayload = new
                     {
                         category = "clerk_deposit",
-                        description = $"Daily deposit for {depositDate:dd MMM yyyy}",
+                        description = $"Clerk deposit declaration for {depositDate:dd MMM yyyy}",
                         amount = depositAmount,
                         date = depositDate.ToString("yyyy-MM-ddTHH:mm:ss"),
                         clerkId = userId,
@@ -189,67 +233,34 @@ namespace wms_android.ViewModels
                     if (!depositResp.IsSuccessStatusCode)
                     {
                         var err = await depositResp.Content.ReadAsStringAsync();
-                        _logger.LogError("Deposit POST failed {Status}: {Body}", depositResp.StatusCode, err);
+                        _logger.LogError("clerk_deposit POST failed {Status}: {Body}", depositResp.StatusCode, err);
                         SubmitError = "Deposit submission failed. Please try again.";
                         return;
                     }
                 }
 
-                if (ExpenseRejected)
+                if (expenseAmount > 0)
                 {
-                    if (!string.IsNullOrWhiteSpace(ExpenseAmountInput) &&
-                        decimal.TryParse(ExpenseAmountInput, NumberStyles.Any, CultureInfo.InvariantCulture, out var expenseAmount) && expenseAmount > 0)
-                    {
-                        if (ExistingExpenseId.HasValue)
-                        {
-                            var deleteResp = await _httpClient.DeleteAsync($"/api/Expenses/{ExistingExpenseId}");
-                            if (!deleteResp.IsSuccessStatusCode)
-                                _logger.LogWarning("Could not delete rejected expense {Id}: {Status}", ExistingExpenseId, deleteResp.StatusCode);
-                        }
+                    if (ExistingExpenseId.HasValue && ExpenseRejected)
+                        await _httpClient.DeleteAsync($"/api/Expenses/{ExistingExpenseId}");
 
-                        var description = string.IsNullOrWhiteSpace(ExpenseDescription) ? "Delivery expenses" : ExpenseDescription;
-                        var expensePayload = new
-                        {
-                            category = ExpenseCategory,
-                            description,
-                            amount = expenseAmount,
-                            date = depositDate.ToString("yyyy-MM-ddTHH:mm:ss"),
-                            clerkId = userId,
-                            clerkName = UserName
-                        };
-                        var expenseJson = JsonSerializer.Serialize(expensePayload);
-                        var expenseContent = new StringContent(expenseJson, Encoding.UTF8, "application/json");
-                        var expenseResp = await _httpClient.PostAsync("/api/Expenses", expenseContent);
-                        if (!expenseResp.IsSuccessStatusCode)
-                        {
-                            SubmitError = "Deposit saved but expense failed. Please try again.";
-                            return;
-                        }
-                    }
-                }
-                else if (!HasExistingExpense)
-                {
-                    if (!string.IsNullOrWhiteSpace(ExpenseAmountInput) &&
-                        decimal.TryParse(ExpenseAmountInput, NumberStyles.Any, CultureInfo.InvariantCulture, out var expenseAmount) && expenseAmount > 0)
+                    var description = string.IsNullOrWhiteSpace(ExpenseDescription) ? "Delivery expenses" : ExpenseDescription;
+                    var expensePayload = new
                     {
-                        var description = string.IsNullOrWhiteSpace(ExpenseDescription) ? "Delivery expenses" : ExpenseDescription;
-                        var expensePayload = new
-                        {
-                            category = ExpenseCategory,
-                            description,
-                            amount = expenseAmount,
-                            date = depositDate.ToString("yyyy-MM-ddTHH:mm:ss"),
-                            clerkId = userId,
-                            clerkName = UserName
-                        };
-                        var expenseJson = JsonSerializer.Serialize(expensePayload);
-                        var expenseContent = new StringContent(expenseJson, Encoding.UTF8, "application/json");
-                        var expenseResp = await _httpClient.PostAsync("/api/Expenses", expenseContent);
-                        if (!expenseResp.IsSuccessStatusCode)
-                        {
-                            SubmitError = "Deposit saved but expense failed. Please try again.";
-                            return;
-                        }
+                        category = ExpenseCategory,
+                        description,
+                        amount = expenseAmount,
+                        date = depositDate.ToString("yyyy-MM-ddTHH:mm:ss"),
+                        clerkId = userId,
+                        clerkName = UserName
+                    };
+                    var expJson = JsonSerializer.Serialize(expensePayload);
+                    var expContent = new StringContent(expJson, Encoding.UTF8, "application/json");
+                    var expResp = await _httpClient.PostAsync("/api/Expenses", expContent);
+                    if (!expResp.IsSuccessStatusCode)
+                    {
+                        SubmitError = "Deposit saved but expense submission failed. Please try again.";
+                        return;
                     }
                 }
 
@@ -290,42 +301,13 @@ namespace wms_android.ViewModels
                 }
 
                 var lockStatus = await _parcelService.GetClerkLockStatusAsync(currentUserId, today);
-                LockPaidTotal = lockStatus.YesterdayPaidTotal;
-                _declarationDate = lockStatus.PreviousDate;
-                LockPreviousDate = lockStatus.PreviousDate.ToString("dd MMM yyyy");
-                ExistingDepositId = lockStatus.DepositRecordId;
-                ExistingExpenseId = lockStatus.ExpenseRecordId;
+                ApplyLockStatus(lockStatus);
 
-                DepositRejected = lockStatus.DepositStatus == "rejected";
-                DepositApproved = lockStatus.DepositStatus == "approved";
-                DepositRejectionReason = lockStatus.DepositRejectionReason ?? "";
-                ApprovedDepositAmount = DepositApproved ? (lockStatus.DepositAmount ?? 0m) : 0m;
-
-                if (DepositRejected)
-                    DepositAmountInput = (lockStatus.DepositAmount ?? 0m).ToString(CultureInfo.InvariantCulture);
-
-                HasExistingExpense = lockStatus.ExpenseRecordId.HasValue;
-                ExpenseRejected = lockStatus.ExpenseStatus == "rejected";
-                ExpenseApproved = lockStatus.ExpenseStatus == "approved";
-                ExpenseRejectionReason = lockStatus.ExpenseRejectionReason ?? "";
-                ApprovedExpenseAmount = ExpenseApproved ? (lockStatus.ExpenseAmount ?? 0m) : 0m;
-
-                if (ExpenseRejected)
-                    ExpenseAmountInput = (lockStatus.ExpenseAmount ?? 0m).ToString(CultureInfo.InvariantCulture);
-
-                var isHardLocked = lockStatus.Reason == "pending_submission" || lockStatus.Reason == "rejected";
-                IsLocked = isHardLocked;
-                LockReason = lockStatus.Reason;
-                AppShell.IsClerkLocked = isHardLocked;
-                ShowPendingApprovalBanner = lockStatus.Reason == "pending_approval";
-
-                if (!isHardLocked)
+                if (!IsLocked)
                 {
                     AmountOwed = await _parcelService.GetAmountOwedByUserAsync(currentUserId, today);
-
                     var clerkSummary = await _parcelService.GetClerkCashInSummaryAsync(currentUserId, today);
                     CashIn = clerkSummary != null ? (double)clerkSummary.RemainingDebt : 0.0;
-
                     DailySales = await _parcelService.GetDailySalesByUserAsync(currentUserId, today);
                     MonthlySales = await _parcelService.GetMonthlySalesByUserAsync(currentUserId, today);
                 }
@@ -355,6 +337,37 @@ namespace wms_android.ViewModels
             {
                 IsLoading = false;
             }
+        }
+
+        private void ApplyLockStatus(ClerkLockStatusDto lockStatus)
+        {
+            LockPaidTotal = lockStatus.YesterdayPaidTotal;
+            _declarationDate = lockStatus.PreviousDate;
+            LockPreviousDate = lockStatus.PreviousDate.ToString("dd MMM yyyy");
+
+            ExistingDepositId = lockStatus.DepositRecordId;
+            DepositRejected = lockStatus.DepositStatus == "rejected";
+            DepositApproved = lockStatus.DepositStatus == "approved";
+            DepositRejectionReason = lockStatus.DepositRejectionReason ?? "";
+            ApprovedDepositAmount = DepositApproved ? (lockStatus.DepositAmount ?? 0m) : 0m;
+
+            ExistingExpenseId = lockStatus.ExpenseRecordId;
+            ExpenseRejected = lockStatus.ExpenseStatus == "rejected";
+            ExpenseApproved = lockStatus.ExpenseStatus == "approved";
+            ExpenseRejectionReason = lockStatus.ExpenseRejectionReason ?? "";
+            ApprovedExpenseAmount = ExpenseApproved ? (lockStatus.ExpenseAmount ?? 0m) : 0m;
+
+            if (DepositRejected)
+            {
+                DepositAmountInput = (lockStatus.DepositAmount ?? 0m).ToString(CultureInfo.InvariantCulture);
+                ExpenseAmountInput = (lockStatus.ExpenseAmount ?? 0m).ToString(CultureInfo.InvariantCulture);
+            }
+
+            var isHardLocked = lockStatus.Reason == "pending_submission" || lockStatus.Reason == "rejected";
+            IsLocked = isHardLocked;
+            LockReason = lockStatus.Reason;
+            AppShell.IsClerkLocked = isHardLocked;
+            ShowPendingApprovalBanner = lockStatus.Reason == "pending_approval";
         }
     }
 }

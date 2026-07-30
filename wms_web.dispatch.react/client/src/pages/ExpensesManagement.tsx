@@ -63,6 +63,10 @@ const ExpensesManagement: React.FC = () => {
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState<DailyExpense | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [isEditingExpense, setIsEditingExpense] = useState(false);
+  const [editExpenseFields, setEditExpenseFields] = useState({ amount: '', description: '', category: '', vendor: '', receiptNumber: '' });
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
   const [newExpense, setNewExpense] = useState<CreateDailyExpenseDto>({
     date: new Date().toISOString().split('T')[0],
     category: 'other',
@@ -114,7 +118,7 @@ const ExpensesManagement: React.FC = () => {
       setIsLoading(true);
       setError(null);
       const expenseData = await wmsApi.getDailyExpenses();
-      setExpenses(expenseData);
+      setExpenses(expenseData.filter(e => e.category !== ('clerk_deposit' as any)));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load expense data');
     } finally {
@@ -170,6 +174,46 @@ const ExpensesManagement: React.FC = () => {
     const roleName = typeof user.role === 'string' ? user.role : (user.role as any)?.Name || '';
     const allowedRoles = ['admin', 'administrator', 'accountant'];
     return allowedRoles.includes(roleName.toLowerCase());
+  };
+
+  const startEditExpense = (expense: DailyExpense) => {
+    setEditExpenseFields({
+      amount: expense.amount.toString(),
+      description: expense.description,
+      category: expense.category,
+      vendor: expense.vendor || '',
+      receiptNumber: expense.receiptNumber || ''
+    });
+    setEditError('');
+    setIsEditingExpense(true);
+  };
+
+  const handleSaveExpenseEdit = async () => {
+    if (!selectedExpense) return;
+    const amount = parseFloat(editExpenseFields.amount);
+    if (!editExpenseFields.amount || isNaN(amount) || amount <= 0) {
+      setEditError('Please enter a valid amount.');
+      return;
+    }
+    try {
+      setIsSavingEdit(true);
+      setEditError('');
+      await wmsApi.updateExpense(selectedExpense.id, {
+        amount,
+        description: editExpenseFields.description,
+        category: editExpenseFields.category,
+        vendor: editExpenseFields.vendor,
+        receiptNumber: editExpenseFields.receiptNumber
+      });
+      await loadExpenseData();
+      const refreshed = expenses.find(e => e.id === selectedExpense.id);
+      if (refreshed) setSelectedExpense({ ...refreshed, amount, description: editExpenseFields.description, category: editExpenseFields.category as any, vendor: editExpenseFields.vendor, receiptNumber: editExpenseFields.receiptNumber });
+      setIsEditingExpense(false);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Failed to save changes.');
+    } finally {
+      setIsSavingEdit(false);
+    }
   };
 
   const formatCurrency = (amount: number) => {
@@ -851,99 +895,160 @@ const ExpensesManagement: React.FC = () => {
       >
         {selectedExpense && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                <p className="text-sm text-gray-900">{fmtDate(selectedExpense.date)}</p>
+            {isEditingExpense ? (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Ksh)</label>
+                  <input
+                    type="number"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    value={editExpenseFields.amount}
+                    onChange={e => setEditExpenseFields(f => ({ ...f, amount: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <select
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    value={editExpenseFields.category}
+                    onChange={e => setEditExpenseFields(f => ({ ...f, category: e.target.value }))}
+                  >
+                    {expenseCategories.map(c => (
+                      <option key={c.value} value={c.value}>{c.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                  <textarea
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    rows={2}
+                    value={editExpenseFields.description}
+                    onChange={e => setEditExpenseFields(f => ({ ...f, description: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
+                  <input
+                    type="text"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    value={editExpenseFields.vendor}
+                    onChange={e => setEditExpenseFields(f => ({ ...f, vendor: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Receipt Number</label>
+                  <input
+                    type="text"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
+                    value={editExpenseFields.receiptNumber}
+                    onChange={e => setEditExpenseFields(f => ({ ...f, receiptNumber: e.target.value }))}
+                  />
+                </div>
+                {editError && <p className="text-sm text-red-600">{editError}</p>}
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                <p className="text-sm text-gray-900 capitalize">{selectedExpense.category.replace('_', ' ')}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
-                <p className="text-sm font-semibold text-gray-900">{formatCurrency(selectedExpense.amount)}</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                  selectedExpense.status === 'approved' ? 'bg-green-100 text-green-700' :
-                  selectedExpense.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                  'bg-yellow-100 text-yellow-700'
-                }`}>
-                  {selectedExpense.status}
-                </span>
-              </div>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-              <p className="text-sm text-gray-900">{selectedExpense.description}</p>
-            </div>
-            
-            {selectedExpense.vendor && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
-                <p className="text-sm text-gray-900">{selectedExpense.vendor}</p>
-              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                    <p className="text-sm text-gray-900">{fmtDate(selectedExpense.date)}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                    <p className="text-sm text-gray-900 capitalize">{selectedExpense.category.replace('_', ' ')}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+                    <p className="text-sm font-semibold text-gray-900">{formatCurrency(selectedExpense.amount)}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                      selectedExpense.status === 'approved' ? 'bg-green-100 text-green-700' :
+                      selectedExpense.status === 'rejected' ? 'bg-red-100 text-red-700' :
+                      'bg-yellow-100 text-yellow-700'
+                    }`}>
+                      {selectedExpense.status}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                  <p className="text-sm text-gray-900">{selectedExpense.description}</p>
+                </div>
+                {selectedExpense.vendor && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
+                    <p className="text-sm text-gray-900">{selectedExpense.vendor}</p>
+                  </div>
+                )}
+                {selectedExpense.receiptNumber && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Receipt Number</label>
+                    <p className="text-sm text-gray-900">{selectedExpense.receiptNumber}</p>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Requested By</label>
+                  <p className="text-sm text-gray-900">{selectedExpense.createdByName}</p>
+                  <p className="text-xs text-gray-500">{selectedExpense.branchName}</p>
+                </div>
+                {selectedExpense.clerkName && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Clerk</label>
+                    <p className="text-sm text-gray-900">{selectedExpense.clerkName}</p>
+                  </div>
+                )}
+                {selectedExpense.approvedByName && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {selectedExpense.status === 'approved' ? 'Approved By' : 'Processed By'}
+                    </label>
+                    <p className="text-sm text-gray-900">{selectedExpense.approvedByName}</p>
+                  </div>
+                )}
+                {selectedExpense.rejectionReason && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Rejection Reason</label>
+                    <p className="text-sm text-red-600">{selectedExpense.rejectionReason}</p>
+                  </div>
+                )}
+              </>
             )}
-            
-            {selectedExpense.receiptNumber && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Receipt Number</label>
-                <p className="text-sm text-gray-900">{selectedExpense.receiptNumber}</p>
-              </div>
-            )}
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Requested By</label>
-              <p className="text-sm text-gray-900">{selectedExpense.createdByName}</p>
-              <p className="text-xs text-gray-500">{selectedExpense.branchName}</p>
-            </div>
-            
-            {selectedExpense.clerkName && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Clerk</label>
-                <p className="text-sm text-gray-900">{selectedExpense.clerkName}</p>
-              </div>
-            )}
-            
-            {selectedExpense.approvedByName && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {selectedExpense.status === 'approved' ? 'Approved By' : 'Processed By'}
-                </label>
-                <p className="text-sm text-gray-900">{selectedExpense.approvedByName}</p>
-              </div>
-            )}
-            
-            {selectedExpense.rejectionReason && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Rejection Reason</label>
-                <p className="text-sm text-red-600">{selectedExpense.rejectionReason}</p>
-              </div>
-            )}
-            
+
             <div className="flex justify-end space-x-3 pt-4 border-t">
-              <Button variant="outline" onClick={() => setSelectedExpense(null)}>
-                Close
-              </Button>
-              {selectedExpense.status === 'pending' && canApproveExpenses() && (
+              {isEditingExpense ? (
                 <>
-                  <Button
-                    onClick={() => handleApproveExpense(selectedExpense, true)}
-                    className="bg-green-600 hover:bg-green-700 text-white"
-                  >
-                    Approve
+                  <Button variant="outline" onClick={() => setIsEditingExpense(false)} disabled={isSavingEdit}>Cancel</Button>
+                  <Button onClick={handleSaveExpenseEdit} disabled={isSavingEdit} className="bg-blue-600 hover:bg-blue-700 text-white">
+                    {isSavingEdit ? 'Saving...' : 'Save Changes'}
                   </Button>
-                  <Button
-                    onClick={() => {
-                      setShowApprovalModal(true);
-                    }}
-                    className="bg-red-600 hover:bg-red-700 text-white"
-                  >
-                    Reject
+                </>
+              ) : (
+                <>
+                  <Button variant="outline" onClick={() => { setSelectedExpense(null); setIsEditingExpense(false); }}>
+                    Close
                   </Button>
+                  {selectedExpense.status === 'pending' && canApproveExpenses() && (
+                    <>
+                      <Button variant="outline" onClick={() => startEditExpense(selectedExpense)} className="border-blue-300 text-blue-600 hover:bg-blue-50">
+                        Edit
+                      </Button>
+                      <Button
+                        onClick={() => handleApproveExpense(selectedExpense, true)}
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        onClick={() => setShowApprovalModal(true)}
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                      >
+                        Reject
+                      </Button>
+                    </>
+                  )}
                 </>
               )}
             </div>

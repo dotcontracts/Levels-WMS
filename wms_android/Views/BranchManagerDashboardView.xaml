@@ -104,6 +104,9 @@
               BackgroundColor="#CC000000"
               VerticalOptions="Fill"
               HorizontalOptions="Fill">
+            <RefreshView Command="{Binding RefreshLockStatusCommand}"
+                         IsRefreshing="{Binding IsRefreshingLock}"
+                         RefreshColor="White">
             <ScrollView VerticalOptions="Center" Margin="20">
                 <Frame BackgroundColor="White" CornerRadius="12" Padding="20" Margin="0">
                     <VerticalStackLayout Spacing="15">
@@ -252,9 +255,14 @@
                                            IsVisible="{Binding IsSubmitting}"
                                            HorizontalOptions="Center"/>
 
+                        <Label Text="Pull down to check approval status"
+                               FontSize="11" TextColor="#888"
+                               HorizontalOptions="Center" Margin="0,4,0,0"/>
+
                     </VerticalStackLayout>
                 </Frame>
             </ScrollView>
+            </RefreshView>
         </Grid>
 
         <controls:LoadingOverlay />

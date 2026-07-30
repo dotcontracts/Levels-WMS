@@ -67,6 +67,7 @@ namespace wms_android.ViewModels
         [ObservableProperty] private string _expenseDescription = "";
         [ObservableProperty] private bool _isSubmitting;
         [ObservableProperty] private string _submitError = "";
+        [ObservableProperty] private bool _isRefreshingLock;
 
         public List<string> ExpenseCategories { get; } = new()
         {
@@ -109,6 +110,54 @@ namespace wms_android.ViewModels
 
         [RelayCommand]
         private async Task NavigateToDispatch() => await Shell.Current.GoToAsync(nameof(DispatchView));
+
+        [RelayCommand]
+        private async Task RefreshLockStatus()
+        {
+            if (string.IsNullOrEmpty(BranchName)) { IsRefreshingLock = false; return; }
+
+            try
+            {
+                var lockStatus = await _parcelService.GetBranchCodLockStatusAsync(BranchName, DateTime.Today);
+
+                DepositRejected = lockStatus.DepositStatus == "rejected";
+                DepositApproved = lockStatus.DepositStatus == "approved";
+                DepositRejectionReason = lockStatus.DepositRejectionReason ?? "";
+                ApprovedDepositAmount = DepositApproved ? (lockStatus.DepositAmount ?? 0m) : 0m;
+                ExistingDepositId = lockStatus.DepositRecordId;
+
+                HasExistingExpense = lockStatus.ExpenseRecordId.HasValue;
+                ExpenseRejected = lockStatus.ExpenseStatus == "rejected";
+                ExpenseApproved = lockStatus.ExpenseStatus == "approved";
+                ExpenseRejectionReason = lockStatus.ExpenseRejectionReason ?? "";
+                ApprovedExpenseAmount = ExpenseApproved ? (lockStatus.ExpenseAmount ?? 0m) : 0m;
+                ExistingExpenseId = lockStatus.ExpenseRecordId;
+
+                var isHardLocked = lockStatus.Reason == "pending_submission" || lockStatus.Reason == "rejected";
+                IsLocked = isHardLocked;
+                LockReason = lockStatus.Reason;
+                ManagerShell.IsManagerLocked = isHardLocked;
+                ShowPendingApprovalBanner = lockStatus.Reason == "pending_approval";
+
+                if (!isHardLocked)
+                {
+                    var today = DateTime.Today;
+                    var data = await _parcelService.GetBranchManagerDashboardAsync(BranchName, today);
+                    PreviousDayCodSales = data.PreviousDayCodSales;
+                    PreviousDayCodAmountOwed = data.PreviousDayCodAmountOwed;
+                    TodayLiveSales = data.TodayLiveSales;
+                    MonthlyDebit = data.MonthlyDebit;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error refreshing manager lock status");
+            }
+            finally
+            {
+                IsRefreshingLock = false;
+            }
+        }
 
         [RelayCommand]
         private async Task SubmitDeposit()
