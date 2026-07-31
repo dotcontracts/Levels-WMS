@@ -22,5 +22,11 @@ namespace wms_android.Views
                 await _viewModel.LoadDashboardData();
             }
         }
+
+        protected override void OnDisappearing()
+        {
+            base.OnDisappearing();
+            _viewModel?.StopPolling();
+        }
     }
 }

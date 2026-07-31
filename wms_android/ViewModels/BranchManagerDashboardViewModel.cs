@@ -58,7 +58,11 @@ namespace wms_android.ViewModels
         [ObservableProperty] private string _approvedExpenseDescription = "";
 
         private int? _branchId;
-        private DateTime _codDate;
+        private DateTime _codDate;         // T-2: parcel booking day — deposit date
+        private DateTime _declarationDate; // T-1: declaration day — expense date
+
+        private CancellationTokenSource _pollCts;
+        private const int PollIntervalSeconds = 30;
 
         // Form inputs
         [ObservableProperty] private string _depositAmountInput = "";
@@ -118,36 +122,7 @@ namespace wms_android.ViewModels
 
             try
             {
-                var lockStatus = await _parcelService.GetBranchCodLockStatusAsync(BranchName, DateTime.Today);
-
-                DepositRejected = lockStatus.DepositStatus == "rejected";
-                DepositApproved = lockStatus.DepositStatus == "approved";
-                DepositRejectionReason = lockStatus.DepositRejectionReason ?? "";
-                ApprovedDepositAmount = DepositApproved ? (lockStatus.DepositAmount ?? 0m) : 0m;
-                ExistingDepositId = lockStatus.DepositRecordId;
-
-                HasExistingExpense = lockStatus.ExpenseRecordId.HasValue;
-                ExpenseRejected = lockStatus.ExpenseStatus == "rejected";
-                ExpenseApproved = lockStatus.ExpenseStatus == "approved";
-                ExpenseRejectionReason = lockStatus.ExpenseRejectionReason ?? "";
-                ApprovedExpenseAmount = ExpenseApproved ? (lockStatus.ExpenseAmount ?? 0m) : 0m;
-                ExistingExpenseId = lockStatus.ExpenseRecordId;
-
-                var isHardLocked = lockStatus.Reason == "pending_submission" || lockStatus.Reason == "rejected";
-                IsLocked = isHardLocked;
-                LockReason = lockStatus.Reason;
-                ManagerShell.IsManagerLocked = isHardLocked;
-                ShowPendingApprovalBanner = lockStatus.Reason == "pending_approval";
-
-                if (!isHardLocked)
-                {
-                    var today = DateTime.Today;
-                    var data = await _parcelService.GetBranchManagerDashboardAsync(BranchName, today);
-                    PreviousDayCodSales = data.PreviousDayCodSales;
-                    PreviousDayCodAmountOwed = data.PreviousDayCodAmountOwed;
-                    TodayLiveSales = data.TodayLiveSales;
-                    MonthlyDebit = data.MonthlyDebit;
-                }
+                await ApplyLockStatusAsync();
             }
             catch (Exception ex)
             {
@@ -159,15 +134,103 @@ namespace wms_android.ViewModels
             }
         }
 
+        public void StartPolling()
+        {
+            StopPolling();
+            _pollCts = new CancellationTokenSource();
+            _ = PollLoopAsync(_pollCts.Token);
+        }
+
+        public void StopPolling()
+        {
+            _pollCts?.Cancel();
+            _pollCts?.Dispose();
+            _pollCts = null;
+        }
+
+        private async Task PollLoopAsync(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(PollIntervalSeconds), token);
+                    if (token.IsCancellationRequested) break;
+
+                    if (string.IsNullOrEmpty(BranchName)) continue;
+
+                    var lockStatus = await _parcelService.GetBranchCodLockStatusAsync(BranchName, DateTime.Today);
+                    var needsPolling = lockStatus.Reason != "none";
+
+                    await MainThread.InvokeOnMainThreadAsync(() => ApplyLockStatusFields(lockStatus));
+
+                    if (!needsPolling) break;
+                }
+                catch (TaskCanceledException) { break; }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error during COD lock poll");
+                }
+            }
+        }
+
+        private async Task ApplyLockStatusAsync()
+        {
+            var lockStatus = await _parcelService.GetBranchCodLockStatusAsync(BranchName, DateTime.Today);
+            ApplyLockStatusFields(lockStatus);
+
+            if (!(lockStatus.Reason == "pending_submission" || lockStatus.Reason == "rejected"))
+            {
+                var today = DateTime.Today;
+                var data = await _parcelService.GetBranchManagerDashboardAsync(BranchName, today);
+                PreviousDayCodSales = data.PreviousDayCodSales;
+                PreviousDayCodAmountOwed = data.PreviousDayCodAmountOwed;
+                TodayLiveSales = data.TodayLiveSales;
+                MonthlyDebit = data.MonthlyDebit;
+            }
+        }
+
+        private void ApplyLockStatusFields(wms_android.shared.DTOs.BranchCodLockStatusDto lockStatus)
+        {
+            LockCodTotal = lockStatus.PreviousDayCodTotal;
+            _codDate = lockStatus.CodDate;                                        // T-2: deposit date
+            _declarationDate = lockStatus.PreviousDate;                           // T-1: expense date
+            LockPreviousDate = lockStatus.PreviousDate.ToString("dd MMM yyyy");  // T-1: shown in UI
+            ExistingDepositId = lockStatus.DepositRecordId;
+            ExistingExpenseId = lockStatus.ExpenseRecordId;
+
+            DepositRejected = lockStatus.DepositStatus == "rejected";
+            DepositApproved = lockStatus.DepositStatus == "approved";
+            DepositRejectionReason = lockStatus.DepositRejectionReason ?? "";
+            ApprovedDepositAmount = DepositApproved ? (lockStatus.DepositAmount ?? 0m) : 0m;
+
+            HasExistingExpense = lockStatus.ExpenseRecordId.HasValue;
+            ExpenseRejected = lockStatus.ExpenseStatus == "rejected";
+            ExpenseApproved = lockStatus.ExpenseStatus == "approved";
+            ExpenseRejectionReason = lockStatus.ExpenseRejectionReason ?? "";
+            ApprovedExpenseAmount = ExpenseApproved ? (lockStatus.ExpenseAmount ?? 0m) : 0m;
+            ExistingExpenseId = lockStatus.ExpenseRecordId;
+
+            if (DepositRejected && string.IsNullOrEmpty(DepositAmountInput))
+                DepositAmountInput = (lockStatus.DepositAmount ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (ExpenseRejected && string.IsNullOrEmpty(ExpenseAmountInput))
+                ExpenseAmountInput = (lockStatus.ExpenseAmount ?? 0m).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            var isHardLocked = lockStatus.Reason == "pending_submission" || lockStatus.Reason == "rejected";
+            IsLocked = isHardLocked;
+            LockReason = lockStatus.Reason;
+            ManagerShell.IsManagerLocked = isHardLocked;
+            ShowPendingApprovalBanner = lockStatus.Reason == "pending_approval";
+        }
+
         [RelayCommand]
         private async Task SubmitDeposit()
         {
             SubmitError = "";
 
-            // _codDate = T+1 (delivery & declaration day, as returned by PreviousDate from the API)
-            // depositDate = T+1 (same — the day the manager collected and must declare)
-            var depositDate = _codDate != default ? _codDate.Date : DateTime.Today.AddDays(-1);
-            var expenseDate = depositDate;
+            // deposit → T-2 (parcel booking day), expense → T-1 (declaration day)
+            var depositDate = _codDate != default ? _codDate.Date : DateTime.Today.AddDays(-2);
+            var expenseDate = _declarationDate != default ? _declarationDate.Date : DateTime.Today.AddDays(-1);
             var userId = Preferences.Get("CurrentUserId", 0);
 
             var token = Preferences.Get("AuthToken", string.Empty);
@@ -297,6 +360,7 @@ namespace wms_android.ViewModels
                 ExpenseAmountInput = "";
                 ExpenseCategory = "fuel";
                 ExpenseDescription = "";
+                StartPolling();
             }
             catch (Exception ex)
             {
@@ -328,50 +392,10 @@ namespace wms_android.ViewModels
 
                 if (string.IsNullOrEmpty(BranchName)) return;
 
-                var today = DateTime.Today;
+                await ApplyLockStatusAsync();
 
-                var lockStatus = await _parcelService.GetBranchCodLockStatusAsync(BranchName, today);
-                LockCodTotal = lockStatus.PreviousDayCodTotal;
-                _codDate = lockStatus.PreviousDate;
-                LockPreviousDate = lockStatus.PreviousDate.ToString("dd MMM yyyy");
-                ExistingDepositId = lockStatus.DepositRecordId;
-                ExistingExpenseId = lockStatus.ExpenseRecordId;
-
-                // Per-part deposit state
-                DepositRejected = lockStatus.DepositStatus == "rejected";
-                DepositApproved = lockStatus.DepositStatus == "approved";
-                DepositRejectionReason = lockStatus.DepositRejectionReason ?? "";
-                ApprovedDepositAmount = DepositApproved ? (lockStatus.DepositAmount ?? 0m) : 0m;
-
-                // Pre-fill deposit input if rejected so user only corrects it
-                if (DepositRejected)
-                    DepositAmountInput = (lockStatus.DepositAmount ?? 0m).ToString(CultureInfo.InvariantCulture);
-
-                // Per-part expense state
-                HasExistingExpense = lockStatus.ExpenseRecordId.HasValue;
-                ExpenseRejected = lockStatus.ExpenseStatus == "rejected";
-                ExpenseApproved = lockStatus.ExpenseStatus == "approved";
-                ExpenseRejectionReason = lockStatus.ExpenseRejectionReason ?? "";
-                ApprovedExpenseAmount = ExpenseApproved ? (lockStatus.ExpenseAmount ?? 0m) : 0m;
-
-                // Pre-fill expense input if rejected
-                if (ExpenseRejected)
-                    ExpenseAmountInput = (lockStatus.ExpenseAmount ?? 0m).ToString(CultureInfo.InvariantCulture);
-
-                var isHardLocked = lockStatus.Reason == "pending_submission" || lockStatus.Reason == "rejected";
-                IsLocked = isHardLocked;
-                LockReason = lockStatus.Reason;
-                ManagerShell.IsManagerLocked = isHardLocked;
-                ShowPendingApprovalBanner = lockStatus.Reason == "pending_approval";
-
-                if (!isHardLocked)
-                {
-                    var data = await _parcelService.GetBranchManagerDashboardAsync(BranchName, today);
-                    PreviousDayCodSales = data.PreviousDayCodSales;
-                    PreviousDayCodAmountOwed = data.PreviousDayCodAmountOwed;
-                    TodayLiveSales = data.TodayLiveSales;
-                    MonthlyDebit = data.MonthlyDebit;
-                }
+                if (LockReason != "none")
+                    StartPolling();
             }
             catch (Exception ex)
             {

@@ -18,7 +18,7 @@
                    IsVisible="{Binding ShowPendingApprovalBanner}"
                    BackgroundColor="#FFF8E1" BorderColor="#F9A825"
                    CornerRadius="8" Padding="10" Margin="0,0,0,10">
-                <Grid ColumnDefinitions="Auto,*">
+                <Grid ColumnDefinitions="Auto,*,Auto">
                     <Label Grid.Column="0" Text="&#xf017;" FontFamily="FASolid" FontSize="16"
                            TextColor="#F9A825" VerticalOptions="Center" Margin="0,0,8,0"/>
                     <VerticalStackLayout Grid.Column="1" Spacing="2">
@@ -26,6 +26,13 @@
                                FontSize="12" TextColor="#E65100"/>
                         <Label Text="{Binding LockPreviousDate, StringFormat='COD declaration for {0} is awaiting admin approval.'}"
                                FontSize="11" TextColor="#5D4037"/>
+                        <HorizontalStackLayout Spacing="4" Margin="0,2,0,0">
+                            <ActivityIndicator IsRunning="True" IsVisible="True"
+                                               HeightRequest="12" WidthRequest="12"
+                                               Color="#F9A825"/>
+                            <Label Text="Checking every 30s" FontSize="10" TextColor="#A0522D"
+                                   VerticalOptions="Center"/>
+                        </HorizontalStackLayout>
                     </VerticalStackLayout>
                 </Grid>
             </Frame>
@@ -255,9 +262,14 @@
                                            IsVisible="{Binding IsSubmitting}"
                                            HorizontalOptions="Center"/>
 
-                        <Label Text="Pull down to check approval status"
-                               FontSize="11" TextColor="#888"
-                               HorizontalOptions="Center" Margin="0,4,0,0"/>
+                        <HorizontalStackLayout HorizontalOptions="Center" Spacing="6" Margin="0,4,0,0">
+                            <ActivityIndicator IsRunning="True" IsVisible="True"
+                                               HeightRequest="14" WidthRequest="14"
+                                               Color="#888"/>
+                            <Label Text="Checking status automatically every 30s"
+                                   FontSize="11" TextColor="#888"
+                                   VerticalOptions="Center"/>
+                        </HorizontalStackLayout>
 
                     </VerticalStackLayout>
                 </Frame>
