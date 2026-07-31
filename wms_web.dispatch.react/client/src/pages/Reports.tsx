@@ -1334,12 +1334,9 @@ const Reports: React.FC = () => {
             console.log(`Branch ${branch}: COD=${codTotal}, Deposited=${totalDeposited}, Debt=${mergedData[branch].totalDebt}`);
 
             // Update transactions with deposit amounts and IDs.
-            // Deposits are dated T+1 (declaration day) but belong to T (parcel booking day).
-            // Match the deposit against the parcel row one day earlier (T = deposit.date - 1).
+            // Deposit date matches the parcel booking day (T) directly.
             branchApiData.transactions.forEach((apiTransaction: any) => {
-              const depositDate = new Date(apiTransaction.date);
-              depositDate.setDate(depositDate.getDate() - 1);
-              const parcelDate = depositDate.toISOString().split('T')[0];
+              const parcelDate = apiTransaction.date.split('T')[0];
               const localTransaction = mergedData[branch].transactions.find(
                 t => t.date === parcelDate
               );
