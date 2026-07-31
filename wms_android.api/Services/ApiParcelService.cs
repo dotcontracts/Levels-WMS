@@ -1210,8 +1210,12 @@ namespace wms_android.api.Services
             // T+2 = today (date)  — lock triggers if T+1 declaration was not submitted
             var codDate = date.Date.AddDays(-2);           // T: parcel booking day
             var declarationDate = date.Date.AddDays(-1);   // T+1: delivery & declaration day
-            var codDateStart = codDate.ToUniversalTime();
-            var codDateEnd = codDate.AddDays(1).ToUniversalTime();
+            var codDateStart = DateTime.SpecifyKind(codDate, DateTimeKind.Utc);
+            var codDateEnd = DateTime.SpecifyKind(codDate.AddDays(1), DateTimeKind.Utc);
+            var declarationDateLocal = DateTime.SpecifyKind(declarationDate, DateTimeKind.Unspecified);
+            var declarationDateLocalEnd = DateTime.SpecifyKind(declarationDate.AddDays(1), DateTimeKind.Unspecified);
+            var codDateLocal = DateTime.SpecifyKind(codDate, DateTimeKind.Unspecified);
+            var codDateLocalEnd = DateTime.SpecifyKind(codDate.AddDays(1), DateTimeKind.Unspecified);
             var branchNameLower = branchName.ToLower();
 
             var codTotal = await _context.Parcels
@@ -1223,7 +1227,8 @@ namespace wms_android.api.Services
 
             var dto = new BranchCodLockStatusDto
             {
-                PreviousDate = declarationDate,   // T+1: the delivery day the manager must declare
+                PreviousDate = declarationDate,   // T-1: the declaration day (shown in UI)
+                CodDate = codDate,                // T-2: the parcel booking day (deposit/expense date)
                 PreviousDayCodTotal = codTotal
             };
 
@@ -1234,10 +1239,12 @@ namespace wms_android.api.Services
                 return dto;
             }
 
-            // BranchDeposit.Date is a 'date' column — use range to avoid timezone edge cases
+            // Deposit may be dated T-2 (from lock overlay) or T-1 (from report view)
             var depositRecord = await _context.BranchDeposits
                 .Where(bd => bd.Branch.ToLower() == branchNameLower &&
-                             bd.Date >= declarationDate && bd.Date < declarationDate.AddDays(1))
+                             (bd.Date >= codDateLocal && bd.Date < codDateLocalEnd ||
+                              bd.Date >= declarationDateLocal && bd.Date < declarationDateLocalEnd))
+                .OrderByDescending(bd => bd.CreatedAt)
                 .FirstOrDefaultAsync();
 
             if (depositRecord == null)
@@ -1252,11 +1259,13 @@ namespace wms_android.api.Services
             dto.DepositAmount = depositRecord.DepositAmount;
             dto.DepositRejectionReason = depositRecord.RejectionReason;
 
-            // DailyExpense.Date has no 'date' column type — use range comparison
+            // Expense may be dated T-1 (from lock overlay) or T-2 (from report view)
             var expenseRecord = await _context.DailyExpenses
                 .Where(e => e.BranchName.ToLower() == branchNameLower &&
-                            e.Date >= declarationDate && e.Date < declarationDate.AddDays(1) &&
-                            e.Category == "cod_expense")
+                            e.Category == "cod_expense" &&
+                            (e.Date >= declarationDateLocal && e.Date < declarationDateLocalEnd ||
+                             e.Date >= codDateLocal && e.Date < codDateLocalEnd))
+                .OrderByDescending(e => e.CreatedAt)
                 .FirstOrDefaultAsync();
 
             if (expenseRecord != null)

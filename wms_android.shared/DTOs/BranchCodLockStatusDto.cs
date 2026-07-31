@@ -8,7 +8,8 @@ namespace wms_android.shared.DTOs
         public string Reason { get; set; } = "none";
 
         public decimal PreviousDayCodTotal { get; set; }
-        public DateTime PreviousDate { get; set; }
+        public DateTime PreviousDate { get; set; }   // T-1: declaration day (shown in UI)
+        public DateTime CodDate { get; set; }         // T-2: parcel booking day (deposit/expense date)
 
         public int? DepositRecordId { get; set; }
         public string? DepositStatus { get; set; }
