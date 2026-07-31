@@ -366,10 +366,10 @@ namespace wms_android.api.Controllers
                     return NotFound(new { message = "Expense not found" });
                 }
 
-                // Only allow deletion if status is pending
-                if (expense.Status != "pending")
+                // Only allow deletion if status is pending or rejected (rejected expenses can be resubmitted)
+                if (expense.Status == "approved")
                 {
-                    return BadRequest(new { message = "Cannot delete expense that has been approved or rejected" });
+                    return BadRequest(new { message = "Cannot delete an approved expense" });
                 }
 
                 _context.DailyExpenses.Remove(expense);

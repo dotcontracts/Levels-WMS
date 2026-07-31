@@ -240,6 +240,8 @@ namespace wms_android.api.Controllers
             branchDeposit.CodTotal = updateDto.CodTotal;
             branchDeposit.DepositAmount = updateDto.DepositAmount;
             branchDeposit.UpdatedAt = DateTime.UtcNow;
+            branchDeposit.Status = "pending";
+            branchDeposit.RejectionReason = null;
 
             // Recalculate running debt for this record and all subsequent records
             var runningDebt = await CalculateRunningDebt(branchDeposit.Branch, branchDeposit.Date, updateDto.CodTotal, updateDto.DepositAmount);
