@@ -1293,6 +1293,8 @@ namespace wms_android.api.Services
             var yesterday = date.Date.AddDays(-1);
             var yesterdayStart = DateTime.SpecifyKind(yesterday, DateTimeKind.Utc);
             var yesterdayEnd = DateTime.SpecifyKind(yesterday.AddDays(1), DateTimeKind.Utc);
+            var yesterdayLocal = DateTime.SpecifyKind(yesterday, DateTimeKind.Unspecified);
+            var yesterdayLocalEnd = DateTime.SpecifyKind(yesterday.AddDays(1), DateTimeKind.Unspecified);
 
             var yesterdayPaidTotal = await _context.Parcels
                 .Where(p => p.CreatedById == userId &&
@@ -1318,7 +1320,7 @@ namespace wms_android.api.Services
             var depositRecord = await _context.DailyExpenses
                 .Where(e => e.ClerkId == userId &&
                             e.Category == "clerk_deposit" &&
-                            e.Date >= yesterday && e.Date < yesterday.AddDays(1))
+                            e.Date >= yesterdayLocal && e.Date < yesterdayLocalEnd)
                 .OrderByDescending(e => e.CreatedAt)
                 .FirstOrDefaultAsync();
 
@@ -1330,37 +1332,60 @@ namespace wms_android.api.Services
                 dto.DepositRejectionReason = depositRecord.RejectionReason;
             }
 
-            var expenseRecord = await _context.DailyExpenses
+            var expenseRecords = await _context.DailyExpenses
                 .Where(e => e.ClerkId == userId &&
                             e.Category != "clerk_deposit" &&
-                            e.Date >= yesterday && e.Date < yesterday.AddDays(1))
+                            e.Date >= yesterdayLocal && e.Date < yesterdayLocalEnd)
                 .OrderByDescending(e => e.CreatedAt)
-                .FirstOrDefaultAsync();
+                .ToListAsync();
 
-            if (expenseRecord != null)
+            var latestExpense = expenseRecords.FirstOrDefault();
+            if (latestExpense != null)
             {
-                dto.ExpenseRecordId = expenseRecord.Id;
-                dto.ExpenseStatus = expenseRecord.Status;
-                dto.ExpenseAmount = expenseRecord.Amount;
-                dto.ExpenseRejectionReason = expenseRecord.RejectionReason;
+                dto.ExpenseRecordId = latestExpense.Id;
+                dto.ExpenseStatus = latestExpense.Status;
+                dto.ExpenseAmount = latestExpense.Amount;
+                dto.ExpenseRejectionReason = latestExpense.RejectionReason;
             }
 
-            if (depositRecord == null)
-            {
-                dto.IsLocked = true;
-                dto.Reason = "pending_submission";
-                return dto;
-            }
-
-            if (depositRecord.Status == "rejected" || expenseRecord?.Status == "rejected")
+            if (expenseRecords.Any(e => e.Status == "rejected") || depositRecord?.Status == "rejected")
             {
                 dto.IsLocked = true;
                 dto.Reason = "rejected";
                 return dto;
             }
 
+            if (depositRecord == null)
+            {
+                var approvedExpensesTotal = expenseRecords
+                    .Where(e => e.Status == "approved")
+                    .Sum(e => e.Amount);
+
+                if (approvedExpensesTotal >= yesterdayPaidTotal)
+                {
+                    dto.IsLocked = false;
+                    dto.Reason = "none";
+                    return dto;
+                }
+
+                var pendingExpensesTotal = expenseRecords
+                    .Where(e => e.Status == "pending")
+                    .Sum(e => e.Amount);
+
+                if (approvedExpensesTotal + pendingExpensesTotal >= yesterdayPaidTotal)
+                {
+                    dto.IsLocked = false;
+                    dto.Reason = "pending_approval";
+                    return dto;
+                }
+
+                dto.IsLocked = true;
+                dto.Reason = "pending_submission";
+                return dto;
+            }
+
             dto.IsLocked = false;
-            var hasPending = depositRecord.Status == "pending" || expenseRecord?.Status == "pending";
+            var hasPending = depositRecord.Status == "pending" || expenseRecords.Any(e => e.Status == "pending");
             dto.Reason = hasPending ? "pending_approval" : "none";
             return dto;
         }
