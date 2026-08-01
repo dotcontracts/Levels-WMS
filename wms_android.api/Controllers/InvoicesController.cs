@@ -86,6 +86,7 @@ namespace wms_android.api.Controllers
                 var parcelGuids = createInvoiceDto.ParcelIds.Select(id => Guid.Parse(id)).ToList();
                 
                 var parcels = await _context.Parcels
+                    .Include(p => p.CreatedBy)
                     .Where(p => parcelGuids.Contains(p.Id))
                     .ToListAsync();
 
@@ -134,6 +135,9 @@ namespace wms_android.api.Controllers
                     WaybillNumber = p.WaybillNumber ?? "",
                     Description = p.Description ?? "",
                     Destination = p.Destination ?? "",
+                    Sender = p.Sender ?? "",
+                    Receiver = p.Receiver ?? "",
+                    ClerkName = p.CreatedBy != null ? $"{p.CreatedBy.FirstName} {p.CreatedBy.LastName}".Trim() : "",
                     ParcelCreatedAt = p.CreatedAt,
                     Quantity = p.Quantity ?? 1,
                     TotalPrice = p.TotalAmount,

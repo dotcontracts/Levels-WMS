@@ -195,6 +195,9 @@ export interface InvoiceItem {
   waybillNumber: string;
   description: string;
   destination: string;
+  sender?: string;
+  receiver?: string;
+  clerkName?: string;
   parcelCreatedAt: string;
   quantity: number;
   totalPrice: number;

@@ -28,7 +28,16 @@ namespace wms_android.shared.Models
         
         [StringLength(200)]
         public string Destination { get; set; }
-        
+
+        [StringLength(200)]
+        public string? Sender { get; set; }
+
+        [StringLength(200)]
+        public string? Receiver { get; set; }
+
+        [StringLength(200)]
+        public string? ClerkName { get; set; }
+
         [Column(TypeName = "timestamp with time zone")]
         public DateTime? ParcelCreatedAt { get; set; }
         
