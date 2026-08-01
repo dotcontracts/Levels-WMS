@@ -127,6 +127,7 @@ export const exportParcelsToPDF = (parcels: Parcel[], options: ExportOptions = {
     head: [tableHeaders],
     body: tableData,
     startY: yPosition,
+    rowPageBreak: 'avoid',
     styles: {
       fontSize: 8,
       cellPadding: 2,

@@ -393,6 +393,10 @@ export const printInvoice = (invoice: Invoice) => {
           font-size: 8pt;
         }
 
+        .items-table thead {
+          display: table-header-group;
+        }
+
         .items-table th {
           background-color: #f0f0f0;
           font-weight: bold;
@@ -406,6 +410,11 @@ export const printInvoice = (invoice: Invoice) => {
           border: 1px solid #ddd;
           padding: 3px 5px;
           vertical-align: top;
+        }
+
+        .items-table tbody tr {
+          page-break-inside: avoid;
+          break-inside: avoid;
         }
 
         .items-table tr:nth-child(even) td { background-color: #fafafa; }
