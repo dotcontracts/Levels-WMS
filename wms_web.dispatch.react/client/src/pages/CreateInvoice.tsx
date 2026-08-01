@@ -473,7 +473,7 @@ const CreateInvoice: React.FC = () => {
           />
 
           <div className="mt-4 text-sm text-gray-600">
-            Showing {filteredParcels.length} confirmed/delivered parcels with contract payment and dispatch confirmation
+            Showing {filteredParcels.length} confirmed/delivered parcels with contract payment
             {formData.billingPeriodStart && formData.billingPeriodEnd && (
               <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 rounded-md">
                 Filtered by dispatch period: {new Date(formData.billingPeriodStart).toLocaleDateString('en-GB')} - {new Date(formData.billingPeriodEnd).toLocaleDateString('en-GB')}

@@ -244,21 +244,25 @@ namespace wms_android.api.Controllers
             {
                 var query = _context.Parcels.AsQueryable();
                 
+                var invoicedParcelIds = await _context.InvoiceItems
+                    .Select(ii => ii.ParcelId)
+                    .Distinct()
+                    .ToListAsync();
+
                 // Filter for parcels eligible for invoicing:
                 // 1. Status must be Confirmed (1) or Delivered (3)
                 // 2. Payment method must be "contract"
-                // 3. Must have been dispatched (DispatchedAt is not null)
+                // 3. Not already on an existing invoice
                 query = query.Where(p => 
                     (p.Status == ParcelStatus.Confirmed || p.Status == ParcelStatus.Delivered) &&
                     p.PaymentMethods.ToLower().Contains("contract") &&
-                    p.DispatchedAt != null
+                    !invoicedParcelIds.Contains(p.Id.ToString())
                 );
                 
                 // Filter by billing period if provided
                 if (billingPeriodStart.HasValue && billingPeriodEnd.HasValue)
                 {
-                    // Use DispatchedAt for billing period filtering as this represents when service was delivered
-                    query = query.Where(p => p.DispatchedAt >= billingPeriodStart && p.DispatchedAt <= billingPeriodEnd.Value.AddDays(1).AddTicks(-1));
+                    query = query.Where(p => p.CreatedAt >= billingPeriodStart && p.CreatedAt <= billingPeriodEnd.Value.AddDays(1).AddTicks(-1));
                 }
                 
                 var eligibleParcels = await query
