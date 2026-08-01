@@ -718,7 +718,8 @@ namespace wms_android.api.Services
             var total = await _context.Parcels
                 .Where(p => p.CreatedById == userId &&
                            p.CreatedAt >= startOfMonth &&
-                           p.CreatedAt < endOfMonth)
+                           p.CreatedAt < endOfMonth &&
+                           !p.PaymentMethods.ToLower().Contains("contract"))
                 .SumAsync(p => (double)p.TotalAmount);
             return total;
         }
@@ -1064,25 +1065,23 @@ namespace wms_android.api.Services
 
         public async Task<ClerkCashInSummaryDto?> GetClerkCashInSummaryAsync(int userId, DateTime date)
         {
-            // Calculate the date range: current month + first 7 days of next month
             var startOfCurrentMonth = new DateTime(date.Year, date.Month, 1);
+            var startOfPreviousMonth = startOfCurrentMonth.AddMonths(-1);
             var startOfNextMonth = startOfCurrentMonth.AddMonths(1);
-            var endOfRange = startOfNextMonth.AddDays(7);
-            
+
             DateTime startDate, endDate;
-            
-            // Check if we should show next month only (if current date is past 7th of next month)
-            if (date >= startOfNextMonth.AddDays(7))
+
+            if (date.Day <= 7)
             {
-                // Show next month from beginning if we're past the 7-day grace period
-                startDate = startOfNextMonth;
-                endDate = startOfNextMonth.AddMonths(1); // End of next month
+                // Within the 7-day grace period: show previous month + current month up to today
+                startDate = startOfPreviousMonth;
+                endDate = startOfNextMonth;
             }
             else
             {
-                // Show current month + 7 days of next month
+                // Past grace period: show current month + 7 days into next month
                 startDate = startOfCurrentMonth;
-                endDate = endOfRange;
+                endDate = startOfNextMonth.AddDays(7);
             }
 
             var paidParcels = await _context.Parcels
@@ -1435,10 +1434,13 @@ namespace wms_android.api.Services
             var rankIndex = allClerkTotals.FindIndex(g => g.ClerkId == userId);
             dto.MonthlyRank = rankIndex >= 0 ? rankIndex + 1 : dto.TotalClerksRanked;
 
+            var reportDateLocal = DateTime.SpecifyKind(date.Date, DateTimeKind.Unspecified);
+            var reportDateLocalEnd = DateTime.SpecifyKind(date.Date.AddDays(1), DateTimeKind.Unspecified);
+
             var deposits = await _context.DailyExpenses
                 .Where(e => e.ClerkId == userId &&
                             e.Category == "clerk_deposit" &&
-                            e.Date >= date.Date && e.Date < date.Date.AddDays(1))
+                            e.Date >= reportDateLocal && e.Date < reportDateLocalEnd)
                 .OrderByDescending(e => e.CreatedAt)
                 .ToListAsync();
 
@@ -1454,8 +1456,8 @@ namespace wms_android.api.Services
 
             var expenses = await _context.DailyExpenses
                 .Where(e => e.ClerkId == userId &&
-                            e.Category == "clerk_expense" &&
-                            e.Date >= date.Date && e.Date < date.Date.AddDays(1))
+                            e.Category != "clerk_deposit" &&
+                            e.Date >= reportDateLocal && e.Date < reportDateLocalEnd)
                 .OrderByDescending(e => e.CreatedAt)
                 .ToListAsync();
 
