@@ -34,7 +34,8 @@ interface ExpenseFilters {
   status: string;
   branchId: string;
   clerkId: string;
-  dateRange: string;
+  dateFrom: string;
+  dateTo: string;
 }
 
 interface ExpenseStats {
@@ -57,7 +58,8 @@ const ExpensesManagement: React.FC = () => {
     status: '',
     branchId: '',
     clerkId: '',
-    dateRange: ''
+    dateFrom: '',
+    dateTo: ''
   });
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
@@ -259,6 +261,8 @@ const ExpensesManagement: React.FC = () => {
       if (filters.status && expense.status !== filters.status) return false;
       if (filters.branchId && expense.branchName !== filters.branchId) return false;
       if (filters.clerkId && expense.clerkName !== filters.clerkId) return false;
+      if (filters.dateFrom && new Date(expense.date) < new Date(filters.dateFrom)) return false;
+      if (filters.dateTo) { const to = new Date(filters.dateTo); to.setHours(23,59,59,999); if (new Date(expense.date) > to) return false; }
       return true;
     });
   }, [expenses, filters]);
@@ -603,8 +607,8 @@ const ExpensesManagement: React.FC = () => {
 
       {/* Filters */}
       <Card className="p-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <div className="relative">
+        <div className="flex flex-wrap gap-3">
+          <div className="relative w-48">
             <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
             <Input
               placeholder="Search expenses..."
@@ -613,6 +617,7 @@ const ExpensesManagement: React.FC = () => {
               className="pl-10"
             />
           </div>
+          <div className="w-40">
           <Select
             value={filters.category}
             onChange={(value) => setFilters(prev => ({ ...prev, category: (value as unknown) as string }))}
@@ -624,6 +629,8 @@ const ExpensesManagement: React.FC = () => {
               }))
             ]}
           />
+          </div>
+          <div className="w-36">
           <Select
             value={filters.status}
             onChange={(value) => setFilters(prev => ({ ...prev, status: (value as unknown) as string }))}
@@ -634,6 +641,8 @@ const ExpensesManagement: React.FC = () => {
               { value: "rejected", label: "Rejected" }
             ]}
           />
+          </div>
+          <div className="w-40">
           <Select
             value={filters.branchId}
             onChange={(value) => setFilters(prev => ({ ...prev, branchId: (value as unknown) as string, clerkId: '' }))}
@@ -644,6 +653,8 @@ const ExpensesManagement: React.FC = () => {
                 .map(name => ({ value: name!, label: name! }))
             ]}
           />
+          </div>
+          <div className="w-44">
           <Select
             value={filters.clerkId}
             onChange={(value) => setFilters(prev => ({ ...prev, clerkId: (value as unknown) as string }))}
@@ -659,9 +670,26 @@ const ExpensesManagement: React.FC = () => {
                 .map(name => ({ value: name!, label: name! }))
             ]}
           />
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="date"
+              value={filters.dateFrom}
+              onChange={(e) => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+              className="input-field text-sm"
+              placeholder="From"
+            />
+            <input
+              type="date"
+              value={filters.dateTo}
+              onChange={(e) => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+              className="input-field text-sm"
+              placeholder="To"
+            />
+          </div>
           <Button
             variant="outline"
-            onClick={() => setFilters({ search: '', category: '', status: '', branchId: '', clerkId: '', dateRange: '' })}
+            onClick={() => setFilters({ search: '', category: '', status: '', branchId: '', clerkId: '', dateFrom: '', dateTo: '' })}
             className="flex items-center space-x-2"
           >
             <Filter className="w-4 h-4" />
