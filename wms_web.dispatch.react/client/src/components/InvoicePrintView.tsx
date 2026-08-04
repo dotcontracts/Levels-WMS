@@ -192,14 +192,16 @@ export const InvoicePrintView: React.FC<InvoicePrintViewProps> = ({ invoice }) =
           <h3 className="font-bold text-lg mb-3">Invoice Summary</h3>
           
           <div className="print-summary-row">
-            <span>Subtotal (excl. VAT):</span>
+            <span>{invoice.taxAmount > 0 ? 'Subtotal (excl. VAT):' : 'Subtotal:'}</span>
             <span>{formatCurrency(invoice.subtotal)}</span>
           </div>
           
-          <div className="print-summary-row">
-            <span>VAT (16%):</span>
-            <span>{formatCurrency(invoice.taxAmount)}</span>
-          </div>
+          {invoice.taxAmount > 0 && (
+            <div className="print-summary-row">
+              <span>VAT ({invoice.customer?.taxRate ?? 16}%):</span>
+              <span>{formatCurrency(invoice.taxAmount)}</span>
+            </div>
+          )}
           
           <div className="print-summary-row print-total-row">
             <span>Total Amount:</span>
@@ -575,8 +577,8 @@ const generateInvoiceHTML = (invoice: Invoice) => {
 
     <div class="summary-section">
       <table class="summary-table">
-        <tr><td>Subtotal (excl. VAT)</td><td class="text-right">${formatCurrency(invoice.subtotal)}</td></tr>
-        <tr><td>VAT (16%)</td><td class="text-right">${formatCurrency(invoice.taxAmount)}</td></tr>
+        <tr><td>${invoice.taxAmount > 0 ? 'Subtotal (excl. VAT)' : 'Subtotal'}</td><td class="text-right">${formatCurrency(invoice.subtotal)}</td></tr>
+        ${invoice.taxAmount > 0 ? `<tr><td>VAT (${invoice.customer?.taxRate ?? 16}%)</td><td class="text-right">${formatCurrency(invoice.taxAmount)}</td></tr>` : ''}
         <tr class="total-row"><td>Total Amount</td><td class="text-right">${formatCurrency(invoice.totalAmount)}</td></tr>
         <tr><td>Amount Paid</td><td class="text-right" style="color:#059669">${formatCurrency(invoice.paidAmount)}</td></tr>
         <tr><td><strong>Outstanding Balance</strong></td><td class="text-right" style="font-weight:bold;color:${invoice.totalAmount - invoice.paidAmount > 0 ? '#dc2626' : '#059669'}">${formatCurrency(invoice.totalAmount - invoice.paidAmount)}</td></tr>

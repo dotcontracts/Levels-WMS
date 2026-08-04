@@ -98,11 +98,10 @@ namespace wms_android.api.Controllers
                 // Generate invoice number
                 var invoiceNumber = await GenerateInvoiceNumber();
 
-                // Calculate totals - prices are VAT-inclusive
-                var totalAmount = parcels.Sum(p => p.TotalAmount); // VAT-inclusive total
-                var taxRate = 0.16m; // 16% VAT
-                var subtotal = totalAmount / (1 + taxRate); // Extract base amount
-                var taxAmount = totalAmount - subtotal; // VAT component
+                var taxRate = customer.TaxRate / 100m;
+                var subtotal = parcels.Sum(p => p.TotalAmount);
+                var taxAmount = taxRate > 0 ? subtotal * taxRate : 0m;
+                var totalAmount = subtotal + taxAmount;
 
                 var invoice = new Invoice
                 {
