@@ -206,7 +206,9 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <AppLayout>
-                  <AdminParcelManagement />
+                  <ParcelsDataProvider>
+                    <AdminParcelManagement />
+                  </ParcelsDataProvider>
                 </AppLayout>
               </ProtectedRoute>
             }

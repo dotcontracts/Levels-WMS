@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useParcelsData } from '../context/ParcelsDataContext';
 import { wmsApi, Parcel } from '../services/wmsApi';
 import { 
   Package, 
@@ -83,24 +84,16 @@ interface PaginationState {
 
 const AdminParcelManagement: React.FC = () => {
   const { user, isAdmin, isAccountant } = useAuth();
-  const [parcels, setParcels] = useState<Parcel[]>([]);
+  const { getStreamingParcels, loading: cacheLoading } = useParcelsData();
+  const [allParcels, setAllParcels] = useState<Parcel[]>([]);
   const [loading, setLoading] = useState(true);
+  const usersByIdRef = useRef<Map<number, any> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  
-  // Pagination state
-  const [pagination, setPagination] = useState<PaginationState>({
-    currentPage: 1,
-    totalPages: 1,
-    totalCount: 0,
-    hasMoreData: true,
-    isLoadingMore: false
-  });
   
   // Dropdown options for edit modal
   const [availableDestinations, setAvailableDestinations] = useState<string[]>([]);
   const [availablePaymentMethods, setAvailablePaymentMethods] = useState<string[]>([]);
-  const [allUsers, setAllUsers] = useState<any[]>([]);
   
   // Edit Modal State
   const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
@@ -196,11 +189,17 @@ const AdminParcelManagement: React.FC = () => {
     }
   ], [clerks, availableDestinations, availablePaymentMethods]);
 
+  const ensureUsersCache = useCallback(async () => {
+    if (usersByIdRef.current) return usersByIdRef.current;
+    const users = await wmsApi.getUsers();
+    usersByIdRef.current = new Map(users.map(u => [u.id, u]));
+    return usersByIdRef.current;
+  }, []);
+
   // Check admin/accountant access
   useEffect(() => {
     if (user && !isAdmin() && !isAccountant()) {
       setError('Access denied. Admin or Accountant privileges required.');
-      return;
     }
   }, [user, isAdmin, isAccountant]);
 
@@ -211,188 +210,59 @@ const AdminParcelManagement: React.FC = () => {
     }).catch(() => {});
   }, []);
 
-  // Load parcels with pagination and server-side filtering
-  const loadParcels = useCallback(async (forceRefresh = false, loadMore = false) => {
+  const loadParcels = useCallback(async (forceRefresh = false) => {
     if (!user || (!isAdmin() && !isAccountant())) return;
-    
     try {
-      // Clear request cache to prevent stuck requests
-      if (forceRefresh) {
-        wmsApi.clearRequestCache();
-      }
-      
-      if (!loadMore) {
-        setLoading(true);
-      } else {
-        setPagination(prev => ({ ...prev, isLoadingMore: true }));
-      }
+      setLoading(true);
       setError(null);
-
-      // Reset pagination if not loading more
-      const currentPage = loadMore ? pagination.currentPage + 1 : 1;
-
-      // Build search parameters from filters
-      const searchParams: any = {
-        page: currentPage,
-        pageSize: 200
-      };
-
-      // Add filter parameters
-      if (filters.waybillNumber) {
-        searchParams.search = filters.waybillNumber;
-      }
-      if (filters.destination) {
-        searchParams.destination = filters.destination;
-      }
-      if (filters.status && filters.status !== 'all') {
-        searchParams.status = parseInt(filters.status);
-      }
-      if (filters.dateRange.from) {
-        searchParams.fromDate = filters.dateRange.from;
-      }
-      if (filters.dateRange.to) {
-        searchParams.toDate = filters.dateRange.to;
-      }
-      if (filters.createdBy) {
-        searchParams.createdByUsername = filters.createdBy;
-      }
-
-      // Build a comprehensive search string for additional fields
-      let searchTerms = [];
-      if (filters.paymentMethod) {
-        searchTerms.push(filters.paymentMethod);
-      }
-      
-      // Combine with existing search if any
-      if (searchTerms.length > 0) {
-        const additionalSearch = searchTerms.join(' ');
-        if (searchParams.search) {
-          searchParams.search += ` ${additionalSearch}`;
-        } else {
-          searchParams.search = additionalSearch;
-        }
-      }
-
-      const result = await wmsApi.getParcelsPaged(searchParams);
-      const data = result.data;
-
-      // Load users for mapping if needed
+      const result = await getStreamingParcels({});
+      const data = result.parcels;
       try {
-        const users = await wmsApi.getUsers();
-        setAllUsers(users);
-
-        // Map user names to parcels
-        const updatedParcels = data.map(parcel => {
+        const userMap = await ensureUsersCache();
+        const clerkList: { id: number; username: string }[] = [];
+        const mapped = data.map(parcel => {
           if (!parcel.createdBy && parcel.createdById) {
-            const user = users.find(u => u.id === parcel.createdById);
-            if (user) {
-              return {
-                ...parcel,
-                createdBy: {
-                  username: user.firstName && user.lastName 
-                    ? `${user.firstName} ${user.lastName}` 
-                    : user.username
-                }
-              };
-            }
+            const u = userMap.get(parcel.createdById);
+            if (u) return { ...parcel, createdBy: { username: u.firstName && u.lastName ? `${u.firstName} ${u.lastName}` : u.username } };
           }
           return parcel;
         });
-
-        // Sort parcels by creation date, latest first
-        const sortedParcels = updatedParcels.sort((a, b) => {
-          const dateA = new Date(a.createdAt || 0);
-          const dateB = new Date(b.createdAt || 0);
-          return dateB.getTime() - dateA.getTime();
-        });
-
-        // Append parcels if loading more, replace if new load
-        if (loadMore) {
-          setParcels(prev => [...prev, ...sortedParcels]);
-        } else {
-          setParcels(sortedParcels);
-        }
-
-        // Update pagination state using API response
-        setPagination(prev => ({
-          ...prev,
-          totalCount: result.totalCount,
-          totalPages: result.totalPages,
-          hasMoreData: result.hasNextPage,
-          currentPage: result.page,
-          isLoadingMore: false
-        }));
-
-        // Extract unique payment methods for filter dropdown
-        const paymentMethods = Array.from(new Set(updatedParcels.map(p => p.paymentMethods).filter(Boolean)));
-        setAvailablePaymentMethods(paymentMethods);
-
-        // Set clerks for filter
-        const clerkUsers = users.filter(u => u.role?.name === 'Clerk' || u.roles?.includes('clerk'));
-        setClerks(clerkUsers.map(u => ({ 
-          id: u.id, 
-          username: u.firstName && u.lastName ? `${u.firstName} ${u.lastName}` : u.username 
-        })));
-
-      } catch (userErr) {
-        // Continue with parcels even if user mapping fails
-        const sortedParcels = data.sort((a, b) => {
-          const dateA = new Date(a.createdAt || 0);
-          const dateB = new Date(b.createdAt || 0);
-          return dateB.getTime() - dateA.getTime();
-        });
-
-        if (loadMore) {
-          setParcels(prev => [...prev, ...sortedParcels]);
-        } else {
-          setParcels(sortedParcels);
-        }
-
-        // Update pagination state for fallback
-        setPagination(prev => ({
-          ...prev,
-          totalCount: result.totalCount,
-          totalPages: result.totalPages,
-          hasMoreData: result.hasNextPage,
-          currentPage: result.page,
-          isLoadingMore: false
-        }));
+        userMap.forEach(u => clerkList.push({ id: u.id, username: u.firstName && u.lastName ? `${u.firstName} ${u.lastName}` : u.username }));
+        setClerks(clerkList);
+        setAllParcels(mapped);
+        setAvailablePaymentMethods(Array.from(new Set(mapped.map(p => p.paymentMethods).filter(Boolean))));
+      } catch {
+        setAllParcels(data);
+        setAvailablePaymentMethods(Array.from(new Set(data.map(p => p.paymentMethods).filter(Boolean))));
       }
-      
-    } catch (err) {
+    } catch {
       setError('Failed to load parcels');
     } finally {
-      if (!loadMore) {
-        setLoading(false);
-      } else {
-        setPagination(prev => ({ ...prev, isLoadingMore: false }));
-      }
+      setLoading(false);
     }
-  }, [user, isAdmin, isAccountant, pagination.currentPage, filters]);
+  }, [user, isAdmin, isAccountant, getStreamingParcels, ensureUsersCache]);
 
   useEffect(() => {
     loadParcels();
   }, []);
 
-  // Refetch data when filters change
-  useEffect(() => {
-    // Reset pagination and refetch when filters change
-    setPagination(prev => ({
-      ...prev,
-      currentPage: 1,
-      isLoadingMore: false
-    }));
-    loadParcels(true);
-  }, [filters]);
-
-  // Load more handler for infinite scroll
-  const handleLoadMore = useCallback(() => {
-    if (!pagination.isLoadingMore && pagination.hasMoreData) {
-      loadParcels(false, true);
+  // Client-side filter across full dataset
+  const parcels = useMemo(() => {
+    let result = allParcels;
+    if (filters.waybillNumber) {
+      const q = filters.waybillNumber.toLowerCase();
+      result = result.filter(p => p.waybillNumber?.toLowerCase().includes(q));
     }
-  }, [pagination.isLoadingMore, pagination.hasMoreData, loadParcels]);
-
-  // Since we're doing server-side filtering, use parcels directly
+    if (filters.createdBy) result = result.filter(p => p.createdBy?.username === filters.createdBy);
+    if (filters.status && filters.status !== 'all') result = result.filter(p => p.status === parseInt(filters.status));
+    if (filters.destination) result = result.filter(p => p.destination === filters.destination);
+    if (filters.paymentMethod) result = result.filter(p => p.paymentMethods === filters.paymentMethod);
+    if (filters.dateRange.from) result = result.filter(p => new Date(p.createdAt) >= new Date(filters.dateRange.from));
+    if (filters.dateRange.to) { const to = new Date(filters.dateRange.to); to.setHours(23,59,59,999); result = result.filter(p => new Date(p.createdAt) <= to); }
+    if (filters.amountRange.from) result = result.filter(p => (p.totalAmount || 0) >= parseFloat(filters.amountRange.from));
+    if (filters.amountRange.to) result = result.filter(p => (p.totalAmount || 0) <= parseFloat(filters.amountRange.to));
+    return result.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  }, [allParcels, filters]);
 
   // Handle filter changes
   const handleFilterChange = (key: string, value: string | { from: string; to: string }) => {
@@ -491,7 +361,7 @@ const AdminParcelManagement: React.FC = () => {
     try {
       const success = await wmsApi.updateParcelStatus(parcelId, newStatus);
       if (success) {
-        setParcels(prev => prev.map(p => 
+        setAllParcels(prev => prev.map(p => 
           p.id === parcelId ? { ...p, status: newStatus } : p
         ));
         setSuccessMessage(`Parcel status updated to ${STATUS_LABELS[newStatus]}`);
@@ -585,8 +455,7 @@ const AdminParcelManagement: React.FC = () => {
       const success = await wmsApi.updateParcel(editingParcel.id, updateData);
       
       if (success) {
-        // Update local state with the new values
-        setParcels(prev => prev.map(p => 
+        setAllParcels(prev => prev.map(p => 
           p.id === editingParcel.id ? { ...p, ...updateData, totalAmount: editForm.amount } : p
         ));
         setSuccessMessage('Parcel updated successfully');
@@ -612,7 +481,7 @@ const AdminParcelManagement: React.FC = () => {
       const success = await wmsApi.deleteParcel(deletingParcel.id);
       
       if (success) {
-        setParcels(prev => prev.filter(p => p.id !== deletingParcel.id));
+        setAllParcels(prev => prev.filter(p => p.id !== deletingParcel.id));
         setSuccessMessage('Parcel deleted successfully');
         setDeletingParcel(null);
         setTimeout(() => setSuccessMessage(null), 3000);
@@ -813,7 +682,7 @@ const AdminParcelManagement: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => loadParcels(true)}
-            disabled={loading}
+            disabled={loading || cacheLoading}
             className="btn-primary flex items-center gap-2"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -853,7 +722,7 @@ const AdminParcelManagement: React.FC = () => {
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900">
-              Parcels ({parcels.length} of {pagination.totalCount})
+              Parcels ({parcels.length} of {allParcels.length})
             </h2>
           </div>
         </div>
@@ -863,10 +732,10 @@ const AdminParcelManagement: React.FC = () => {
           columns={columns}
           rowHeight={64}
           containerHeight={600}
-          loading={loading}
-          hasMoreData={pagination.hasMoreData}
-          isLoadingMore={pagination.isLoadingMore}
-          onLoadMore={handleLoadMore}
+          loading={loading || cacheLoading}
+          hasMoreData={false}
+          isLoadingMore={false}
+          onLoadMore={() => {}}
           emptyMessage={
             Object.values(filters).some(filter => filter) 
               ? 'Try adjusting your filters or refresh the data' 
