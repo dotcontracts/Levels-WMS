@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Menu, Bell, Search, Sun, Moon } from 'lucide-react';
 import { useSidebar } from '../context/SidebarContext';
 import { useAuth } from '../context/AuthContext';
+import { wmsApi } from '../services/wmsApi';
+import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 
 
@@ -12,8 +14,38 @@ interface AppHeaderProps {
 
 const AppHeader: React.FC<AppHeaderProps> = ({ darkMode, toggleDarkMode }) => {
   const { toggleUnified } = useSidebar();
-  const { user } = useAuth();
+  const { user, isAdmin, isAccountant } = useAuth();
+  const navigate = useNavigate();
+  const [pendingDeposits, setPendingDeposits] = useState<any[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!user || (!isAdmin() && !isAccountant())) return;
+
+    const fetchPending = () => {
+      wmsApi.getPendingDeposits().then(setPendingDeposits).catch(() => {});
+    };
+
+    fetchPending();
+    const interval = setInterval(fetchPending, 60_000);
+    return () => clearInterval(interval);
+  }, [user]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleViewAll = () => {
+    setShowDropdown(false);
+    navigate('/deposits');
+  };
 
   return (
     <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-30">
@@ -49,10 +81,52 @@ const AppHeader: React.FC<AppHeaderProps> = ({ darkMode, toggleDarkMode }) => {
           </button>
 
           {/* Notifications */}
-          <button className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-            <Bell className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-            <span className="absolute -top-1 -right-1 w-3 h-3 bg-error-500 rounded-full"></span>
-          </button>
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setShowDropdown(v => !v)}
+              className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              <Bell className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              {pendingDeposits.length > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-error-500 rounded-full text-white text-xs flex items-center justify-center px-1">
+                  {pendingDeposits.length > 99 ? '99+' : pendingDeposits.length}
+                </span>
+              )}
+            </button>
+
+            {showDropdown && (
+              <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 shadow-lg rounded-lg border border-gray-200 dark:border-gray-700 z-50">
+                <div className="p-3 border-b border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200">
+                  {pendingDeposits.length > 0
+                    ? `Pending Deposits (${pendingDeposits.length})`
+                    : 'No pending deposits'}
+                </div>
+                {pendingDeposits.length > 0 && (
+                  <>
+                    <ul className="max-h-72 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
+                      {pendingDeposits.map(d => (
+                        <li key={d.id} className="p-3 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm">
+                          <div className="font-medium text-gray-800 dark:text-gray-100">{d.branch}</div>
+                          <div className="text-gray-500 dark:text-gray-400">
+                            {new Date(d.date).toLocaleDateString()} &middot; KES {d.depositAmount?.toLocaleString()}
+                          </div>
+                          {d.createdByName && (
+                            <div className="text-gray-400 dark:text-gray-500 text-xs mt-0.5">by {d.createdByName}</div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      onClick={handleViewAll}
+                      className="block w-full p-3 text-center text-sm text-brand-600 dark:text-brand-400 hover:bg-gray-50 dark:hover:bg-gray-700 border-t border-gray-200 dark:border-gray-700 rounded-b-lg"
+                    >
+                      View all deposits →
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Dark mode toggle */}
           {toggleDarkMode && (

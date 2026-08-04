@@ -2558,6 +2558,19 @@ class WMSApiService {
     }
   }
 
+  async getPendingDeposits(): Promise<any[]> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/BranchDeposits/pending`, {
+        headers: this.getHeaders(),
+        signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+      });
+      if (!response.ok) return [];
+      return response.json();
+    } catch {
+      return [];
+    }
+  }
+
   async getBranchCodLockStatus(branchName: string): Promise<{
     isLocked: boolean;
     reason: string;

@@ -143,6 +143,32 @@ namespace wms_android.api.Controllers
 
             return Ok(summary);
         }
+        // GET: api/BranchDeposits/pending
+        [HttpGet("pending")]
+        public async Task<ActionResult<IEnumerable<BranchDepositDto>>> GetPendingDeposits()
+        {
+            var pending = await _context.BranchDeposits
+                .Include(bd => bd.CreatedBy)
+                .Where(bd => bd.Status == "pending")
+                .OrderByDescending(bd => bd.Date)
+                .ToListAsync();
+
+            var result = pending.Select(bd => new BranchDepositDto
+            {
+                Id = bd.Id,
+                Branch = bd.Branch,
+                Date = bd.Date,
+                CodTotal = bd.CodTotal,
+                DepositAmount = bd.DepositAmount,
+                Status = bd.Status,
+                CreatedAt = bd.CreatedAt,
+                CreatedById = bd.CreatedById,
+                CreatedByName = bd.CreatedBy != null ? $"{bd.CreatedBy.FirstName} {bd.CreatedBy.LastName}" : null
+            });
+
+            return Ok(result);
+        }
+
         // PUT: api/BranchDeposits/{id}/approve
         [HttpPut("{id}/approve")]
         public async Task<IActionResult> ApproveBranchDeposit(int id)
