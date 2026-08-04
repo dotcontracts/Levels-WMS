@@ -184,6 +184,18 @@ const App: React.FC = () => {
             }
           />
           <Route
+            path="/reports/:reportType"
+            element={
+              <ProtectedRoute>
+                <AppLayout>
+                  <ReportsDataProvider>
+                    <Reports />
+                  </ReportsDataProvider>
+                </AppLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/sms-messaging"
             element={
               <ProtectedRoute>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useReportsData } from '../context/ReportsDataContext';
 import { wmsApi, Parcel, Dispatch, ParcelDepositDto, DailyExpense } from '../services/wmsApi';
@@ -201,7 +202,6 @@ const Reports: React.FC = () => {
     getLoadProgress
   } = useReportsData();
   
-  const [currentReport, setCurrentReport] = useState<ReportType>('dashboard');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [parcels, setParcels] = useState<Parcel[]>([]);
@@ -281,6 +281,10 @@ const Reports: React.FC = () => {
   });
 
   const { user, isAccountant, isBranchManager } = useAuth();
+  const { reportType: reportTypeParam } = useParams<{ reportType: string }>();
+  const navigate = useNavigate();
+  const currentReport: ReportType = (reportTypeParam as ReportType) || (isBranchManager() ? 'branch-cod-report' : 'dashboard');
+  const setCurrentReport = (report: ReportType) => navigate(`/reports/${report}`);
 
   const [managerDeposits, setManagerDeposits] = useState<any[]>([]);
   const [managerCodLoading, setManagerCodLoading] = useState(false);
@@ -294,10 +298,12 @@ const Reports: React.FC = () => {
   const [managerSubmitSuccess, setManagerSubmitSuccess] = useState('');
 
   useEffect(() => {
-    if (isBranchManager()) {
-      setCurrentReport('branch-cod-report');
+    if (isBranchManager() && !reportTypeParam) {
+      navigate('/reports/branch-cod-report', { replace: true });
+    } else if (!isBranchManager() && !reportTypeParam) {
+      navigate('/reports/dashboard', { replace: true });
     }
-  }, [user]);
+  }, [user, reportTypeParam]);
 
   // Format currency helper
   const formatCurrency = useCallback((amount: number) => {
@@ -4976,35 +4982,6 @@ const Reports: React.FC = () => {
           defaultExpanded={true}
         />
       )}
-
-      {/* Report Type Selector */}
-      <Card>
-        <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Select Report Type
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-            {reportTypes.map((report) => {
-              const IconComponent = report.icon;
-              return (
-                <button
-                  key={report.key}
-                  onClick={() => setCurrentReport(report.key as ReportType)}
-                  className={`p-4 rounded-lg border-2 transition-all duration-200 ${currentReport === report.key
-                    ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-500/20 dark:text-brand-400'
-                    : 'border-gray-200 hover:border-gray-300 text-gray-700 hover:text-gray-900 dark:border-gray-700 dark:hover:border-gray-600 dark:text-gray-300 dark:hover:text-gray-100'
-                    }`}
-                >
-                  <IconComponent className="w-6 h-6 mx-auto mb-2" />
-                  <div className="text-sm font-medium text-center">
-                    {report.label}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </Card>
 
       {/* Report Content */}
       <DataLoadingState

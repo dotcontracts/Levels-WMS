@@ -44,7 +44,7 @@ const AppHeader: React.FC<AppHeaderProps> = ({ darkMode, toggleDarkMode }) => {
 
   const handleViewAll = () => {
     setShowDropdown(false);
-    navigate('/deposits');
+    navigate('/reports/cod-delivered');
   };
 
   return (

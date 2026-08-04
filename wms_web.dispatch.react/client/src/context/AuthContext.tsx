@@ -263,6 +263,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const canAccessMenu = (menuPath: string): boolean => {
     if (!user) return false;
+
+    const normalizedPath = menuPath.startsWith('/reports/') ? '/reports' : menuPath;
     
     // Admin (roleId: 1) can access all menus
     if (isAdmin()) return true;
@@ -270,7 +272,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Accountant (roleId: 5) can access all menus except User Management
     if (isAccountant()) {
       const restrictedPaths = ['/user-management'];
-      return !restrictedPaths.includes(menuPath);
+      return !restrictedPaths.includes(normalizedPath);
     }
     
     // Branch managers (roleId: 2) can only access specific menus
@@ -280,9 +282,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         '/parcels',
         '/branch-parcels',
         '/dispatches/view',
-        '/dispatches/create'
+        '/dispatches/create',
+        '/reports',
+        '/reports/branch-cod-report'
       ];
-      return allowedPaths.includes(menuPath);
+      return allowedPaths.includes(normalizedPath) || allowedPaths.includes(menuPath);
     }
     
     // Clerk role (roleId: 3) - NO ACCESS to the site

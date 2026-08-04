@@ -64,7 +64,16 @@ const AppSidebar: React.FC = () => {
       {
         icon: <BarChart3 className="w-6 h-6" />,
         name: "Reports",
-        path: "/reports",
+        subItems: [
+          { name: "Dashboard", path: "/reports/dashboard" },
+          { name: "Sales per Clerk", path: "/reports/sales-per-clerk" },
+          { name: "Delivery Rate", path: "/reports/delivery-rate" },
+          { name: "Undelivered Parcels", path: "/reports/undelivered-parcels" },
+          { name: "Branch Debit", path: "/reports/cod-delivered" },
+          { name: "Clerk Debit", path: "/reports/clerk-debit" },
+          { name: "Parcel List", path: "/reports/parcel-list" },
+          { name: "COD Report", path: "/reports/branch-cod-report" },
+        ],
       },
       {
         icon: <MessageSquare className="w-6 h-6" />,
@@ -144,7 +153,7 @@ const AppSidebar: React.FC = () => {
   }, [user, canAccessMenu]);
 
   const isActive = useCallback(
-    (path: string) => location.pathname === path,
+    (path: string) => location.pathname === path || location.pathname.startsWith(path + '/'),
     [location.pathname]
   );
 
@@ -224,7 +233,7 @@ const AppSidebar: React.FC = () => {
   return (
     <aside
       className={clsx(
-        "fixed top-0 left-0 z-40 h-screen bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 transition-all duration-300 ease-in-out",
+        "fixed top-0 left-0 z-40 h-screen flex flex-col bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 transition-all duration-300 ease-in-out",
         {
           // Mobile: Always full width when open, hidden when closed
           "w-64 translate-x-0": isMobileOpen,
