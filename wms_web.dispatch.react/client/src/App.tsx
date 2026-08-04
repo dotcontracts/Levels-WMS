@@ -124,7 +124,9 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <AppLayout>
-                  <FinancialDashboard />
+                  <ParcelsDataProvider>
+                    <FinancialDashboard />
+                  </ParcelsDataProvider>
                 </AppLayout>
               </ProtectedRoute>
             }
