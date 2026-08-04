@@ -93,6 +93,18 @@ namespace wms_android.api.Controllers
                 
                 var currentUser = await _context.Users.FindAsync(currentUserId);
                 
+                var resolvedBranchName = await GetBranchName(createDto.BranchId) ?? createDto.BranchName ?? "";
+                var resolvedClerkName = await GetUserName(createDto.ClerkId) ?? createDto.ClerkName ?? "";
+
+                var resolvedBranchId = createDto.BranchId;
+                if (!resolvedBranchId.HasValue && createDto.ClerkId.HasValue)
+                {
+                    var clerkUser = await _context.Users.Include(u => u.Branch).FirstOrDefaultAsync(u => u.Id == createDto.ClerkId.Value);
+                    resolvedBranchId = clerkUser?.BranchId;
+                    if (string.IsNullOrEmpty(resolvedBranchName))
+                        resolvedBranchName = clerkUser?.Branch?.Name ?? "";
+                }
+
                 var expense = new DailyExpense
                 {
                     Category = createDto.Category,
@@ -102,10 +114,10 @@ namespace wms_android.api.Controllers
                     Vendor = createDto.Vendor ?? "",
                     ReceiptNumber = createDto.ReceiptNumber ?? "",
                     Status = "pending",
-                    BranchId = createDto.BranchId,
-                    BranchName = createDto.BranchName ?? await GetBranchName(createDto.BranchId) ?? "",
+                    BranchId = resolvedBranchId,
+                    BranchName = resolvedBranchName,
                     ClerkId = createDto.ClerkId,
-                    ClerkName = createDto.ClerkName ?? await GetUserName(createDto.ClerkId) ?? "",
+                    ClerkName = resolvedClerkName,
                     CreatedById = currentUserId.Value,
                     CreatedByName = $"{currentUser?.FirstName} {currentUser?.LastName}".Trim(),
                     ApprovalNotes = "", // Initialize to empty string to satisfy NOT NULL constraint

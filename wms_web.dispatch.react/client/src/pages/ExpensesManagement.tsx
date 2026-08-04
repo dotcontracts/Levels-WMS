@@ -255,12 +255,10 @@ const ExpensesManagement: React.FC = () => {
           !expense.receiptNumber?.toLowerCase().includes(filters.search.toLowerCase())) {
         return false;
       }
-      if (filters.category && expense.category !== filters.category) {
-        return false;
-      }
-      if (filters.status && expense.status !== filters.status) {
-        return false;
-      }
+      if (filters.category && expense.category !== filters.category) return false;
+      if (filters.status && expense.status !== filters.status) return false;
+      if (filters.branchId && expense.branchName !== filters.branchId) return false;
+      if (filters.clerkId && expense.clerkName !== filters.clerkId) return false;
       return true;
     });
   }, [expenses, filters]);
@@ -605,7 +603,7 @@ const ExpensesManagement: React.FC = () => {
 
       {/* Filters */}
       <Card className="p-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
             <Input
@@ -634,6 +632,31 @@ const ExpensesManagement: React.FC = () => {
               { value: "pending", label: "Pending" },
               { value: "approved", label: "Approved" },
               { value: "rejected", label: "Rejected" }
+            ]}
+          />
+          <Select
+            value={filters.branchId}
+            onChange={(value) => setFilters(prev => ({ ...prev, branchId: (value as unknown) as string, clerkId: '' }))}
+            options={[
+              { value: "", label: "All Branches" },
+              ...Array.from(new Set(expenses.map(e => e.branchName).filter(Boolean)))
+                .sort()
+                .map(name => ({ value: name!, label: name! }))
+            ]}
+          />
+          <Select
+            value={filters.clerkId}
+            onChange={(value) => setFilters(prev => ({ ...prev, clerkId: (value as unknown) as string }))}
+            options={[
+              { value: "", label: "All Clerks" },
+              ...Array.from(new Set(
+                expenses
+                  .filter(e => !filters.branchId || e.branchName === filters.branchId)
+                  .map(e => e.clerkName)
+                  .filter(Boolean)
+              ))
+                .sort()
+                .map(name => ({ value: name!, label: name! }))
             ]}
           />
           <Button
