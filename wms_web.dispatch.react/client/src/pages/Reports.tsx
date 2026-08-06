@@ -642,9 +642,11 @@ const Reports: React.FC = () => {
 
       // Calculate totals for each clerk
       Object.values(clerkData).forEach(clerk => {
-        clerk.totalDeposited = clerk.clerkDeposits
+        const webPanelDeposited = clerk.parcels.reduce((sum, p) => sum + p.depositedAmount, 0);
+        const androidDeposited = clerk.clerkDeposits
           .filter(d => d.status === 'approved')
           .reduce((sum, d) => sum + d.amount, 0);
+        clerk.totalDeposited = webPanelDeposited + androidDeposited;
         clerk.totalExpenses = approvedClerkExpenses
           .filter(e => e.clerkId === clerk.clerkId)
           .reduce((sum, e) => sum + e.amount, 0);

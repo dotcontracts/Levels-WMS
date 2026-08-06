@@ -200,14 +200,17 @@ namespace wms_android.ViewModels
                     return;
                 }
 
-                if (!DepositApproved)
-                {
-                    if (string.IsNullOrWhiteSpace(DepositAmountInput))
-                    {
-                        SubmitError = "Please enter the deposit amount.";
-                        return;
-                    }
+                var hasDeposit = !DepositApproved && !string.IsNullOrWhiteSpace(DepositAmountInput);
+                var hasExpenseOnly = expenseAmount > 0 && string.IsNullOrWhiteSpace(DepositAmountInput);
 
+                if (!DepositApproved && string.IsNullOrWhiteSpace(DepositAmountInput) && expenseAmount <= 0)
+                {
+                    SubmitError = "Please enter a deposit amount and/or expense amount to declare.";
+                    return;
+                }
+
+                if (hasDeposit)
+                {
                     if (!decimal.TryParse(DepositAmountInput, NumberStyles.Any, CultureInfo.InvariantCulture, out var depositAmount) || depositAmount <= 0)
                     {
                         SubmitError = "Please enter a valid deposit amount.";
@@ -264,16 +267,14 @@ namespace wms_android.ViewModels
                     }
                 }
 
-                IsLocked = false;
-                LockReason = "pending_approval";
-                AppShell.IsClerkLocked = false;
-                ShowPendingApprovalBanner = true;
-                DepositRejected = false;
-                ExpenseRejected = false;
                 DepositAmountInput = "";
                 ExpenseAmountInput = "";
                 ExpenseCategory = "other";
                 ExpenseDescription = "";
+
+                var userId2 = Preferences.Get("CurrentUserId", 0);
+                var lockStatus = await _parcelService.GetClerkLockStatusAsync(userId2, DateTime.Today);
+                ApplyLockStatus(lockStatus);
             }
             catch (Exception ex)
             {
@@ -353,9 +354,9 @@ namespace wms_android.ViewModels
 
             ExistingExpenseId = lockStatus.ExpenseRecordId;
             ExpenseRejected = lockStatus.ExpenseStatus == "rejected";
-            ExpenseApproved = lockStatus.ExpenseStatus == "approved";
+            ExpenseApproved = lockStatus.TotalApprovedExpenses > 0;
             ExpenseRejectionReason = lockStatus.ExpenseRejectionReason ?? "";
-            ApprovedExpenseAmount = ExpenseApproved ? (lockStatus.ExpenseAmount ?? 0m) : 0m;
+            ApprovedExpenseAmount = lockStatus.TotalApprovedExpenses;
 
             if (DepositRejected)
             {

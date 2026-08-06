@@ -1316,6 +1316,13 @@ namespace wms_android.api.Services
                 return dto;
             }
 
+            // Check for web panel deposit (ParcelDeposits) for yesterday's parcels
+            var webDepositTotal = await _context.ParcelDeposits
+                .Where(pd => pd.Parcel.CreatedById == userId &&
+                             pd.Parcel.CreatedAt >= yesterdayStart &&
+                             pd.Parcel.CreatedAt < yesterdayEnd)
+                .SumAsync(pd => pd.DepositedAmount);
+
             var depositRecord = await _context.DailyExpenses
                 .Where(e => e.ClerkId == userId &&
                             e.Category == "clerk_deposit" &&
@@ -1347,6 +1354,16 @@ namespace wms_android.api.Services
                 dto.ExpenseRejectionReason = latestExpense.RejectionReason;
             }
 
+            dto.TotalApprovedExpenses = expenseRecords
+                .Where(e => e.Status == "approved")
+                .Sum(e => e.Amount);
+
+            var depositTotal = webDepositTotal
+                + (depositRecord != null ? depositRecord.Amount : 0m);
+            var expenseTotal = expenseRecords.Sum(e => e.Amount);
+            var totalDeclared = depositTotal + expenseTotal;
+
+            // Rule 3: any rejection locks the account
             if (expenseRecords.Any(e => e.Status == "rejected") || depositRecord?.Status == "rejected")
             {
                 dto.IsLocked = true;
@@ -1354,38 +1371,27 @@ namespace wms_android.api.Services
                 return dto;
             }
 
-            if (depositRecord == null)
+            // Rule 4: nothing declared for yesterday
+            if (webDepositTotal <= 0 && depositRecord == null && !expenseRecords.Any())
             {
-                var approvedExpensesTotal = expenseRecords
-                    .Where(e => e.Status == "approved")
-                    .Sum(e => e.Amount);
-
-                if (approvedExpensesTotal >= yesterdayPaidTotal)
-                {
-                    dto.IsLocked = false;
-                    dto.Reason = "none";
-                    return dto;
-                }
-
-                var pendingExpensesTotal = expenseRecords
-                    .Where(e => e.Status == "pending")
-                    .Sum(e => e.Amount);
-
-                if (approvedExpensesTotal + pendingExpensesTotal >= yesterdayPaidTotal)
-                {
-                    dto.IsLocked = false;
-                    dto.Reason = "pending_approval";
-                    return dto;
-                }
-
                 dto.IsLocked = true;
                 dto.Reason = "pending_submission";
                 return dto;
             }
 
-            dto.IsLocked = false;
-            var hasPending = depositRecord.Status == "pending" || expenseRecords.Any(e => e.Status == "pending");
-            dto.Reason = hasPending ? "pending_approval" : "none";
+            // Rules 1 & 2: deposit+expense or expense alone covers yesterdayPaidTotal
+            if (totalDeclared >= yesterdayPaidTotal)
+            {
+                dto.IsLocked = false;
+                var allApproved = (depositRecord == null || depositRecord.Status == "approved") &&
+                                  expenseRecords.All(e => e.Status == "approved");
+                dto.Reason = allApproved ? "none" : "pending_approval";
+                return dto;
+            }
+
+            // Declared but not enough to cover yesterdayPaidTotal
+            dto.IsLocked = true;
+            dto.Reason = "pending_submission";
             return dto;
         }
 

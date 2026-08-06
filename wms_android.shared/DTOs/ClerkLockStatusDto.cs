@@ -22,5 +22,6 @@ namespace wms_android.shared.DTOs
         public string? ExpenseStatus { get; set; }
         public decimal? ExpenseAmount { get; set; }
         public string? ExpenseRejectionReason { get; set; }
+        public decimal TotalApprovedExpenses { get; set; }
     }
 }
