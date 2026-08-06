@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useReportsData } from '../context/ReportsDataContext';
 import { wmsApi, Parcel, Dispatch, ParcelDepositDto, DailyExpense } from '../services/wmsApi';
@@ -225,6 +225,7 @@ const Reports: React.FC = () => {
 
   // Cash-in related state
   const [salesPerClerkTab, setSalesPerClerkTab] = useState<'performance' | 'cash-in' | 'daily-sales'>('performance');
+  const [pendingClerkId, setPendingClerkId] = useState<number | null>(null);
   const [clerkCashInData, setClerkCashInData] = useState<ClerkCashInData[]>([]);
   const [selectedClerk, setSelectedClerk] = useState<ClerkCashInData | null>(null);
   const [showClerkDetailsModal, setShowClerkDetailsModal] = useState(false);
@@ -232,7 +233,7 @@ const Reports: React.FC = () => {
   const [showParcelModal, setShowParcelModal] = useState(false);
   const [parcelDepositAmount, setParcelDepositAmount] = useState('');
   const [updatingParcel, setUpdatingParcel] = useState(false);
-  const [cashInDate, setCashInDate] = useState(new Date().toISOString().split('T')[0]); // Single date filter for cash-in
+  const [cashInDate, setCashInDate] = useState(new Date().toISOString().split('T')[0]);
   const [activeBranchTab, setActiveBranchTab] = useState<string>('');
   const [loadingDeposits, setLoadingDeposits] = useState(false);
   const [savingDeposit, setSavingDeposit] = useState(false);
@@ -282,9 +283,19 @@ const Reports: React.FC = () => {
 
   const { user, isAccountant, isBranchManager } = useAuth();
   const { reportType: reportTypeParam } = useParams<{ reportType: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const currentReport: ReportType = (reportTypeParam as ReportType) || (isBranchManager() ? 'branch-cod-report' : 'dashboard');
   const setCurrentReport = (report: ReportType) => navigate(`/reports/${report}`);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    const date = searchParams.get('date');
+    const pendingClerk = searchParams.get('pendingClerk');
+    if (tab === 'cash-in') setSalesPerClerkTab('cash-in');
+    if (date) setCashInDate(date);
+    if (pendingClerk) setPendingClerkId(Number(pendingClerk));
+  }, [searchParams]);
 
   const [managerDeposits, setManagerDeposits] = useState<any[]>([]);
   const [managerCodLoading, setManagerCodLoading] = useState(false);
@@ -2968,11 +2979,21 @@ const Reports: React.FC = () => {
                   </Table.Row>
                 </Table.Header>
                 <Table.Body>
-                  {clerkCashInData.map((clerk: ClerkCashInData, index: number) => (
-                    <Table.Row key={index}>
+                  {clerkCashInData.map((clerk: ClerkCashInData, index: number) => {
+                    const hasPendingDeposit = pendingClerkId === clerk.clerkId ||
+                      clerk.clerkDeposits.some(d => d.status === 'pending');
+                    return (
+                    <Table.Row key={index} className={hasPendingDeposit ? 'bg-yellow-50 dark:bg-yellow-500/10' : ''}>
                       <Table.Cell>
-                        <div className="font-medium text-gray-900 dark:text-white">
-                          {clerk.clerkName}
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium text-gray-900 dark:text-white">
+                            {clerk.clerkName}
+                          </div>
+                          {hasPendingDeposit && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-300">
+                              Deposit pending
+                            </span>
+                          )}
                         </div>
                         <div className="text-sm text-gray-500 dark:text-gray-400">
                           @{clerk.clerkUsername} ({clerk.parcels.length} parcels)
@@ -3007,7 +3028,8 @@ const Reports: React.FC = () => {
                         </Button>
                       </Table.Cell>
                     </Table.Row>
-                  ))}
+                    );
+                  })}
                 </Table.Body>
               </Table>
             </Card>

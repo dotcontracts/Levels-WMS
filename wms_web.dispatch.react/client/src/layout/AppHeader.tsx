@@ -12,23 +12,65 @@ interface AppHeaderProps {
   toggleDarkMode?: () => void;
 }
 
+interface Notification {
+  id: string | number;
+  type: 'branch_deposit' | 'clerk_deposit' | 'clerk_expense';
+  label: string;
+  sublabel: string;
+  meta?: string;
+  href: string;
+}
+
 const AppHeader: React.FC<AppHeaderProps> = ({ darkMode, toggleDarkMode }) => {
   const { toggleUnified } = useSidebar();
   const { user, isAdmin, isAccountant } = useAuth();
   const navigate = useNavigate();
-  const [pendingDeposits, setPendingDeposits] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!user || (!isAdmin() && !isAccountant())) return;
 
-    const fetchPending = () => {
-      wmsApi.getPendingDeposits().then(setPendingDeposits).catch(() => {});
+    const fetchNotifications = async () => {
+      const [branchDeposits, clerkDeposits, clerkExpenses] = await Promise.all([
+        wmsApi.getPendingDeposits(),
+        wmsApi.getPendingClerkDeposits(),
+        wmsApi.getPendingClerkExpenses(),
+      ]);
+
+      const mapped: Notification[] = [
+        ...branchDeposits.map((d: any) => ({
+          id: `branch-${d.id}`,
+          type: 'branch_deposit' as const,
+          label: d.branch,
+          sublabel: `${new Date(d.date).toLocaleDateString()} · KES ${d.depositAmount?.toLocaleString()}`,
+          meta: d.createdByName ? `by ${d.createdByName}` : undefined,
+          href: '/reports/cod-delivered',
+        })),
+        ...clerkDeposits.map((e: any) => ({
+          id: `clerk-dep-${e.id}`,
+          type: 'clerk_deposit' as const,
+          label: e.clerkName || `Clerk #${e.clerkId}`,
+          sublabel: `${new Date(e.date).toLocaleDateString()} · KES ${e.amount?.toLocaleString()}`,
+          meta: 'Deposit declaration',
+          href: `/reports/sales-per-clerk?tab=cash-in&date=${e.date?.split('T')[0]}&clerkId=${e.clerkId}&pendingClerk=${e.clerkId}`,
+        })),
+        ...clerkExpenses.map((e: any) => ({
+          id: `clerk-exp-${e.id}`,
+          type: 'clerk_expense' as const,
+          label: e.clerkName || `Clerk #${e.clerkId}`,
+          sublabel: `${new Date(e.date).toLocaleDateString()} · KES ${e.amount?.toLocaleString()}`,
+          meta: e.category?.replace(/_/g, ' '),
+          href: `/expenses?status=pending&clerkName=${encodeURIComponent(e.clerkName || '')}`,
+        })),
+      ];
+
+      setNotifications(mapped);
     };
 
-    fetchPending();
-    const interval = setInterval(fetchPending, 60_000);
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 60_000);
     return () => clearInterval(interval);
   }, [user]);
 
@@ -42,10 +84,14 @@ const AppHeader: React.FC<AppHeaderProps> = ({ darkMode, toggleDarkMode }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleViewAll = () => {
+  const handleNotificationClick = (href: string) => {
     setShowDropdown(false);
-    navigate('/reports/cod-delivered');
+    navigate(href);
   };
+
+  const branchCount = notifications.filter(n => n.type === 'branch_deposit').length;
+  const clerkDepositCount = notifications.filter(n => n.type === 'clerk_deposit').length;
+  const clerkExpenseCount = notifications.filter(n => n.type === 'clerk_expense').length;
 
   return (
     <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 sticky top-0 z-30">
@@ -87,9 +133,9 @@ const AppHeader: React.FC<AppHeaderProps> = ({ darkMode, toggleDarkMode }) => {
               className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
             >
               <Bell className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-              {pendingDeposits.length > 0 && (
+              {notifications.length > 0 && (
                 <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-error-500 rounded-full text-white text-xs flex items-center justify-center px-1">
-                  {pendingDeposits.length > 99 ? '99+' : pendingDeposits.length}
+                  {notifications.length > 99 ? '99+' : notifications.length}
                 </span>
               )}
             </button>
@@ -97,33 +143,63 @@ const AppHeader: React.FC<AppHeaderProps> = ({ darkMode, toggleDarkMode }) => {
             {showDropdown && (
               <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 shadow-lg rounded-lg border border-gray-200 dark:border-gray-700 z-50">
                 <div className="p-3 border-b border-gray-200 dark:border-gray-700 text-sm font-semibold text-gray-700 dark:text-gray-200">
-                  {pendingDeposits.length > 0
-                    ? `Pending Deposits (${pendingDeposits.length})`
-                    : 'No pending deposits'}
+                  {notifications.length > 0
+                    ? `Pending Approvals (${notifications.length})`
+                    : 'No pending approvals'}
                 </div>
-                {pendingDeposits.length > 0 && (
-                  <>
-                    <ul className="max-h-72 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
-                      {pendingDeposits.map(d => (
-                        <li key={d.id} className="p-3 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm">
-                          <div className="font-medium text-gray-800 dark:text-gray-100">{d.branch}</div>
-                          <div className="text-gray-500 dark:text-gray-400">
-                            {new Date(d.date).toLocaleDateString()} &middot; KES {d.depositAmount?.toLocaleString()}
-                          </div>
-                          {d.createdByName && (
-                            <div className="text-gray-400 dark:text-gray-500 text-xs mt-0.5">by {d.createdByName}</div>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                    <button
-                      onClick={handleViewAll}
-                      className="block w-full p-3 text-center text-sm text-brand-600 dark:text-brand-400 hover:bg-gray-50 dark:hover:bg-gray-700 border-t border-gray-200 dark:border-gray-700 rounded-b-lg"
-                    >
-                      View all deposits →
-                    </button>
-                  </>
+
+                {notifications.length > 0 && (
+                  <ul className="max-h-80 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700">
+                    {branchCount > 0 && (
+                      <li className="px-3 py-1.5 bg-gray-50 dark:bg-gray-700/50 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                        Branch Deposits ({branchCount})
+                      </li>
+                    )}
+                    {notifications.filter(n => n.type === 'branch_deposit').map(n => (
+                      <li key={n.id}>
+                        <button onClick={() => handleNotificationClick(n.href)}
+                          className="w-full text-left p-3 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm">
+                          <div className="font-medium text-gray-800 dark:text-gray-100">{n.label}</div>
+                          <div className="text-gray-500 dark:text-gray-400">{n.sublabel}</div>
+                          {n.meta && <div className="text-gray-400 dark:text-gray-500 text-xs mt-0.5">{n.meta}</div>}
+                        </button>
+                      </li>
+                    ))}
+
+                    {clerkDepositCount > 0 && (
+                      <li className="px-3 py-1.5 bg-gray-50 dark:bg-gray-700/50 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                        Clerk Deposits ({clerkDepositCount})
+                      </li>
+                    )}
+                    {notifications.filter(n => n.type === 'clerk_deposit').map(n => (
+                      <li key={n.id}>
+                        <button onClick={() => handleNotificationClick(n.href)}
+                          className="w-full text-left p-3 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm">
+                          <div className="font-medium text-gray-800 dark:text-gray-100">{n.label}</div>
+                          <div className="text-gray-500 dark:text-gray-400">{n.sublabel}</div>
+                          {n.meta && <div className="text-gray-400 dark:text-gray-500 text-xs mt-0.5">{n.meta}</div>}
+                        </button>
+                      </li>
+                    ))}
+
+                    {clerkExpenseCount > 0 && (
+                      <li className="px-3 py-1.5 bg-gray-50 dark:bg-gray-700/50 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                        Clerk Expenses ({clerkExpenseCount})
+                      </li>
+                    )}
+                    {notifications.filter(n => n.type === 'clerk_expense').map(n => (
+                      <li key={n.id}>
+                        <button onClick={() => handleNotificationClick(n.href)}
+                          className="w-full text-left p-3 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm">
+                          <div className="font-medium text-gray-800 dark:text-gray-100">{n.label}</div>
+                          <div className="text-gray-500 dark:text-gray-400">{n.sublabel}</div>
+                          {n.meta && <div className="text-gray-400 dark:text-gray-500 text-xs mt-0.5 capitalize">{n.meta}</div>}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 )}
+
               </div>
             )}
           </div>

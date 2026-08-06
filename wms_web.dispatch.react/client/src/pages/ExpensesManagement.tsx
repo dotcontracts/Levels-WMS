@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Receipt,
   Plus,
@@ -49,15 +50,16 @@ interface ExpenseStats {
 
 const ExpensesManagement: React.FC = () => {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [expenses, setExpenses] = useState<DailyExpense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<ExpenseFilters>({
     search: '',
-    category: '',
-    status: '',
+    category: searchParams.get('category') ?? '',
+    status: searchParams.get('status') ?? '',
     branchId: '',
-    clerkId: '',
+    clerkId: searchParams.get('clerkName') ?? '',
     dateFrom: '',
     dateTo: ''
   });
@@ -120,7 +122,8 @@ const ExpensesManagement: React.FC = () => {
       setIsLoading(true);
       setError(null);
       const expenseData = await wmsApi.getDailyExpenses();
-      setExpenses(expenseData.filter(e => e.category !== ('clerk_deposit' as any)));
+      const showingClerkDeposits = searchParams.get('category') === 'clerk_deposit';
+      setExpenses(showingClerkDeposits ? expenseData : expenseData.filter(e => e.category !== ('clerk_deposit' as any)));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load expense data');
     } finally {

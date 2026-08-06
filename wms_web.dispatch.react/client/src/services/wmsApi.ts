@@ -2571,6 +2571,35 @@ class WMSApiService {
     }
   }
 
+  async getPendingClerkDeposits(): Promise<any[]> {
+    try {
+      const params = new URLSearchParams({ category: 'clerk_deposit', status: 'pending' });
+      const response = await fetch(`${API_BASE_URL}/Expenses?${params}`, {
+        headers: this.getHeaders(),
+        signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+      });
+      if (!response.ok) return [];
+      return response.json();
+    } catch {
+      return [];
+    }
+  }
+
+  async getPendingClerkExpenses(): Promise<any[]> {
+    try {
+      const params = new URLSearchParams({ status: 'pending' });
+      const response = await fetch(`${API_BASE_URL}/Expenses?${params}`, {
+        headers: this.getHeaders(),
+        signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+      });
+      if (!response.ok) return [];
+      const all = await response.json();
+      return all.filter((e: any) => e.category !== 'clerk_deposit');
+    } catch {
+      return [];
+    }
+  }
+
   async getBranchCodLockStatus(branchName: string): Promise<{
     isLocked: boolean;
     reason: string;
