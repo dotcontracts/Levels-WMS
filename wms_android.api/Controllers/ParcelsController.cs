@@ -565,12 +565,6 @@ namespace wms_android.api.Controllers
                     return BadRequest(new { Errors = validationErrors });
                 }
 
-                if (!string.IsNullOrWhiteSpace(parcel.Destination) &&
-                    parcel.Destination.Trim().Equals("Mombasa", StringComparison.OrdinalIgnoreCase))
-                {
-                    return BadRequest(new { Errors = new[] { "Parcels destined for Mombasa are not accepted at this time." } });
-                }
-
                 // Ensure CreatedAt is set
                 parcel.CreatedAt = DateTime.UtcNow;
                 
