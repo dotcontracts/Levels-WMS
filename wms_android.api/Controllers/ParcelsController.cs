@@ -598,11 +598,10 @@ namespace wms_android.api.Controllers
 
                     Console.WriteLine("=== CONTROLLER: Parcel creation completed successfully ===");
                     
-                    // Return success without accessing the created object properties
                     await _cacheInvalidation.InvalidateParcelsCache();
                     if (created.CreatedById.HasValue)
                         await _cacheInvalidation.InvalidateUserDashboardCache(created.CreatedById.Value);
-                    return Ok(new { Message = "Parcel created successfully" });
+                    return Ok(created);
                 }
                 catch (Exception serviceEx)
                 {

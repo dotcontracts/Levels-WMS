@@ -1358,20 +1358,14 @@ namespace wms_android.api.Services
                 .Where(e => e.Status == "approved")
                 .Sum(e => e.Amount);
 
-            var depositTotal = webDepositTotal
-                + (depositRecord != null ? depositRecord.Amount : 0m);
-            var expenseTotal = expenseRecords.Sum(e => e.Amount);
-            var totalDeclared = depositTotal + expenseTotal;
+            var hasRejection = expenseRecords.Any(e => e.Status == "rejected") || depositRecord?.Status == "rejected";
 
-            // Rule 3: any rejection locks the account
-            if (expenseRecords.Any(e => e.Status == "rejected") || depositRecord?.Status == "rejected")
-            {
-                dto.IsLocked = true;
-                dto.Reason = "rejected";
-                return dto;
-            }
+            var activeDepositAmount = (depositRecord != null && depositRecord.Status != "rejected") ? depositRecord.Amount : 0m;
+            var activeDepositTotal = webDepositTotal + activeDepositAmount;
+            var activeExpenseTotal = expenseRecords.Where(e => e.Status != "rejected").Sum(e => e.Amount);
+            var activeTotalDeclared = activeDepositTotal + activeExpenseTotal;
 
-            // Rule 4: nothing declared for yesterday
+            // Rule 4: nothing active declared for yesterday
             if (webDepositTotal <= 0 && depositRecord == null && !expenseRecords.Any())
             {
                 dto.IsLocked = true;
@@ -1379,13 +1373,21 @@ namespace wms_android.api.Services
                 return dto;
             }
 
-            // Rules 1 & 2: deposit+expense or expense alone covers yesterdayPaidTotal
-            if (totalDeclared >= yesterdayPaidTotal)
+            // Rules 1 & 2: active (non-rejected) declarations cover yesterdayPaidTotal
+            if (activeTotalDeclared >= yesterdayPaidTotal)
             {
                 dto.IsLocked = false;
                 var allApproved = (depositRecord == null || depositRecord.Status == "approved") &&
-                                  expenseRecords.All(e => e.Status == "approved");
+                                  expenseRecords.Where(e => e.Status != "rejected").All(e => e.Status == "approved");
                 dto.Reason = allApproved ? "none" : "pending_approval";
+                return dto;
+            }
+
+            // Rule 3: has rejections and active declarations don't cover the total
+            if (hasRejection)
+            {
+                dto.IsLocked = true;
+                dto.Reason = "rejected";
                 return dto;
             }
 
