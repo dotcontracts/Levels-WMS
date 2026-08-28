@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useReportsData } from '../context/ReportsDataContext';
@@ -190,27 +190,29 @@ type ReportType =
   | 'branch-cod-report';
 
 const Reports: React.FC = () => {
-  const { 
-    cachedData, 
-    loading: cacheLoading, 
-    error: cacheError, 
+  const {
+    cachedData,
+    loading: cacheLoading,
+    error: cacheError,
     getCachedData,
-    getStreamingData, 
+    getStreamingData,
     invalidateCache,
     isDataFresh,
     getDataAge,
     getLoadProgress
   } = useReportsData();
-  
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [parcels, setParcels] = useState<Parcel[]>([]);
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [reportData, setReportData] = useState<any>(null);
-  
-  // Tab-specific data caching
-  const [tabDataCache, setTabDataCache] = useState<{ [key: string]: { data: any; timestamp: number; filters: any } }>({});
-  const [tabLoadingStates, setTabLoadingStates] = useState<{ [key: string]: boolean }>({});
+
+  // Tab-specific data caching (refs used to avoid re-fetch loops on state changes)
+  const tabDataCacheRef = useRef<{ [key: string]: { data: any; timestamp: number; filters: any } }>({});
+  const setTabDataCache = (_val: { [key: string]: { data: any; timestamp: number; filters: any } }) => { tabDataCacheRef.current = _val; };
+  const tabLoadingStatesRef = useRef<{ [key: string]: boolean }>({});
+  const setTabLoadingStates = (_val: { [key: string]: boolean }) => { tabLoadingStatesRef.current = _val; };
   const [showFilters, setShowFilters] = useState(false);
   const [filteredParcels, setFilteredParcels] = useState<Parcel[]>([]);
   const [parcelListLoading, setParcelListLoading] = useState(false);
@@ -247,7 +249,7 @@ const Reports: React.FC = () => {
   // Clerk Debit related state
   const [clerkDebitData, setClerkDebitData] = useState<ClerkDebitData[]>([]);
   const [debitDateRange, setDebitDateRange] = useState({
-    from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Last 7 days
+    from: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Last 30 days
     to: new Date().toISOString().split('T')[0]
   });
   const [selectedDebitClerk, setSelectedDebitClerk] = useState<ClerkDebitData | null>(null);
@@ -330,9 +332,9 @@ const Reports: React.FC = () => {
     let enhanced = filteredParcels.map(parcel => ({
       ...parcel,
       // Use cached user display name if available
-      clerkDisplayName: userCache.get(parcel.createdById) ||
+      clerkDisplayName: (parcel.createdById && userCache.get(parcel.createdById)) ||
         parcel.createdBy?.username ||
-        `User ${parcel.createdById}`,
+        `User ${parcel.createdById || 'Unknown'}`,
       // Pre-format currency for better performance
       formattedAmount: formatCurrency(parcel.totalAmount)
     }));
@@ -516,9 +518,9 @@ const Reports: React.FC = () => {
         pageSize: 300, // Smaller chunks for cash-in calculations
         ...(filterDate && { fromDate: filterDate, toDate: filterDate })
       });
-      
+
       let allParcels = response.data;
-      
+
       // Load additional pages if needed (limit to reasonable amount)
       if (response.hasNextPage && response.totalPages <= 5) {
         const remainingPages = [];
@@ -531,7 +533,7 @@ const Reports: React.FC = () => {
             })
           );
         }
-        
+
         const remainingResponses = await Promise.all(remainingPages);
         remainingResponses.forEach(resp => {
           allParcels = allParcels.concat(resp.data);
@@ -637,7 +639,7 @@ const Reports: React.FC = () => {
           }
           return true;
         });
-      } catch {}
+      } catch { }
 
       const clerkDepositRecords = allClerkExpenses.filter(e => e.category === ('clerk_deposit' as any));
       const approvedClerkExpenses = allClerkExpenses.filter(e =>
@@ -680,14 +682,14 @@ const Reports: React.FC = () => {
         dateRange: { from: dateRange.from, to: dateRange.to },
         chunkSize: 1200, // Use updated chunk size to match server optimizations
         fields: [
-          'id', 'waybillNumber', 'receiver', 'totalAmount', 'status', 
+          'id', 'waybillNumber', 'receiver', 'totalAmount', 'status',
           'createdAt', 'createdById', 'paymentMethods', 'branchDeposits', 'expenses'
         ],
       });
-      
+
       console.log(`[Clerk Debit Debug] Received ${allParcels.length} total parcels`);
       console.log(`[Clerk Debit Debug] Sample parcel paymentMethods:`, allParcels.slice(0, 3).map(p => ({
-        waybill: p.waybillNumber, 
+        waybill: p.waybillNumber,
         paymentMethods: p.paymentMethods,
         createdAt: p.createdAt
       })));
@@ -697,11 +699,11 @@ const Reports: React.FC = () => {
       const paidParcels = allParcels.filter(parcel => {
         const paymentMethod = (parcel.paymentMethods || '').toLowerCase();
         // Include only prepaid parcels (paid/advance/prepaid) - exclude COD
-        const isPrepaid = (paymentMethod.includes('paid') || 
-                          paymentMethod.includes('advance') || 
-                          paymentMethod.includes('prepaid')) &&
-                         !paymentMethod.includes('cod');
-        
+        const isPrepaid = (paymentMethod.includes('paid') ||
+          paymentMethod.includes('advance') ||
+          paymentMethod.includes('prepaid')) &&
+          !paymentMethod.includes('cod');
+
         if (!isPrepaid) return false;
 
         if (parcel.createdAt) {
@@ -714,13 +716,18 @@ const Reports: React.FC = () => {
         }
         return false;
       });
-      
+
       console.log(`[Clerk Debit Debug] After prepaid filtering: ${paidParcels.length} paid parcels`);
       console.log(`[Clerk Debit Debug] Prepaid sample:`, paidParcels.slice(0, 3).map(p => ({
-        waybill: p.waybillNumber, 
+        waybill: p.waybillNumber,
         paymentMethods: p.paymentMethods,
-        clerk: p.createdById
+        createdById: p.createdById,
+        createdBy: p.createdBy,
+        totalAmount: p.totalAmount
       })));
+      // Debug: how many parcels have a missing/zero createdById?
+      const missingClerkIdCount = paidParcels.filter(p => !Number(p.createdById || (p.createdBy as any)?.id)).length;
+      console.log(`[Clerk Debit Debug] Parcels with missing clerkId: ${missingClerkIdCount} / ${paidParcels.length}`);
 
       // Get existing deposits from database for the date range
       let existingDeposits: ParcelDepositDto[] = [];
@@ -745,23 +752,96 @@ const Reports: React.FC = () => {
       // Get users to populate clerk information
       const users = await wmsApi.getUsers();
 
-      // Group transactions by clerk
-      const clerkDebitMap: Record<number, ClerkDebitData> = {};
+      const findUser = (clerkId: number) =>
+        users.find(u => Number(u.id) === Number(clerkId));
 
-      paidParcels.forEach(parcel => {
-        const clerkId = parcel.createdById;
-        if (!clerkId) return;
-
-        const clerk = users.find(u => u.id === clerkId);
-        if (!clerk) return;
-
-        if (!clerkDebitMap[clerkId]) {
-          clerkDebitMap[clerkId] = {
-            clerkId: clerkId,
+      const getClerkDisplayInfo = (clerkId: number, parcel?: Parcel) => {
+        const clerk = findUser(clerkId);
+        if (clerk) {
+          return {
             clerkName: clerk.firstName && clerk.lastName
               ? `${clerk.firstName} ${clerk.lastName}`
               : clerk.username,
             clerkUsername: clerk.username,
+          };
+        }
+
+        const createdBy = parcel?.createdBy;
+        if (createdBy) {
+          const name = createdBy.firstName && createdBy.lastName
+            ? `${createdBy.firstName} ${createdBy.lastName}`
+            : createdBy.username;
+          if (name) {
+            return { clerkName: name, clerkUsername: createdBy.username || name };
+          }
+        }
+
+        return { clerkName: `Clerk ${clerkId}`, clerkUsername: `clerk${clerkId}` };
+      };
+
+      // Group transactions by clerk
+      let skippedNullClerkId = 0;
+
+      // Stable hash of a string → deterministic negative int, used to create synthetic clerk IDs
+      // for parcels that have a stored creatorLastNameSnapshot but no numeric createdById.
+      const snapshotToSyntheticId = (name: string): number => {
+        let h = 0;
+        for (let i = 0; i < name.length; i++) {
+          h = (Math.imul(31, h) + name.charCodeAt(i)) | 0;
+        }
+        // Ensure negative so it can never collide with real DB IDs (always positive)
+        return h < 0 ? h : -h - 1;
+      };
+
+      const clerkDebitMap: Record<number, ClerkDebitData> = {};
+
+      paidParcels.forEach(parcel => {
+        // Resolve clerkId from multiple sources.
+        // NOTE: createdById may be undefined (not just null) in the JS object because the backend
+        // uses NullValueHandling.Ignore, which omits null integer fields entirely from JSON.
+        const rawCreatedById = parcel.createdById !== undefined && parcel.createdById !== null
+          ? Number(parcel.createdById)
+          : 0;
+        const rawCreatedByObjId = parcel.createdBy && typeof parcel.createdBy === 'object'
+          ? Number((parcel.createdBy as any).id) || 0
+          : 0;
+        let clerkId = rawCreatedById || rawCreatedByObjId;
+
+        // Last resort: if still no numeric ID, synthesise one from the stored snapshot name.
+        // This handles parcels where createdById was cleared/deleted from the DB but the
+        // clerk name was captured at creation time and returned by the backend.
+        if ((!clerkId || isNaN(clerkId)) && parcel.creatorLastNameSnapshot) {
+          clerkId = snapshotToSyntheticId(parcel.creatorLastNameSnapshot);
+        }
+
+        if (!clerkId || isNaN(clerkId)) {
+          skippedNullClerkId++;
+          return;
+        }
+
+        if (!clerkDebitMap[clerkId]) {
+          // For real IDs, look up the user; for synthetic IDs use the snapshot directly
+          const isSynthetic = clerkId < 0;
+          let clerkName: string;
+          let clerkUsername: string;
+
+          if (isSynthetic && parcel.creatorLastNameSnapshot) {
+            clerkName = parcel.creatorLastNameSnapshot;
+            clerkUsername = parcel.creatorLastNameSnapshot.toLowerCase().replace(/\s+/g, '.');
+          } else {
+            const info = getClerkDisplayInfo(clerkId, parcel);
+            clerkName = info.clerkName;
+            clerkUsername = info.clerkUsername;
+            // Use creatorLastNameSnapshot (from backend JOIN) as display name when user lookup fails
+            if (clerkName === `Clerk ${clerkId}` && parcel.creatorLastNameSnapshot) {
+              clerkName = parcel.creatorLastNameSnapshot;
+            }
+          }
+
+          clerkDebitMap[clerkId] = {
+            clerkId: clerkId,
+            clerkName,
+            clerkUsername,
             totalPaidAmount: 0,
             totalDeposited: 0,
             totalExpenses: 0,
@@ -813,7 +893,7 @@ const Reports: React.FC = () => {
           const expDate = e.date.split('T')[0];
           return expDate >= dateRange.from && expDate <= dateRange.to;
         });
-      } catch {}
+      } catch { }
 
       // Calculate current debit for each clerk, subtracting approved clerk expenses
       Object.values(clerkDebitMap).forEach(clerk => {
@@ -831,14 +911,19 @@ const Reports: React.FC = () => {
       allApprovedExpenses.forEach(expense => {
         if (!expense.clerkId) return;
         if (clerkDebitMap[expense.clerkId]) return; // already handled
-        const clerkUser = users.find(u => u.id === expense.clerkId);
-        if (!clerkUser) return;
+        const clerkUser = findUser(expense.clerkId);
+        const { clerkName, clerkUsername } = clerkUser
+          ? {
+            clerkName: clerkUser.firstName && clerkUser.lastName
+              ? `${clerkUser.firstName} ${clerkUser.lastName}`
+              : clerkUser.username,
+            clerkUsername: clerkUser.username,
+          }
+          : getClerkDisplayInfo(expense.clerkId);
         clerkDebitMap[expense.clerkId] = {
           clerkId: expense.clerkId,
-          clerkName: clerkUser.firstName && clerkUser.lastName
-            ? `${clerkUser.firstName} ${clerkUser.lastName}`
-            : clerkUser.username,
-          clerkUsername: clerkUser.username,
+          clerkName,
+          clerkUsername,
           totalPaidAmount: 0,
           totalDeposited: 0,
           totalExpenses: 0,
@@ -864,7 +949,12 @@ const Reports: React.FC = () => {
       });
 
       // Sort clerks by highest debit first
-      return Object.values(clerkDebitMap).sort((a, b) => b.currentDebit - a.currentDebit);
+      const result = Object.values(clerkDebitMap).sort((a, b) => b.currentDebit - a.currentDebit);
+      if (skippedNullClerkId > 0) {
+        console.warn(`[Clerk Debit Debug] SKIPPED ${skippedNullClerkId}/${paidParcels.length} parcels due to missing/null createdById. Check backend NullValueHandling or missing clerk assignment.`);
+      }
+      console.log(`[Clerk Debit Debug] Built ${result.length} clerk(s) from ${paidParcels.length} paid parcels`);
+      return result;
     } catch (error) {
       console.error('Error fetching clerk debit data:', error);
       return [];
@@ -1447,16 +1537,16 @@ const Reports: React.FC = () => {
 
   const fetchReportData = useCallback(async (useStreaming: boolean = false, forceRefresh: boolean = false) => {
     // For clerk-debit, use a specific cache key that includes the debit date range to prevent interference
-    const cacheKey = currentReport === 'clerk-debit' 
+    const cacheKey = currentReport === 'clerk-debit'
       ? `clerk-debit-${debitDateRange.from}-${debitDateRange.to}`
       : `${currentReport}-${JSON.stringify(filters)}-${cashInDate}-${JSON.stringify(debitDateRange)}`;
-    
+
     // Check if we have fresh cached data for this tab
-    if (!forceRefresh && tabDataCache[cacheKey]) {
-      const cached = tabDataCache[cacheKey];
+    if (!forceRefresh && tabDataCacheRef.current[cacheKey]) {
+      const cached = tabDataCacheRef.current[cacheKey];
       const age = Date.now() - cached.timestamp;
       const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-      
+
       // For clerk-debit, only validate date range since clerk filtering happens at UI level
       let filtersMatch = false;
       if (currentReport === 'clerk-debit') {
@@ -1466,20 +1556,24 @@ const Reports: React.FC = () => {
       } else {
         filtersMatch = JSON.stringify(cached.filters) === JSON.stringify(filters);
       }
-      
+
       if (age < CACHE_DURATION && filtersMatch) {
         console.log(`Reports: Using cached data for ${currentReport} (${Math.round(age / 1000)}s old)`);
         setReportData(cached.data);
+        if (currentReport === 'clerk-debit' && cached.data.clerkDebit) {
+          setClerkDebitData(cached.data.clerkDebit);
+        }
         setLoading(false);
         return;
       }
     }
 
-    if (loading || tabLoadingStates[cacheKey]) return; // Prevent concurrent calls
+    if (loading || tabLoadingStatesRef.current[cacheKey]) return; // Prevent concurrent calls
 
     try {
       setLoading(true);
-      setTabLoadingStates(prev => ({ ...prev, [cacheKey]: true }));
+      tabLoadingStatesRef.current = { ...tabLoadingStatesRef.current, [cacheKey]: true };
+      setTabLoadingStates(tabLoadingStatesRef.current);
       setError('');
 
       // Use cached data or fetch fresh data
@@ -1492,7 +1586,7 @@ const Reports: React.FC = () => {
       };
 
       let cachedResult: any;
-      
+
       // For clerk-debit, skip global data loading since it uses isolated cache
       if (currentReport === 'clerk-debit') {
         console.log('Reports: Skipping global data load for clerk-debit (using isolated cache)');
@@ -1511,16 +1605,18 @@ const Reports: React.FC = () => {
         data.clerkDebit = clerkDebitResult;
         setClerkDebitData(data.clerkDebit);
         setReportData(data);
-        
+
         // Cache the result for this tab
-        setTabDataCache(prev => ({
-          ...prev,
+        const newCache = {
+          ...tabDataCacheRef.current,
           [cacheKey]: {
             data,
             timestamp: Date.now(),
             filters: { ...reportFilters, debitDateRange }
           }
-        }));
+        };
+        tabDataCacheRef.current = newCache;
+        setTabDataCache(newCache);
         return; // Early return - don't process global data
       } else if (useStreaming) {
         // Use streaming data with progress updates
@@ -1536,7 +1632,7 @@ const Reports: React.FC = () => {
           const filtersMatch = !reportFilters || (
             JSON.stringify(cachedData.filters) === JSON.stringify(reportFilters)
           );
-          
+
           if (filtersMatch) {
             console.log('Reports: Using existing cached data');
             cachedResult = cachedData;
@@ -1620,16 +1716,18 @@ const Reports: React.FC = () => {
       }
 
       setReportData(data);
-      
+
       // Cache the result for this tab
-      setTabDataCache(prev => ({
-        ...prev,
+      const newCacheEntry = {
+        ...tabDataCacheRef.current,
         [cacheKey]: {
           data,
           timestamp: Date.now(),
           filters: reportFilters
         }
-      }));
+      };
+      tabDataCacheRef.current = newCacheEntry;
+      setTabDataCache(newCacheEntry);
 
     } catch (err) {
       const errorMessage = cacheError || 'Failed to fetch report data';
@@ -1637,9 +1735,10 @@ const Reports: React.FC = () => {
       console.error('Reports: Error fetching data:', err);
     } finally {
       setLoading(false);
-      setTabLoadingStates(prev => ({ ...prev, [cacheKey]: false }));
+      tabLoadingStatesRef.current = { ...tabLoadingStatesRef.current, [cacheKey]: false };
+      setTabLoadingStates(tabLoadingStatesRef.current);
     }
-  }, [currentReport, filters, user, cashInDate, debitDateRange, getCachedData, getStreamingData, cacheLoading, tabDataCache, tabLoadingStates]); // Removed loading, isDataFresh, getDataAge, cachedData to prevent re-fetches on tab switch
+  }, [currentReport, filters, user, cashInDate, debitDateRange, getCachedData, getStreamingData, cacheLoading]); // tabDataCache/tabLoadingStates removed - using refs to prevent re-fetch loops
 
   const fetchFilteredParcels = useCallback(async () => {
     if (!parcelFilters.dateFrom && !parcelFilters.dateTo && !parcelFilters.destination) {
@@ -1736,28 +1835,23 @@ const Reports: React.FC = () => {
 
   const fetchDestinations = useCallback(async () => {
     try {
-      // Use Promise.allSettled to handle API failures gracefully
       const results = await Promise.allSettled([
-        wmsApi.getAllParcelsForReports(),
+        wmsApi.getDestinations(),
         wmsApi.getUsers()
       ]);
 
-      const parcelsData = results[0].status === 'fulfilled' ? results[0].value : [];
+      const destinationsData = results[0].status === 'fulfilled' ? results[0].value : [];
       const usersData = results[1].status === 'fulfilled' ? results[1].value : [];
 
-      // Extract unique destinations from successfully loaded parcels
-      if (parcelsData.length > 0) {
-        const destinationSet = new Set(parcelsData.map(p => p.destination).filter(Boolean));
-        const uniqueDestinations = Array.from(destinationSet);
-        setDestinations(uniqueDestinations.sort());
+      if (destinationsData.length > 0) {
+        setDestinations([...destinationsData].sort());
       }
 
-      // Extract clerks (users who have created parcels) from successfully loaded users
-      if (usersData.length > 0 && parcelsData.length > 0) {
+      if (usersData.length > 0) {
         const clerkUsers = usersData.filter(u =>
           u.role?.name === 'Clerk' ||
           u.roles?.includes('clerk') ||
-          parcelsData.some(p => p.createdById === u.id)
+          u.roles?.includes('Clerk')
         );
         setClerks(clerkUsers.map(u => ({
           id: u.id,
@@ -1765,7 +1859,6 @@ const Reports: React.FC = () => {
         })));
       }
     } catch (err) {
-      // Silently fail and leave destinations/clerks as empty arrays
       setDestinations([]);
       setClerks([]);
     }
@@ -2306,15 +2399,15 @@ const Reports: React.FC = () => {
               </thead>
               <tbody>
                 ${(() => {
-                  const rows = [
-                    ...clerkData.transactions.map(t => ({ kind: 'parcel', date: t.date, data: t })),
-                    ...(clerkData.approvedExpenseItems || []).map(e => ({ kind: 'expense', date: e.date.split('T')[0], data: e }))
-                  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          const rows = [
+            ...clerkData.transactions.map(t => ({ kind: 'parcel', date: t.date, data: t })),
+            ...(clerkData.approvedExpenseItems || []).map(e => ({ kind: 'expense', date: e.date.split('T')[0], data: e }))
+          ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-                  return rows.map(row => {
-                    if (row.kind === 'parcel') {
-                      const t = row.data as ClerkDebitTransaction;
-                      return `
+          return rows.map(row => {
+            if (row.kind === 'parcel') {
+              const t = row.data as ClerkDebitTransaction;
+              return `
                         <tr>
                           <td>${fmtDate(t.date)}</td>
                           <td><span class="badge badge-parcel">Parcel</span></td>
@@ -2327,22 +2420,22 @@ const Reports: React.FC = () => {
                             KSh ${Math.abs(t.netDebit).toLocaleString()}${t.netDebit < 0 ? ' (Cr)' : ''}
                           </td>
                         </tr>`;
-                    } else {
-                      const e = row.data as DailyExpense;
-                      return `
+            } else {
+              const e = row.data as DailyExpense;
+              return `
                         <tr class="row-expense">
                           <td>${fmtDate(e.date)}</td>
                           <td><span class="badge badge-expense">Expense</span></td>
-                          <td>${e.description}<br/><span style="font-size:9px;color:#92400e">${e.category.replace('_',' ')}${e.vendor ? ' &middot; ' + e.vendor : ''}</span></td>
+                          <td>${e.description}<br/><span style="font-size:9px;color:#92400e">${e.category.replace('_', ' ')}${e.vendor ? ' &middot; ' + e.vendor : ''}</span></td>
                           <td>&mdash;</td>
                           <td>&mdash;</td>
                           <td>&mdash;</td>
                           <td class="amount expense-amount">-KSh ${e.amount.toLocaleString()}</td>
                           <td>&mdash;</td>
                         </tr>`;
-                    }
-                  }).join('');
-                })()}
+            }
+          }).join('');
+        })()}
               </tbody>
             </table>
 
@@ -2372,7 +2465,7 @@ const Reports: React.FC = () => {
   // Prefetch user data when parcels are loaded for detailed parcel list
   useEffect(() => {
     if (filteredParcels.length > 0) {
-      const userIdSet = new Set(filteredParcels.map(p => p.createdById).filter(Boolean));
+      const userIdSet = new Set(filteredParcels.map(p => p.createdById).filter((id): id is number => typeof id === 'number' && id > 0));
       const uniqueUserIds = Array.from(userIdSet);
       uniqueUserIds.forEach(userId => {
         if (!userCache.has(userId)) {
@@ -2385,7 +2478,7 @@ const Reports: React.FC = () => {
   // Prefetch user data when parcels are loaded for reports
   useEffect(() => {
     if (parcels.length > 0) {
-      const userIdSet = new Set(parcels.map(p => p.createdById).filter(Boolean));
+      const userIdSet = new Set(parcels.map(p => p.createdById).filter((id): id is number => typeof id === 'number' && id > 0));
       const uniqueUserIds = Array.from(userIdSet);
       uniqueUserIds.forEach(userId => {
         if (!userCache.has(userId)) {
@@ -2983,51 +3076,51 @@ const Reports: React.FC = () => {
                     const hasPendingDeposit = pendingClerkId === clerk.clerkId ||
                       clerk.clerkDeposits.some(d => d.status === 'pending');
                     return (
-                    <Table.Row key={index} className={hasPendingDeposit ? 'bg-yellow-50 dark:bg-yellow-500/10' : ''}>
-                      <Table.Cell>
-                        <div className="flex items-center gap-2">
-                          <div className="font-medium text-gray-900 dark:text-white">
-                            {clerk.clerkName}
+                      <Table.Row key={index} className={hasPendingDeposit ? 'bg-yellow-50 dark:bg-yellow-500/10' : ''}>
+                        <Table.Cell>
+                          <div className="flex items-center gap-2">
+                            <div className="font-medium text-gray-900 dark:text-white">
+                              {clerk.clerkName}
+                            </div>
+                            {hasPendingDeposit && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-300">
+                                Deposit pending
+                              </span>
+                            )}
                           </div>
-                          {hasPendingDeposit && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-300">
-                              Deposit pending
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-sm text-gray-500 dark:text-gray-400">
-                          @{clerk.clerkUsername} ({clerk.parcels.length} parcels)
-                        </div>
-                      </Table.Cell>
-                      <Table.Cell>{formatCurrency(clerk.totalPaidAmount)}</Table.Cell>
-                      <Table.Cell>
-                        <span className={clerk.totalDeposited > 0 ? 'text-green-600 font-medium' : ''}>
-                          {formatCurrency(clerk.totalDeposited)}
-                        </span>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <span className={clerk.totalExpenses > 0 ? 'text-orange-600 font-medium' : ''}>
-                          {formatCurrency(clerk.totalExpenses)}
-                        </span>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <span className={`font-medium ${clerk.remainingDebt > 0 ? 'text-red-600' :
-                          clerk.remainingDebt < 0 ? 'text-green-600' : ''
-                          }`}>
-                          {formatCurrency(Math.abs(clerk.remainingDebt))}
-                          {clerk.remainingDebt < 0 ? ' (Credit)' : ''}
-                        </span>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openClerkDetailsModal(clerk)}
-                        >
-                          View Details
-                        </Button>
-                      </Table.Cell>
-                    </Table.Row>
+                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                            @{clerk.clerkUsername} ({clerk.parcels.length} parcels)
+                          </div>
+                        </Table.Cell>
+                        <Table.Cell>{formatCurrency(clerk.totalPaidAmount)}</Table.Cell>
+                        <Table.Cell>
+                          <span className={clerk.totalDeposited > 0 ? 'text-green-600 font-medium' : ''}>
+                            {formatCurrency(clerk.totalDeposited)}
+                          </span>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <span className={clerk.totalExpenses > 0 ? 'text-orange-600 font-medium' : ''}>
+                            {formatCurrency(clerk.totalExpenses)}
+                          </span>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <span className={`font-medium ${clerk.remainingDebt > 0 ? 'text-red-600' :
+                            clerk.remainingDebt < 0 ? 'text-green-600' : ''
+                            }`}>
+                            {formatCurrency(Math.abs(clerk.remainingDebt))}
+                            {clerk.remainingDebt < 0 ? ' (Credit)' : ''}
+                          </span>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openClerkDetailsModal(clerk)}
+                          >
+                            View Details
+                          </Button>
+                        </Table.Cell>
+                      </Table.Row>
                     );
                   })}
                 </Table.Body>
@@ -3560,11 +3653,10 @@ const Reports: React.FC = () => {
                         <td className="py-3 px-4 text-right text-green-600 dark:text-green-400">{formatCurrency(d.depositAmount)}</td>
                         <td className="py-3 px-4 text-right text-red-600 dark:text-red-400">{formatCurrency(d.runningDebt ?? (d.codTotal - d.depositAmount))}</td>
                         <td className="py-3 px-4 text-center">
-                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                            d.status === 'approved' ? 'bg-green-100 text-green-700' :
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${d.status === 'approved' ? 'bg-green-100 text-green-700' :
                             d.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                            'bg-yellow-100 text-yellow-700'
-                          }`}>
+                              'bg-yellow-100 text-yellow-700'
+                            }`}>
                             {d.status ?? 'pending'}
                           </span>
                         </td>
@@ -3850,11 +3942,10 @@ const Reports: React.FC = () => {
                                     </Button>
                                   )}
                                   {transaction.status && (
-                                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
-                                      transaction.status === 'approved' ? 'bg-green-100 text-green-700' :
+                                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${transaction.status === 'approved' ? 'bg-green-100 text-green-700' :
                                       transaction.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                                      'bg-yellow-100 text-yellow-700'
-                                    }`}>{transaction.status}</span>
+                                        'bg-yellow-100 text-yellow-700'
+                                      }`}>{transaction.status}</span>
                                   )}
                                 </>
                               )}
@@ -4411,13 +4502,15 @@ const Reports: React.FC = () => {
     }
 
     // Try to get from cache
-    if (userCache.has(parcel.createdById)) {
+    if (parcel.createdById && userCache.has(parcel.createdById)) {
       return userCache.get(parcel.createdById)!;
     }
 
     // Fetch user data in background and return fallback for now
-    getUserDisplayName(parcel.createdById);
-    return `User ${parcel.createdById}`;
+    if (parcel.createdById) {
+      getUserDisplayName(parcel.createdById);
+    }
+    return `User ${parcel.createdById || 'Unknown'}`;
   };
 
   // Virtual table columns for parcel list report
@@ -5010,7 +5103,7 @@ const Reports: React.FC = () => {
       {/* Report Content */}
       <DataLoadingState
         isLoading={loading || cacheLoading}
-        hasData={parcels.length > 0 || dispatches.length > 0}
+        hasData={parcels.length > 0 || dispatches.length > 0 || (currentReport === 'clerk-debit' && clerkDebitData.length > 0)}
         progress={getLoadProgress()}
         fallback={
           <div className="space-y-6">
@@ -5170,13 +5263,12 @@ const Reports: React.FC = () => {
                           <span className="text-sm font-medium text-gray-900 dark:text-white">
                             {formatCurrency(dep.amount)}
                           </span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                            dep.status === 'approved'
-                              ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
-                              : dep.status === 'rejected'
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${dep.status === 'approved'
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+                            : dep.status === 'rejected'
                               ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
                               : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400'
-                          }`}>
+                            }`}>
                             {dep.status}
                           </span>
                         </div>

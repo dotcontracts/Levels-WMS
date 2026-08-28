@@ -191,7 +191,12 @@ namespace wms_android.api.Controllers
                             TotalAmount = p.TotalAmount,
                             CreatedAt = p.CreatedAt,
                             CreatedById = p.CreatedById,
-                            CreatedBy = p.CreatedBy,
+                            // CreatorLastNameSnapshot carries the clerk's full name for frontend grouping.
+                            // Prefer the live JOIN on Users; fall back to the stored snapshot column
+                            // in case createdById is null or the user record was deleted.
+                            CreatorLastNameSnapshot = p.CreatedBy != null
+                                ? (p.CreatedBy.FirstName + " " + p.CreatedBy.LastName).Trim()
+                                : p.CreatorLastNameSnapshot,
                             DispatchedAt = p.DispatchedAt,
                             SenderTelephone = p.SenderTelephone,
                             ReceiverTelephone = p.ReceiverTelephone,
@@ -210,6 +215,8 @@ namespace wms_android.api.Controllers
                         .ToListAsync();
                     return new ParcelPageWrapper { Parcels = parcels };
                 }, TimeSpan.FromMinutes(5), new[] { CacheTags.Parcels });
+
+
 
                 var result = new
                 {

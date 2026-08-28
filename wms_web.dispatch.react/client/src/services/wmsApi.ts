@@ -16,7 +16,8 @@ export interface Parcel {
   qrCode?: string;
   dispatchedAt?: string;
   dispatchTrackingCode?: string;
-  createdById: number;
+  createdById?: number; // Optional: may be absent from JSON when null (NullValueHandling.Ignore on backend)
+  creatorLastNameSnapshot?: string; // Clerk's full name, returned by the paged endpoint via JOIN
   sender: string;
   senderTelephone: string;
   receiver: string;
@@ -407,7 +408,7 @@ class WMSApiService {
   private cacheTimeout: Map<string, number> = new Map();
   private readonly CACHE_DURATION = 30000; // 30 second cache for duplicate requests
   private activeProgressiveLoads: Set<string> = new Set();
-  
+
   // Generate cache key from filters for consistent cache sharing
   private generateCacheKey(filters: any): string {
     // Sort keys for consistent hash generation
@@ -419,12 +420,12 @@ class WMSApiService {
         }
         return result;
       }, {});
-    
+
     // Generate hash from sorted filters
     const filterString = JSON.stringify(sortedFilters);
     return btoa(filterString).replace(/[+/=]/g, '').substring(0, 16);
   }
-  
+
   private getHeaders(): Record<string, string> {
     // Use centralized auth headers from config
     return getAuthHeaders();
@@ -477,7 +478,7 @@ class WMSApiService {
   async getParcels(branchName?: string, page?: number, pageSize?: number): Promise<Parcel[]> {
     try {
       let url = `${API_BASE_URL}/Parcels`;
-      
+
       // Add query parameters
       const params = new URLSearchParams();
       if (branchName) {
@@ -489,12 +490,12 @@ class WMSApiService {
       if (pageSize !== undefined) {
         params.append('pageSize', pageSize?.toString());
       }
-      
+
       const queryString = params.toString();
       if (queryString) {
         url += `?${queryString}`;
       }
-      
+
       const response = await fetch(url, {
         headers: this.getHeaders(),
       });
@@ -543,7 +544,7 @@ class WMSApiService {
   }> {
     try {
       const queryParams = new URLSearchParams();
-      
+
       if (params.page !== undefined) queryParams.append('page', params.page.toString());
       if (params.pageSize !== undefined) queryParams.append('pageSize', params.pageSize.toString());
       if (params.destination) queryParams.append('destination', params.destination);
@@ -555,15 +556,15 @@ class WMSApiService {
       if (params.search) queryParams.append('search', params.search);
 
       const url = `${API_BASE_URL}/Parcels/paged?${queryParams.toString()}`;
-      
-      const requestKey = params.instanceId 
+
+      const requestKey = params.instanceId
         ? `getParcelsPaged:${params.instanceId}:${queryParams.toString()}`
         : `getParcelsPaged:${queryParams.toString()}`;
-      
+
       return await this.deduplicate(requestKey, async () => {
         return this._fetchParcelsPaged(url, params);
       });
-      
+
     } catch (error) {
       throw new Error(`Failed to connect to WMS API: ${error}`);
     }
@@ -580,10 +581,10 @@ class WMSApiService {
     currentPage: number;
   }> {
     // Use longer timeout for large pages or when explicitly requested
-    const timeout = params.extendedTimeout || (params.pageSize && params.pageSize > 500) 
+    const timeout = params.extendedTimeout || (params.pageSize && params.pageSize > 500)
       ? API_CONFIG.TIMEOUT * 3  // 45 seconds for large pages
       : API_CONFIG.TIMEOUT;      // 15 seconds default
-    
+
     const response = await fetch(url, {
       headers: this.getHeaders(),
       signal: AbortSignal.timeout(timeout),
@@ -594,12 +595,31 @@ class WMSApiService {
     }
 
     const result = await response.json();
-    
+
     // Ensure we return currentPage for consistency with our context
     return {
       ...result,
       currentPage: result.page || params.page || 1
     };
+  }
+
+  async getDestinations(status?: number): Promise<string[]> {
+    try {
+      const params = status !== undefined ? `?status=${status}` : '';
+      const response = await fetch(`${API_BASE_URL}/Parcels/destinations${params}`, {
+        headers: this.getHeaders(),
+        signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch destinations: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.$values || data;
+    } catch (error) {
+      throw new Error(`Failed to connect to WMS API: ${error}`);
+    }
   }
 
   // Progressive loading for complete datasets - optimized to avoid redundant count queries
@@ -625,10 +645,10 @@ class WMSApiService {
 
     try {
       console.log(`[Performance] Starting parallel data loading with chunk size ${chunkSize} (instance: ${instanceId})`);
-      
+
       // Register this active load
       this.activeProgressiveLoads.add(loadKey);
-      
+
       // First, get the first page to determine total count and show immediate results
       const firstPageParams = {
         page: 1,
@@ -642,7 +662,7 @@ class WMSApiService {
 
       const firstResponse = await this.getParcelsPaged(firstPageParams);
       const totalCount = firstResponse.totalCount;
-      
+
       if (totalCount === 0) {
         onProgress?.(0, 0);
         return [];
@@ -663,19 +683,19 @@ class WMSApiService {
       // Define parallel batch size to avoid overwhelming the server
       const PARALLEL_BATCH_SIZE = 6; // Reduced from 8 to 6 for better stability
       const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2); // Pages 2, 3, 4, ...
-      
+
       console.log(`[Performance] Loading ${remainingPages.length} additional pages in batches of ${PARALLEL_BATCH_SIZE}`);
       console.log(`[Performance] Total expected records: ${totalCount} across ${totalPages} pages`);
 
       // Process pages in parallel batches
       let consecutiveFailures = 0;
       const MAX_CONSECUTIVE_FAILURES = 3;
-      
+
       console.log(`[Performance] v2.1 - Starting parallel loading with ${remainingPages.length} pages total (instance: ${instanceId})`);
-      
+
       for (let i = 0; i < remainingPages.length; i += PARALLEL_BATCH_SIZE) {
         const batch = remainingPages.slice(i, i + PARALLEL_BATCH_SIZE);
-        
+
         // Create parallel requests for this batch
         const batchPromises = batch.map(pageNum => {
           const params = {
@@ -691,23 +711,23 @@ class WMSApiService {
         });
 
         try {
-          console.log(`[Performance] Starting batch ${Math.floor(i/PARALLEL_BATCH_SIZE) + 1}, pages ${batch.join(', ')}`);
-          
+          console.log(`[Performance] Starting batch ${Math.floor(i / PARALLEL_BATCH_SIZE) + 1}, pages ${batch.join(', ')}`);
+
           // Execute batch in parallel with individual error handling
           const batchResults = await Promise.allSettled(batchPromises);
-          
+
           // Process results - both fulfilled and rejected
           let batchSuccessCount = 0;
           for (let i = 0; i < batchResults.length; i++) {
             const result = batchResults[i];
             const pageNum = batch[i];
-            
+
             if (result.status === 'fulfilled') {
               allParcels.push(...result.value.data);
               batchSuccessCount++;
             } else {
               console.warn(`[Performance] Page ${pageNum} failed:`, result.reason);
-              
+
               // Try once more with sequential approach for failed pages
               try {
                 const params = {
@@ -731,13 +751,13 @@ class WMSApiService {
 
           // Report progress after each batch
           onProgress?.(allParcels.length, totalCount);
-          console.log(`[Performance] Batch complete: ${batchSuccessCount}/${batch.length} pages successful, ${allParcels.length}/${totalCount} records (${Math.round(allParcels.length/totalCount*100)}%)`);
-          
+          console.log(`[Performance] Batch complete: ${batchSuccessCount}/${batch.length} pages successful, ${allParcels.length}/${totalCount} records (${Math.round(allParcels.length / totalCount * 100)}%)`);
+
           // Check for consecutive failures
           if (batchSuccessCount === 0) {
             consecutiveFailures++;
             console.error(`[Performance] Entire batch failed! Consecutive failures: ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}`);
-            
+
             if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
               console.error(`[Performance] Too many consecutive failures. Stopping at ${allParcels.length} records.`);
               break; // Stop loading if we keep failing
@@ -758,19 +778,19 @@ class WMSApiService {
       }
 
       console.log(`[Performance] Parallel loading complete: ${allParcels.length} records loaded`);
-      
+
       // Verify we loaded all expected records
       if (allParcels.length < totalCount) {
-        console.warn(`[Performance] Warning: Loaded ${allParcels.length} of ${totalCount} expected records (${Math.round(allParcels.length/totalCount*100)}%)`);
+        console.warn(`[Performance] Warning: Loaded ${allParcels.length} of ${totalCount} expected records (${Math.round(allParcels.length / totalCount * 100)}%)`);
       } else {
         console.log(`[Performance] Successfully loaded all ${totalCount} records`);
       }
-      
+
       return allParcels;
 
     } catch (error) {
       console.error(`[Performance] Parallel loading failed, attempting fallback:`, error);
-      
+
       // Ultimate fallback: try to get at least some data
       try {
         const fallbackResponse = await this.getParcelsPaged({
@@ -781,11 +801,11 @@ class WMSApiService {
           ...(search && { search }),
           instanceId: instanceId // Pass instance ID for cache isolation
         });
-        
+
         console.log(`[Performance] Fallback successful: ${fallbackResponse.data.length} records`);
         onProgress?.(fallbackResponse.data.length, fallbackResponse.totalCount);
         return fallbackResponse.data;
-        
+
       } catch (fallbackError) {
         throw new Error(`Failed to load parcels: ${error}. Fallback also failed: ${fallbackError}`);
       }
@@ -832,7 +852,7 @@ class WMSApiService {
 
     return this.deduplicate(requestKey, async () => {
       try {
-        const dateRange = filters.startDate && filters.endDate 
+        const dateRange = filters.startDate && filters.endDate
           ? { from: filters.startDate, to: filters.endDate }
           : undefined;
 
@@ -848,9 +868,9 @@ class WMSApiService {
           const response = await this.getParcelsPaged({
             page: 1,
             pageSize: 2000,
-            ...(filters.startDate && filters.endDate && { 
-              fromDate: filters.startDate, 
-              toDate: filters.endDate 
+            ...(filters.startDate && filters.endDate && {
+              fromDate: filters.startDate,
+              toDate: filters.endDate
             }),
             ...(filters.destination && { destination: filters.destination }),
             ...(filters.search && { search: filters.search }),
@@ -909,17 +929,17 @@ class WMSApiService {
         return [];
       }
 
-      
+
       // For better performance, fetch parcels in parallel chunks
       const CHUNK_SIZE = 10; // Adjust based on server capabilities
       const chunks: string[][] = [];
-      
+
       for (let i = 0; i < parcelIds.length; i += CHUNK_SIZE) {
         chunks.push(parcelIds.slice(i, i + CHUNK_SIZE));
       }
 
       const allParcels: Parcel[] = [];
-      
+
       // Process chunks in parallel
       const chunkPromises = chunks.map(async (chunk) => {
         const parcelsInChunk = await Promise.all(
@@ -932,13 +952,13 @@ class WMSApiService {
             }
           })
         );
-        
+
         // Filter out null results
         return parcelsInChunk.filter((parcel): parcel is Parcel => parcel !== null);
       });
 
       const chunkResults = await Promise.all(chunkPromises);
-      
+
       // Flatten all results
       chunkResults.forEach(parcels => {
         allParcels.push(...parcels);
@@ -954,11 +974,11 @@ class WMSApiService {
     try {
       const url = `${API_BASE_URL}/Parcels/dispatch`;
       const params = new URLSearchParams();
-      
+
       if (destination) {
         params.append('destination', destination);
       }
-      
+
       if (statuses && statuses.length > 0) {
         params.append('statuses', statuses.join(','));
       }
@@ -992,31 +1012,31 @@ class WMSApiService {
     try {
       const url = `${API_BASE_URL}/Parcels/dispatch-multi-dest`;
       const urlParams = new URLSearchParams();
-      
+
       if (params?.page) {
         urlParams.append('page', params.page.toString());
       }
-      
+
       if (params?.pageSize) {
         urlParams.append('pageSize', params.pageSize.toString());
       }
-      
+
       if (params?.statuses && params.statuses.length > 0) {
         urlParams.append('statuses', params.statuses.join(','));
       }
-      
+
       if (params?.fromDate) {
         urlParams.append('fromDate', params.fromDate);
       }
-      
+
       if (params?.toDate) {
         urlParams.append('toDate', params.toDate);
       }
-      
+
       if (params?.createdByUsername) {
         urlParams.append('createdByUsername', params.createdByUsername);
       }
-      
+
       if (params?.userBranchId) {
         urlParams.append('userBranchId', params.userBranchId.toString());
       }
@@ -1046,15 +1066,15 @@ class WMSApiService {
     try {
       const url = `${API_BASE_URL}/Parcels/dispatch-stats`;
       const urlParams = new URLSearchParams();
-      
+
       if (params?.fromDate) {
         urlParams.append('fromDate', params.fromDate);
       }
-      
+
       if (params?.toDate) {
         urlParams.append('toDate', params.toDate);
       }
-      
+
       if (params?.userBranchId) {
         urlParams.append('userBranchId', params.userBranchId.toString());
       }
@@ -1079,38 +1099,38 @@ class WMSApiService {
     try {
       // Get all parcels first
       const allParcels = await this.getParcels();
-      
+
       // Filter by status: Only Pending (0) or Confirmed (1)
       const validStatuses = [0, 1];
       let filteredParcels = allParcels.filter(parcel => validStatuses.includes(parcel.status));
-      
+
       // If user has a branch, filter by creator's branch
       if (userBranchId) {
         // Get all users to map createdById to user branches
         const users = await this.getUsers();
-        
+
         // Filter parcels to only show those created by users from the same branch
         filteredParcels = filteredParcels.filter(parcel => {
           if (!parcel.createdById) return false;
-          
+
           const creator = users.find(user => user.id === parcel.createdById);
           return creator && creator.branchId === userBranchId;
         });
-        
+
         console.log(`getParcelsForDispatchByBranch - Branch ${userBranchId}: ${filteredParcels.length} parcels found`);
-        console.log(`getParcelsForDispatchByBranch - Sample creators:`, 
+        console.log(`getParcelsForDispatchByBranch - Sample creators:`,
           filteredParcels.slice(0, 3).map(p => {
             const creator = users.find(u => u.id === p.createdById);
-            return { 
-              parcelId: p.id, 
-              createdById: p.createdById, 
+            return {
+              parcelId: p.id,
+              createdById: p.createdById,
               creatorBranch: creator?.branchId,
-              creatorName: creator?.username 
+              creatorName: creator?.username
             };
           })
         );
       }
-      
+
       // Populate creator information for display
       try {
         const users = await this.getUsers();
@@ -1118,19 +1138,19 @@ class WMSApiService {
           if (!parcel.createdBy && parcel.createdById) {
             const creator = users.find(u => u.id === parcel.createdById);
             if (creator) {
-              return { 
-                ...parcel, 
-                createdBy: { 
-                  username: creator.firstName && creator.lastName 
-                    ? `${creator.firstName} ${creator.lastName}` 
-                    : creator.username 
-                } 
+              return {
+                ...parcel,
+                createdBy: {
+                  username: creator.firstName && creator.lastName
+                    ? `${creator.firstName} ${creator.lastName}`
+                    : creator.username
+                }
               };
             }
           }
           return parcel;
         });
-        
+
         return updatedParcels;
       } catch (userErr) {
         // If user fetching fails, return parcels without creator info
@@ -1279,18 +1299,18 @@ class WMSApiService {
   async getDispatches(branchName?: string): Promise<Dispatch[]> {
     return this._fetchDispatches(branchName);
   }
-  
+
   private async _fetchDispatches(branchName?: string): Promise<Dispatch[]> {
     try {
       let url = `${API_BASE_URL}/Dispatches`;
-      
+
       // Add branch filter if provided - use the dedicated branch endpoint
       if (branchName) {
         url = `${API_BASE_URL}/Dispatches/branch/${encodeURIComponent(branchName)}`;
       }
-      
+
       console.log('getDispatches API call:', { branchName, url });
-      
+
       const response = await fetch(url, {
         headers: this.getHeaders(),
       });
@@ -1305,13 +1325,13 @@ class WMSApiService {
 
       const data = await response.json();
       const dispatches = data.$values || data;
-      
+
       // Normalize parcelIds structure for all dispatches
       const normalizedDispatches = dispatches.map((dispatch: Dispatch) => ({
         ...dispatch,
         parcelIds: this.normalizeParcelIds(dispatch.parcelIds)
       }));
-      
+
       return normalizedDispatches;
     } catch (error) {
       throw error;
@@ -1334,7 +1354,7 @@ class WMSApiService {
 
       const data = await response.json();
       const dispatch = data.$values || data;
-      
+
       // Normalize parcelIds structure
       if (dispatch) {
         return {
@@ -1342,7 +1362,7 @@ class WMSApiService {
           parcelIds: this.normalizeParcelIds(dispatch.parcelIds)
         };
       }
-      
+
       return dispatch;
     } catch (error) {
       throw error;
@@ -1360,7 +1380,7 @@ class WMSApiService {
   }): Promise<Dispatch | null> {
     try {
       // Debug: Log input data
-      
+
       // Use the .NET API structure for creating dispatch
       const createDispatchRequest = {
         dispatchCode: dispatchData.dispatchCode,
@@ -1427,7 +1447,7 @@ class WMSApiService {
 
       const data = await response.json();
       console.log('getUsers - Raw API response:', data);
-      
+
       // Handle the $values format
       const users = data.$values || data;
       console.log('getUsers - Users array:', users);
@@ -1458,7 +1478,7 @@ class WMSApiService {
           canConfirm: user.canConfirm || false,
           canDispatch: user.canDispatch || false
         };
-        
+
         console.log(`getUsers - Transformed user ${user.id}:`, transformedUser);
         return transformedUser;
       });
@@ -1688,7 +1708,7 @@ class WMSApiService {
   async createContractCustomer(customer: Omit<ContractCustomer, 'id' | 'createdAt' | 'updatedAt'>): Promise<ContractCustomer> {
     try {
       console.log('Creating contract customer with data:', customer);
-      
+
       const response = await fetch(`${API_BASE_URL}/ContractCustomers`, {
         method: 'POST',
         headers: {
@@ -1762,7 +1782,7 @@ class WMSApiService {
 
       const data = await response.json();
       const invoices = data.$values || data;
-      
+
       // Transform nested items structure
       return invoices.map((invoice: any) => ({
         ...invoice,
@@ -1788,7 +1808,7 @@ class WMSApiService {
       }
 
       const invoice = await response.json();
-      
+
       // Transform nested items structure
       return {
         ...invoice,
@@ -1816,7 +1836,7 @@ class WMSApiService {
       }
 
       const invoice = await response.json();
-      
+
       // Transform nested items structure
       return {
         ...invoice,
@@ -1831,14 +1851,14 @@ class WMSApiService {
     try {
       let url = `${API_BASE_URL}/Invoices/eligible-parcels`;
       const params = new URLSearchParams();
-      
+
       if (billingPeriodStart) {
         params.append('billingPeriodStart', billingPeriodStart);
       }
       if (billingPeriodEnd) {
         params.append('billingPeriodEnd', billingPeriodEnd);
       }
-      
+
       if (params.toString()) {
         url += `?${params.toString()}`;
       }
@@ -1853,7 +1873,7 @@ class WMSApiService {
       }
 
       const parcels = await response.json();
-      
+
       // Handle potential .NET $values wrapper structure
       return parcels?.$values || parcels || [];
     } catch (error) {
@@ -2038,7 +2058,7 @@ class WMSApiService {
   async createDailyExpense(expenseData: CreateDailyExpenseDto): Promise<DailyExpense> {
     try {
       console.log('API: Creating expense with data:', expenseData);
-      
+
       // Clean the expense data - include all required fields
       const cleanedData: any = {
         date: new Date(expenseData.date).toISOString(),
@@ -2055,18 +2075,18 @@ class WMSApiService {
       if (expenseData.branchId !== undefined && expenseData.branchId !== null) {
         cleanedData.branchId = expenseData.branchId;
       }
-      
+
       if (expenseData.clerkId !== undefined && expenseData.clerkId !== null) {
         cleanedData.clerkId = expenseData.clerkId;
       }
-      
+
       if (expenseData.notes) {
         cleanedData.notes = expenseData.notes;
       }
-      
+
       console.log('API: Sending cleaned expense data:', cleanedData);
       console.log('API: JSON payload:', JSON.stringify(cleanedData, null, 2));
-      
+
       const response = await fetch(`${API_BASE_URL}/Expenses`, {
         method: 'POST',
         headers: {
@@ -2107,7 +2127,7 @@ class WMSApiService {
     try {
       console.log('API: Approving expense with data:', approvalData);
       console.log('API: JSON payload:', JSON.stringify(approvalData, null, 2));
-      
+
       const response = await fetch(`${API_BASE_URL}/Expenses/approve`, {
         method: 'POST',
         headers: {
@@ -2344,7 +2364,7 @@ class WMSApiService {
       // Filter parcels by date range if provided
       const filteredParcels = parcels.filter(parcel => {
         if (!parcel.createdAt) return false;
-        
+
         if (startDate && endDate) {
           const parcelDate = new Date(parcel.createdAt);
           const start = new Date(startDate);
@@ -2359,22 +2379,22 @@ class WMSApiService {
         // Improved matching logic for branch names and destinations
         const branchParcels = filteredParcels.filter(parcel => {
           if (!parcel.destination || !branch.name) return false;
-          
+
           const destination = parcel.destination.toLowerCase().trim();
           const branchName = branch.name.toLowerCase().trim();
-          
+
           // Extract key location words from branch name (remove common words like 'branch', 'office', etc.)
           const branchLocation = branchName
             .replace(/\b(branch|office|depot|warehouse|hub|center|centre)\b/g, '')
             .trim();
-          
+
           // Check multiple matching criteria:
           // 1. Exact destination match with branch location
           // 2. Destination contains branch location
           // 3. Branch location contains destination (for shorter destination names)
           return destination === branchLocation ||
-                 destination.includes(branchLocation) ||
-                 (destination.length >= 3 && branchLocation.includes(destination));
+            destination.includes(branchLocation) ||
+            (destination.length >= 3 && branchLocation.includes(destination));
         });
 
         const totalSales = branchParcels.reduce((sum, parcel) => sum + (parcel.totalAmount || 0), 0);
@@ -2402,7 +2422,7 @@ class WMSApiService {
   }[]> {
     const targetDate = date || new Date().toISOString().split('T')[0];
     const salesData = await this.getBranchSalesData(targetDate, targetDate);
-    
+
     return salesData.map(branch => ({
       branchId: branch.branchId,
       branchName: branch.branchName,
@@ -2425,7 +2445,7 @@ class WMSApiService {
     const endDate = new Date(targetYear, targetMonth + 1, 0).toISOString().split('T')[0];
 
     const salesData = await this.getBranchSalesData(startDate, endDate);
-    
+
     return salesData.map(branch => ({
       branchId: branch.branchId,
       branchName: branch.branchName,

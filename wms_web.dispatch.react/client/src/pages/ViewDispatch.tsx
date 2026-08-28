@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Truck, 
-  Package, 
-  User, 
-  MapPin, 
-  CheckCircle, 
-  AlertCircle, 
+import {
+  Truck,
+  Package,
+  User,
+  MapPin,
+  CheckCircle,
+  AlertCircle,
   RefreshCw,
   Search,
   Filter,
@@ -71,11 +71,11 @@ const ViewDispatch: React.FC = () => {
     try {
       setLoading(true);
       setError('');
-      
+
       // Determine if we should filter by branch
       const isManager = isBranchManager();
       const branchName = isManager && user?.branch?.name ? user.branch.name : undefined;
-      
+
       console.log('ViewDispatch: User role check:', {
         user,
         isManager,
@@ -84,19 +84,19 @@ const ViewDispatch: React.FC = () => {
         userRoleId: user?.roleId,
         userBranch: user?.branch
       });
-      
+
       const data = await wmsApi.getDispatches(branchName);
-      
+
       // Cast to EnhancedDispatch since API service normalizes parcelIds
       const enhancedDispatches = data.map(dispatch => dispatch as EnhancedDispatch);
-      
+
       // Sort dispatches by dispatch time, latest first
       const sortedDispatches = enhancedDispatches.sort((a, b) => {
         const dateA = new Date(a.dispatchTime || 0);
         const dateB = new Date(b.dispatchTime || 0);
         return dateB.getTime() - dateA.getTime();
       });
-      
+
       setDispatches(sortedDispatches);
     } catch (err) {
       setError('Failed to load dispatches');
@@ -255,53 +255,53 @@ const ViewDispatch: React.FC = () => {
   const handleViewDispatch = async (dispatch: EnhancedDispatch) => {
     setSelectedDispatch(dispatch);
     setLoadingParcels(true);
-    
+
     try {
-      
+
       // Fetch parcels for this dispatch
       const parcels: EnhancedParcel[] = [];
-      
+
       // If dispatch already has parcels, use them and enhance with user info
       if (dispatch.parcels && dispatch.parcels.length > 0) {
         for (const parcel of dispatch.parcels) {
           const enhancedParcel: EnhancedParcel = {
             ...parcel,
-            createdByUsername: await getUserDisplayName(parcel.createdById, parcel)
+            createdByUsername: await getUserDisplayName(parcel.createdById || 0, parcel)
           };
           parcels.push(enhancedParcel);
         }
-        
+
         // Sort parcels by waybill number alphabetically
         const sortedParcels = parcels.sort((a, b) => {
           const waybillA = a.waybillNumber || '';
           const waybillB = b.waybillNumber || '';
-          return waybillA.localeCompare(waybillB, undefined, { 
-            numeric: false, 
+          return waybillA.localeCompare(waybillB, undefined, {
+            numeric: false,
             sensitivity: 'base',
             caseFirst: 'upper'
           });
         });
-        
+
         setDispatchParcels(sortedParcels);
       } else if (dispatch.parcelIds && dispatch.parcelIds.length > 0) {
         // Use batch fetch for better performance
         try {
           const fetchedParcels = await wmsApi.getParcelsByIds(dispatch.parcelIds);
-          
+
           // Create a map of fetched parcels by ID for quick lookup
           const fetchedParcelMap = new Map(fetchedParcels.map(p => [p.id, p]));
-          
+
           // Create entries for all parcel IDs, including failed ones
           const allParcels: EnhancedParcel[] = [];
-          
+
           for (const parcelId of dispatch.parcelIds) {
             const fetchedParcel = fetchedParcelMap.get(parcelId);
-            
+
             if (fetchedParcel) {
               // Successfully fetched parcel
               const enhancedParcel: EnhancedParcel = {
                 ...fetchedParcel,
-                createdByUsername: await getUserDisplayName(fetchedParcel.createdById, fetchedParcel)
+                createdByUsername: await getUserDisplayName(fetchedParcel.createdById || 0, fetchedParcel)
               };
               allParcels.push(enhancedParcel);
             } else {
@@ -329,18 +329,18 @@ const ViewDispatch: React.FC = () => {
               allParcels.push(placeholderParcel);
             }
           }
-          
+
           // Sort parcels by waybill number alphabetically
           const sortedParcels = allParcels.sort((a, b) => {
             const waybillA = a.waybillNumber || '';
             const waybillB = b.waybillNumber || '';
-            return waybillA.localeCompare(waybillB, undefined, { 
-              numeric: false, 
+            return waybillA.localeCompare(waybillB, undefined, {
+              numeric: false,
               sensitivity: 'base',
               caseFirst: 'upper'
             });
           });
-          
+
           setDispatchParcels(sortedParcels);
         } catch (err) {
           setDispatchParcels([]);
@@ -358,13 +358,13 @@ const ViewDispatch: React.FC = () => {
   const handlePrintDispatchNote = async (dispatch: EnhancedDispatch) => {
     try {
       const dispatchNote = await wmsApi.getDispatchById(dispatch.id);
-      
+
       if (dispatchNote) {
         // Create a new window for printing
         const printWindow = window.open('', '_blank');
         if (printWindow) {
           const eatDateTime = formatDateTime(dispatch.dispatchTime);
-        printWindow.document.write(`
+          printWindow.document.write(`
             <html>
               <head>
                 <title>Dispatch Note - ${dispatch.dispatchCode}</title>
@@ -583,41 +583,41 @@ const ViewDispatch: React.FC = () => {
                 <div class="payment-summary">
                   <h3>Payment Method Totals:</h3>
                   ${(() => {
-                    const paymentTotals = { COD: 0, Paid: 0, Contract: 0 };
-                    dispatchParcels.forEach(parcel => {
-                      const amount = parcel.totalAmount || 0;
-                      const paymentMethod = (parcel.paymentMethods || '').toLowerCase();
-                      
-                      if (paymentMethod.includes('cod') || paymentMethod.includes('cash on delivery')) {
-                        paymentTotals.COD += amount;
-                      } else if (paymentMethod.includes('paid') || paymentMethod.includes('advance') || paymentMethod.includes('prepaid')) {
-                        paymentTotals.Paid += amount;
-                      } else if (paymentMethod.includes('contract') || paymentMethod.includes('credit')) {
-                        paymentTotals.Contract += amount;
-                      } else {
-                        // Default unknown payment methods to COD for safety
-                        paymentTotals.COD += amount;
-                      }
-                    });
-                    
-                    return '<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 10px;">' +
-                      '<div style="background: #e3f2fd; padding: 10px; border-radius: 5px; text-align: center;">' +
-                        '<div style="font-size: 10px; color: #666; margin-bottom: 3px;">COD (Cash on Delivery)</div>' +
-                        '<div style="font-size: 12px; font-weight: bold;">KES ' + paymentTotals.COD.toFixed(2) + '</div>' +
-                      '</div>' +
-                      '<div style="background: #e8f5e8; padding: 10px; border-radius: 5px; text-align: center;">' +
-                        '<div style="font-size: 10px; color: #666; margin-bottom: 3px;">PAID (Advance/Prepaid)</div>' +
-                        '<div style="font-size: 12px; font-weight: bold;">KES ' + paymentTotals.Paid.toFixed(2) + '</div>' +
-                      '</div>' +
-                      '<div style="background: #fff3e0; padding: 10px; border-radius: 5px; text-align: center;">' +
-                        '<div style="font-size: 10px; color: #666; margin-bottom: 3px;">CONTRACT (Credit)</div>' +
-                        '<div style="font-size: 12px; font-weight: bold;">KES ' + paymentTotals.Contract.toFixed(2) + '</div>' +
-                      '</div>' +
-                    '</div>' +
-                    '<div style="margin-top: 15px; text-align: center; border-top: 1px solid #ccc; padding-top: 10px;">' +
-                      '<strong>GRAND TOTAL: KES ' + (paymentTotals.COD + paymentTotals.Paid + paymentTotals.Contract).toFixed(2) + '</strong>' +
-                    '</div>';
-                  })()}
+              const paymentTotals = { COD: 0, Paid: 0, Contract: 0 };
+              dispatchParcels.forEach(parcel => {
+                const amount = parcel.totalAmount || 0;
+                const paymentMethod = (parcel.paymentMethods || '').toLowerCase();
+
+                if (paymentMethod.includes('cod') || paymentMethod.includes('cash on delivery')) {
+                  paymentTotals.COD += amount;
+                } else if (paymentMethod.includes('paid') || paymentMethod.includes('advance') || paymentMethod.includes('prepaid')) {
+                  paymentTotals.Paid += amount;
+                } else if (paymentMethod.includes('contract') || paymentMethod.includes('credit')) {
+                  paymentTotals.Contract += amount;
+                } else {
+                  // Default unknown payment methods to COD for safety
+                  paymentTotals.COD += amount;
+                }
+              });
+
+              return '<div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 10px;">' +
+                '<div style="background: #e3f2fd; padding: 10px; border-radius: 5px; text-align: center;">' +
+                '<div style="font-size: 10px; color: #666; margin-bottom: 3px;">COD (Cash on Delivery)</div>' +
+                '<div style="font-size: 12px; font-weight: bold;">KES ' + paymentTotals.COD.toFixed(2) + '</div>' +
+                '</div>' +
+                '<div style="background: #e8f5e8; padding: 10px; border-radius: 5px; text-align: center;">' +
+                '<div style="font-size: 10px; color: #666; margin-bottom: 3px;">PAID (Advance/Prepaid)</div>' +
+                '<div style="font-size: 12px; font-weight: bold;">KES ' + paymentTotals.Paid.toFixed(2) + '</div>' +
+                '</div>' +
+                '<div style="background: #fff3e0; padding: 10px; border-radius: 5px; text-align: center;">' +
+                '<div style="font-size: 10px; color: #666; margin-bottom: 3px;">CONTRACT (Credit)</div>' +
+                '<div style="font-size: 12px; font-weight: bold;">KES ' + paymentTotals.Contract.toFixed(2) + '</div>' +
+                '</div>' +
+                '</div>' +
+                '<div style="margin-top: 15px; text-align: center; border-top: 1px solid #ccc; padding-top: 10px;">' +
+                '<strong>GRAND TOTAL: KES ' + (paymentTotals.COD + paymentTotals.Paid + paymentTotals.Contract).toFixed(2) + '</strong>' +
+                '</div>';
+            })()}
                 </div>
                 
                 <div style="margin-top: 30px; border-top: 2px solid #000; padding-top: 15px;">
@@ -663,7 +663,7 @@ const ViewDispatch: React.FC = () => {
       'delivered': { variant: 'success' as const, label: 'Delivered' },
       'cancelled': { variant: 'error' as const, label: 'Cancelled' },
     };
-    
+
     const statusInfo = statusMap[status as keyof typeof statusMap] || { variant: 'gray' as const, label: status };
     return <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>;
   };
@@ -699,9 +699,9 @@ const ViewDispatch: React.FC = () => {
 
     // Try to get user info from parcel.createdBy if available
     if (parcel?.createdBy) {
-      const displayName = parcel.createdBy.username || parcel.createdBy.firstName || 
-                         (parcel.createdBy.firstName && parcel.createdBy.lastName ? 
-                          `${parcel.createdBy.firstName} ${parcel.createdBy.lastName}` : null);
+      const displayName = parcel.createdBy.username || parcel.createdBy.firstName ||
+        (parcel.createdBy.firstName && parcel.createdBy.lastName ?
+          `${parcel.createdBy.firstName} ${parcel.createdBy.lastName}` : null);
       if (displayName) {
         setUserCache(prev => new Map(prev).set(userId, displayName));
         return displayName;
@@ -712,7 +712,7 @@ const ViewDispatch: React.FC = () => {
     const commonUserMappings: { [key: number]: string } = {
       20: 'pauline',
       24: 'pwambugu',
-      27: 'muayeki', 
+      27: 'muayeki',
       28: 'User 28',
       29: 'titus',
       42: 'kinyanjui',
@@ -728,17 +728,17 @@ const ViewDispatch: React.FC = () => {
 
     try {
       const user = await wmsApi.getUserById(userId);
-      const displayName = user?.username || user?.firstName || 
-                         (user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : null) ||
-                         `Clerk ${userId}`;
-      
-      
+      const displayName = user?.username || user?.firstName ||
+        (user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : null) ||
+        `Clerk ${userId}`;
+
+
       // Cache the result
       setUserCache(prev => new Map(prev).set(userId, displayName));
-      
+
       return displayName;
     } catch (error) {
-      
+
       // Create a more user-friendly fallback based on the user ID pattern
       const fallback = userId < 50 ? `Clerk ${userId}` : `User ${userId}`;
       setUserCache(prev => new Map(prev).set(userId, fallback));
@@ -970,7 +970,7 @@ const ViewDispatch: React.FC = () => {
               Dispatch Parcels ({dispatchParcels.length})
             </h3>
           </div>
-          
+
           {loadingParcels ? (
             <div className="p-6 text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-500 mx-auto"></div>
@@ -1184,8 +1184,8 @@ const ViewDispatch: React.FC = () => {
           containerHeight={600}
           loading={loading}
           emptyMessage={
-            Object.values(filters).some(filter => filter) 
-              ? 'Try adjusting your filters' 
+            Object.values(filters).some(filter => filter)
+              ? 'Try adjusting your filters'
               : 'No dispatches have been created yet'
           }
           onRowClick={(dispatch) => handleViewDispatch(dispatch)}

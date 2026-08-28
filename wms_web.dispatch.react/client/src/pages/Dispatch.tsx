@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Truck, 
-  Package, 
-  User, 
-  MapPin, 
-  CheckCircle, 
-  AlertCircle, 
+import {
+  Truck,
+  Package,
+  User,
+  MapPin,
+  CheckCircle,
+  AlertCircle,
   RefreshCw,
   Search,
   Filter,
@@ -69,40 +69,40 @@ const DispatchList: React.FC = () => {
     try {
       setLoading(true);
       setError('');
-      
+
       // Determine if we should filter by branch
       const branchName = isBranchManager() && user?.branch?.name ? user.branch.name : undefined;
-      
+
       const data = await wmsApi.getDispatches(branchName);
-      
-      
+
+
       // For each dispatch, fetch parcel details to calculate totals
       const dispatchesWithTotals = await Promise.all(
         data.map(async (dispatch): Promise<EnhancedDispatch> => {
           // Cast to EnhancedDispatch since API service normalizes parcelIds
           const enhancedDispatch = dispatch as EnhancedDispatch;
-          
-          
+
+
           if (enhancedDispatch.parcelIds && enhancedDispatch.parcelIds.length > 0) {
             try {
               const parcels: EnhancedParcel[] = [];
-              
+
               for (const parcelId of enhancedDispatch.parcelIds) {
                 const parcel = await wmsApi.getParcelById(parcelId);
                 if (parcel) {
-                  
+
                   const enhancedParcel: EnhancedParcel = {
                     ...parcel,
-                    createdByDisplayName: await getUserDisplayName(parcel.createdById)
+                    createdByDisplayName: await getUserDisplayName(parcel.createdById || 0)
                   };
                   parcels.push(enhancedParcel);
                 } else {
                 }
               }
-              
+
               const totalAmount = parcels.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
               const totalWeight = parcels.reduce((sum, p) => sum + (p.quantity || 0), 0);
-              
+
               return {
                 ...enhancedDispatch,
                 parcels,
@@ -114,18 +114,18 @@ const DispatchList: React.FC = () => {
               return enhancedDispatch;
             }
           }
-          
+
           return enhancedDispatch;
         })
       );
-      
+
       // Sort dispatches by dispatch time, latest first
       const sortedDispatches = dispatchesWithTotals.sort((a, b) => {
         const dateA = new Date(a.dispatchTime || 0);
         const dateB = new Date(b.dispatchTime || 0);
         return dateB.getTime() - dateA.getTime();
       });
-      
+
       setDispatches(sortedDispatches);
     } catch (err) {
       setError('Failed to load dispatches');
@@ -174,7 +174,7 @@ const DispatchList: React.FC = () => {
         const dispatchDate = new Date(dispatch.dispatchTime);
         const fromDate = filters.dateRange.from ? new Date(filters.dateRange.from) : null;
         const toDate = filters.dateRange.to ? new Date(filters.dateRange.to) : null;
-        
+
         return (!fromDate || dispatchDate >= fromDate) && (!toDate || dispatchDate <= toDate);
       });
     }
@@ -319,18 +319,18 @@ const DispatchList: React.FC = () => {
     try {
       // Use the parcels from the dispatch object if available, or fetch them with user info
       let parcels: EnhancedParcel[] = [];
-      
+
       if (dispatch.parcels && dispatch.parcels.length > 0) {
         // Enhance existing parcels with user display names
         for (const parcel of dispatch.parcels) {
           const enhancedParcel: EnhancedParcel = {
             ...parcel,
-            createdByDisplayName: await getUserDisplayName(parcel.createdById)
+            createdByDisplayName: await getUserDisplayName(parcel.createdById || 0)
           };
           parcels.push(enhancedParcel);
         }
       }
-      
+
       // Create a new window for printing
       const printWindow = window.open('', '_blank');
       if (printWindow) {
@@ -572,7 +572,7 @@ const DispatchList: React.FC = () => {
       'delivered': { variant: 'success' as const, label: 'Delivered' },
       'cancelled': { variant: 'error' as const, label: 'Cancelled' },
     };
-    
+
     const statusInfo = statusMap[status as keyof typeof statusMap] || { variant: 'gray' as const, label: status };
     return <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>;
   };
@@ -705,7 +705,7 @@ const DispatchList: React.FC = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {}}
+            onClick={() => { }}
             title="View Details"
           >
             <Eye className="w-4 h-4" />
@@ -733,10 +733,10 @@ const DispatchList: React.FC = () => {
     try {
       const user = await wmsApi.getUserById(userId);
       const displayName = user?.username || user?.firstName || `User ${userId}`;
-      
+
       // Cache the result
       setUserCache(prev => new Map(prev).set(userId, displayName));
-      
+
       return displayName;
     } catch (error) {
       const fallback = `User ${userId}`;
@@ -887,8 +887,8 @@ const DispatchList: React.FC = () => {
           containerHeight={600}
           loading={loading}
           emptyMessage={
-            Object.values(filters).some(filter => filter) 
-              ? 'Try adjusting your filters' 
+            Object.values(filters).some(filter => filter)
+              ? 'Try adjusting your filters'
               : 'No dispatches have been created yet'
           }
           onRowClick={(dispatch) => {
