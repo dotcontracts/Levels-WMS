@@ -37,9 +37,9 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
       overdue: { color: 'red', label: 'Overdue' },
       cancelled: { color: 'red', label: 'Cancelled' }
     };
-    
+
     const config = statusConfig[status] || { color: 'gray', label: status };
-    
+
     return (
       <Badge color={config.color}>
         {config.label}
@@ -48,16 +48,18 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Invoice Details">
-      <div className="max-w-4xl mx-auto">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={`Invoice ${invoice.invoiceNumber}`}
+      icon={<FileText className="w-5 h-5" />}
+      size="xl"
+    >
+      <div className="w-full">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6 pb-4 border-b">
-          <div className="flex items-center space-x-3">
-            <FileText className="w-8 h-8 text-blue-600" />
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">{invoice.invoiceNumber}</h2>
-              <p className="text-gray-600">Invoice Details</p>
-            </div>
+        <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex flex-col">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white">Invoice Details</h2>
           </div>
           <div className="flex items-center space-x-3">
             {getStatusBadge(invoice.status)}
@@ -111,7 +113,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
             <Package className="w-5 h-5 mr-2" />
             Invoice Items ({invoice.items?.length || 0})
           </h3>
-          
+
           {invoice.items && invoice.items.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full border border-gray-200 rounded-lg">
@@ -153,7 +155,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
             <DollarSign className="w-5 h-5 mr-2" />
             Financial Summary
           </h3>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-3">
               <div className="flex justify-between">
@@ -169,7 +171,7 @@ export const InvoiceViewModal: React.FC<InvoiceViewModalProps> = ({
                 <span className="text-lg font-bold text-gray-900">{formatCurrency(invoice.totalAmount)}</span>
               </div>
             </div>
-            
+
             <div className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-gray-600">Amount Paid:</span>

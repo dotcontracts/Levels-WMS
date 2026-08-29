@@ -7,6 +7,7 @@ interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
+  icon?: React.ReactNode;
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
   showCloseButton?: boolean;
@@ -39,6 +40,7 @@ const Modal: ModalComponent = ({
   isOpen,
   onClose,
   title,
+  icon,
   children,
   size = 'md',
   showCloseButton = true,
@@ -82,34 +84,42 @@ const Modal: ModalComponent = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    <div className="fixed inset-0 z-[100] overflow-y-auto">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity dark:bg-gray-900 dark:bg-opacity-80"
+        className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm transition-opacity dark:bg-gray-900/80"
         onClick={handleBackdropClick}
       />
 
-      {/* Modal */}
+      {/* Modal wrapper to vertically center */}
       <div className="flex min-h-full items-center justify-center p-4">
+        {/* Modal panel with animation */}
         <div
           className={clsx(
-            'relative transform overflow-hidden rounded-xl bg-white text-left shadow-xl transition-all dark:bg-gray-800',
+            'relative transform overflow-hidden rounded-xl bg-white text-left shadow-xl transition-all dark:bg-gray-800 animate-modal-in',
             sizeClasses[size],
-            'w-full'
+            'w-full max-h-[90vh] flex flex-col' // ensure modal doesn't exceed screen height and scrolls internally
           )}
         >
           {/* Header */}
           {(title || showCloseButton) && (
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 bg-gradient-to-r from-brand-700 to-brand-500 border-b border-brand-800/10">
               {title && (
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  {title}
-                </h3>
+                <div className="flex items-center gap-3">
+                  {icon && (
+                    <div className="flex items-center justify-center text-white/90">
+                      {icon}
+                    </div>
+                  )}
+                  <h3 className="text-lg font-semibold text-white">
+                    {title}
+                  </h3>
+                </div>
               )}
               {showCloseButton && (
                 <button
                   onClick={onClose}
-                  className="rounded-lg p-1 text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 dark:hover:text-gray-300 transition-colors"
+                  className="rounded-lg p-1 text-white/80 hover:text-white hover:bg-white/20 transition-colors ml-auto"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -117,8 +127,10 @@ const Modal: ModalComponent = ({
             </div>
           )}
 
-          {/* Content */}
-          {children}
+          {/* Content (Body + Footer) wrapper with scrolling */}
+          <div className="overflow-y-auto flex-1">
+            {children}
+          </div>
         </div>
       </div>
     </div>
@@ -127,7 +139,7 @@ const Modal: ModalComponent = ({
 
 const ModalHeader: React.FC<ModalHeaderProps> = ({ children, className }) => {
   return (
-    <div className={clsx('px-6 py-4 border-b border-gray-200 dark:border-gray-700', className)}>
+    <div className={clsx('px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-brand-700 to-brand-500 text-white', className)}>
       {children}
     </div>
   );

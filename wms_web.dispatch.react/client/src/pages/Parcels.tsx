@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Package, Search, Filter, Download, Eye, RefreshCw, Calendar, MapPin, DollarSign, User, Phone, X, ChevronDown } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useParcelsData } from '../context/ParcelsDataContext';
-import { Card, Button, Badge, FilterPanel, FilterField } from '../components/ui';
+import { Card, Button, Badge, FilterPanel, FilterField, Modal } from '../components/ui';
 import { VirtualScrollTable } from '../components/VirtualScrollTable';
 import { wmsApi, Parcel } from '../services/wmsApi';
 import { generateQRCode } from '../utils/qrCode';
@@ -39,7 +39,7 @@ const Parcels: React.FC = () => {
     isDataFresh,
     getDataAge,
   } = useParcelsData();
-  
+
   const [initialLoading, setInitialLoading] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
   const [error, setError] = useState('');
@@ -743,7 +743,7 @@ const Parcels: React.FC = () => {
         key: 'branchDestination',
         label: 'Branch',
         value: branchDestination,
-        onRemove: () => {},
+        onRemove: () => { },
         locked: true
       });
     }
@@ -865,9 +865,9 @@ const Parcels: React.FC = () => {
       options: branchDestination
         ? [{ value: branchDestination, label: branchDestination }]
         : [
-            { value: '', label: 'All Destinations' },
-            ...(destinations || []).map(dest => ({ value: dest, label: dest }))
-          ]
+          { value: '', label: 'All Destinations' },
+          ...(destinations || []).map(dest => ({ value: dest, label: dest }))
+        ]
     },
     {
       key: 'paymentMethod',
@@ -1254,23 +1254,15 @@ const Parcels: React.FC = () => {
 
       {/* Parcel Details Modal */}
       {showParcelModal && selectedParcel && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg w-full max-w-5xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white truncate">
-                {selectedParcel.waybillNumber}
-              </h2>
-              <button
-                onClick={handleCloseModal}
-                className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors ml-2"
-              >
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
-
-            {/* Modal Content */}
-            <div className="p-3 sm:p-4 overflow-y-auto flex-1">
+        <Modal
+          isOpen={showParcelModal}
+          onClose={handleCloseModal}
+          title={selectedParcel.waybillNumber}
+          icon={<Package className="w-5 h-5" />}
+          size="xl"
+        >
+          <div className="flex-1 overflow-y-auto">
+            <div className="p-3 sm:p-4">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
                 {/* Basic Information */}
                 <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3">
@@ -1401,23 +1393,23 @@ const Parcels: React.FC = () => {
                 </div>
               </div>
             </div>
-
-            {/* Modal Footer */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end p-3 sm:p-4 border-t border-gray-200 dark:border-gray-700 space-y-2 sm:space-y-0 sm:space-x-3 bg-white dark:bg-gray-800">
-              <Button variant="outline" onClick={handleCloseModal} className="order-3 sm:order-1">
-                Close
-              </Button>
-              <Button variant="outline" onClick={() => handleDownloadA4Receipt(selectedParcel)} className="order-1 sm:order-2">
-                <Download className="w-4 h-4 mr-2" />
-                A4 Receipt
-              </Button>
-              <Button variant="primary" onClick={() => handleDownload80mmReceipt(selectedParcel)} className="order-2 sm:order-3">
-                <Download className="w-4 h-4 mr-2" />
-                80mm Receipt
-              </Button>
-            </div>
           </div>
-        </div>
+
+          {/* Modal Footer */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end p-3 sm:p-4 border-t border-gray-200 dark:border-gray-700 space-y-2 sm:space-y-0 sm:space-x-3 bg-white dark:bg-gray-800">
+            <Button variant="outline" onClick={handleCloseModal} className="order-3 sm:order-1">
+              Close
+            </Button>
+            <Button variant="outline" onClick={() => handleDownloadA4Receipt(selectedParcel)} className="order-1 sm:order-2">
+              <Download className="w-4 h-4 mr-2" />
+              A4 Receipt
+            </Button>
+            <Button variant="primary" onClick={() => handleDownload80mmReceipt(selectedParcel)} className="order-2 sm:order-3">
+              <Download className="w-4 h-4 mr-2" />
+              80mm Receipt
+            </Button>
+          </div>
+        </Modal>
       )}
     </div>
   );

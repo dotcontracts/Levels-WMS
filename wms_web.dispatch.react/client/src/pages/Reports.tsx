@@ -32,7 +32,7 @@ import {
   Edit
 } from 'lucide-react';
 import Chart from 'react-apexcharts';
-import { Card, Button, Badge, Table, FilterPanel, FilterField } from '../components/ui';
+import { Card, Button, Badge, Table, FilterPanel, FilterField, Modal } from '../components/ui';
 import { VirtualScrollTable } from '../components/VirtualScrollTable';
 import { fmtDate, fmtTime, fmtDateTime } from '../utils/dateUtils';
 
@@ -3962,15 +3962,15 @@ const Reports: React.FC = () => {
         </Card>
 
         {/* Reject Deposit Modal */}
-        {showRejectModal && rejectDepositId && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Reject Deposit</h3>
-                <button onClick={() => setShowRejectModal(false)} className="text-gray-400 hover:text-gray-600">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+        {showRejectModal && !!rejectDepositId && (
+          <Modal
+            isOpen={showRejectModal}
+            onClose={() => setShowRejectModal(false)}
+            title="Reject Deposit"
+            icon={<AlertCircle className="w-5 h-5" />}
+            size="md"
+          >
+            <div className="p-6">
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -4004,25 +4004,19 @@ const Reports: React.FC = () => {
                 </div>
               </div>
             </div>
-          </div>
+          </Modal>
         )}
 
         {/* Deposit Modal */}
-        {showDepositModal && selectedBranchDebit && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                  Update Deposit Amount
-                </h3>
-                <button
-                  onClick={() => setShowDepositModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
+        {showDepositModal && !!selectedBranchDebit && (
+          <Modal
+            isOpen={showDepositModal}
+            onClose={() => setShowDepositModal(false)}
+            title="Update Deposit Amount"
+            icon={<DollarSign className="w-5 h-5" />}
+            size="md"
+          >
+            <div className="p-6">
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -4077,7 +4071,7 @@ const Reports: React.FC = () => {
                 </div>
               </div>
             </div>
-          </div>
+          </Modal>
         )}
       </div>
     );
@@ -4314,27 +4308,19 @@ const Reports: React.FC = () => {
         </Card>
 
         {/* Debit Details Modal */}
-        {showDebitDetailsModal && selectedDebitClerk && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
-              {/* Modal Header */}
-              <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                  Debit Details: {selectedDebitClerk.clerkName}
-                </h2>
-                <button
-                  onClick={() => {
-                    setShowDebitDetailsModal(false);
-                    setSelectedDebitClerk(null);
-                  }}
-                  className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5 text-gray-500" />
-                </button>
-              </div>
-
-              {/* Modal Content */}
-              <div className="p-4 overflow-y-auto flex-1">
+        {showDebitDetailsModal && !!selectedDebitClerk && (
+          <Modal
+            isOpen={showDebitDetailsModal}
+            onClose={() => {
+              setShowDebitDetailsModal(false);
+              setSelectedDebitClerk(null);
+            }}
+            title={`Debit Details: ${selectedDebitClerk?.clerkName}`}
+            icon={<FileText className="w-5 h-5" />}
+            size="xl"
+          >
+            <div className="flex-1 overflow-y-auto">
+              <div className="p-4">
                 {/* Summary */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                   <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
@@ -4466,28 +4452,27 @@ const Reports: React.FC = () => {
                   </Table>
                 </div>
               </div>
-
-              {/* Modal Footer */}
-              <div className="flex items-center justify-end p-4 border-t border-gray-200 dark:border-gray-700 space-x-3">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setShowDebitDetailsModal(false);
-                    setSelectedDebitClerk(null);
-                  }}
-                >
-                  Close
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={() => downloadClerkDebitPDF(selectedDebitClerk)}
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Export Details
-                </Button>
-              </div>
             </div>
-          </div>
+
+            <div className="flex items-center justify-end p-4 border-t border-gray-200 dark:border-gray-700 space-x-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowDebitDetailsModal(false);
+                  setSelectedDebitClerk(null);
+                }}
+              >
+                Close
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => downloadClerkDebitPDF(selectedDebitClerk)}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export Details
+              </Button>
+            </div>
+          </Modal>
         )}
       </div>
     );
@@ -5135,21 +5120,15 @@ const Reports: React.FC = () => {
       </DataLoadingState>
 
       {/* Clerk Details Modal */}
-      {showClerkDetailsModal && selectedClerk && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-6xl mx-4 max-h-[90vh] overflow-hidden">
-            <div className="flex justify-between items-center p-6 border-b border-gray-200 dark:border-gray-700">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Cash-in Details - {selectedClerk.clerkName}
-              </h3>
-              <button
-                onClick={() => setShowClerkDetailsModal(false)}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
+      {showClerkDetailsModal && !!selectedClerk && (
+        <Modal
+          isOpen={showClerkDetailsModal}
+          onClose={() => setShowClerkDetailsModal(false)}
+          title={`Cash-in Details - ${selectedClerk.clerkName}`}
+          icon={<FileText className="w-5 h-5" />}
+          size="xl"
+        >
+          <div className="flex-1 overflow-y-auto">
             {/* Clerk Summary */}
             <div className="p-6 border-b border-gray-200 dark:border-gray-700">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -5311,37 +5290,30 @@ const Reports: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
 
-            <div className="p-6 border-t border-gray-200 dark:border-gray-700">
-              <div className="flex justify-end">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowClerkDetailsModal(false)}
-                >
-                  Close
-                </Button>
-              </div>
+          <div className="p-6 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setShowClerkDetailsModal(false)}
+              >
+                Close
+              </Button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
-      {/* Parcel Update Modal */}
-      {showParcelModal && selectedClerkParcel && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Update Parcel - {selectedClerkParcel.waybillNumber}
-              </h3>
-              <button
-                onClick={() => setShowParcelModal(false)}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
+      {showParcelModal && !!selectedClerkParcel && (
+        <Modal
+          isOpen={showParcelModal}
+          onClose={() => setShowParcelModal(false)}
+          title={`Update Parcel - ${selectedClerkParcel.waybillNumber}`}
+          icon={<Package className="w-5 h-5" />}
+          size="md"
+        >
+          <div className="p-6">
             <div className="space-y-4">
               <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
                 <div className="text-sm text-gray-600 dark:text-gray-400">Parcel Details</div>
@@ -5394,25 +5366,24 @@ const Reports: React.FC = () => {
                 </div>
               )}
 
-              <div className="flex space-x-3 pt-4">
+              <div className="flex space-x-3 pt-4 justify-end">
                 <Button
                   variant="outline"
                   onClick={() => setShowParcelModal(false)}
-                  className="flex-1"
                 >
                   Cancel
                 </Button>
                 <Button
+                  variant="primary"
                   onClick={handleParcelUpdate}
                   disabled={updatingParcel}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
                 >
                   {updatingParcel ? 'Updating...' : 'Update Parcel'}
                 </Button>
               </div>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

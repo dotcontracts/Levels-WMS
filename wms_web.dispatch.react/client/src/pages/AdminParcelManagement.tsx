@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { wmsApi, Parcel } from '../services/wmsApi';
-import { 
-  Package, 
-  Search, 
-  RefreshCw, 
-  Edit, 
+import {
+  Package,
+  Search,
+  RefreshCw,
+  Edit,
   Trash2,
   AlertTriangle,
   CheckCircle,
@@ -20,7 +20,7 @@ import {
   Save,
   RotateCcw
 } from 'lucide-react';
-import { FilterPanel, FilterField } from '../components/ui';
+import { FilterPanel, FilterField, Modal } from '../components/ui';
 import { VirtualScrollTable } from '../components/VirtualScrollTable';
 
 // Status constants matching the API
@@ -90,19 +90,19 @@ const AdminParcelManagement: React.FC = () => {
   });
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  
+
   // Dropdown options for edit modal
   const [availableDestinations, setAvailableDestinations] = useState<string[]>([]);
   const [availablePaymentMethods, setAvailablePaymentMethods] = useState<string[]>([]);
-  
+
   // Edit Modal State
   const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
   const [editForm, setEditForm] = useState<ParcelEditForm | null>(null);
   const [saving, setSaving] = useState(false);
-  
+
   // Delete Confirmation State
   const [deletingParcel, setDeletingParcel] = useState<Parcel | null>(null);
-  
+
   // Filter State
   const [filters, setFilters] = useState<ParcelFilterState>({
     waybillNumber: '',
@@ -114,7 +114,7 @@ const AdminParcelManagement: React.FC = () => {
     amountRange: { from: '', to: '' },
     dateRange: { from: '', to: '' }
   });
-  
+
   // Available clerks for filter dropdown
   const [clerks, setClerks] = useState<{ id: number; username: string }[]>([]);
 
@@ -200,10 +200,10 @@ const AdminParcelManagement: React.FC = () => {
   useEffect(() => {
     wmsApi.getBranches().then(branches => {
       setAvailableDestinations(branches.map(b => b.name));
-    }).catch(() => {});
+    }).catch(() => { });
     wmsApi.getUsers().then(users => {
       setClerks(users.map(u => ({ id: u.id, username: u.firstName && u.lastName ? `${u.firstName} ${u.lastName}` : u.username })));
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   const loadParcels = useCallback(async (forceRefresh = false, loadMore = false) => {
@@ -360,7 +360,7 @@ const AdminParcelManagement: React.FC = () => {
     try {
       const success = await wmsApi.updateParcelStatus(parcelId, newStatus);
       if (success) {
-        setAllParcels(prev => prev.map(p => 
+        setAllParcels(prev => prev.map(p =>
           p.id === parcelId ? { ...p, status: newStatus } : p
         ));
         setSuccessMessage(`Parcel status updated to ${STATUS_LABELS[newStatus]}`);
@@ -439,10 +439,10 @@ const AdminParcelManagement: React.FC = () => {
       setTimeout(() => setError(null), 5000);
       return;
     }
-    
+
     try {
       setSaving(true);
-      
+
       // Prepare update data with both amount and totalAmount
       const updateData = {
         ...editForm,
@@ -450,11 +450,11 @@ const AdminParcelManagement: React.FC = () => {
         totalAmount: editForm.amount, // Set totalAmount to the edited amount value
         amount: editForm.amount // Keep amount field consistent
       };
-      
+
       const success = await wmsApi.updateParcel(editingParcel.id, updateData);
-      
+
       if (success) {
-        setAllParcels(prev => prev.map(p => 
+        setAllParcels(prev => prev.map(p =>
           p.id === editingParcel.id ? { ...p, ...updateData, totalAmount: editForm.amount } : p
         ));
         setSuccessMessage('Parcel updated successfully');
@@ -475,10 +475,10 @@ const AdminParcelManagement: React.FC = () => {
   // Handle delete parcel
   const handleDeleteParcel = async () => {
     if (!deletingParcel) return;
-    
+
     try {
       const success = await wmsApi.deleteParcel(deletingParcel.id);
-      
+
       if (success) {
         setAllParcels(prev => prev.filter(p => p.id !== deletingParcel.id));
         setSuccessMessage('Parcel deleted successfully');
@@ -697,7 +697,7 @@ const AdminParcelManagement: React.FC = () => {
           {successMessage}
         </div>
       )}
-      
+
       {error && (
         <div className="bg-error-50 border border-error-200 text-error-800 px-4 py-3 rounded-lg flex items-center gap-2">
           <AlertTriangle className="w-5 h-5" />
@@ -736,8 +736,8 @@ const AdminParcelManagement: React.FC = () => {
           isLoadingMore={pagination.isLoadingMore}
           onLoadMore={handleLoadMore}
           emptyMessage={
-            Object.values(filters).some(filter => filter) 
-              ? 'Try adjusting your filters or refresh the data' 
+            Object.values(filters).some(filter => filter)
+              ? 'Try adjusting your filters or refresh the data'
               : 'No parcels found'
           }
           onRowClick={(parcel) => openEditModal(parcel)}
@@ -746,22 +746,14 @@ const AdminParcelManagement: React.FC = () => {
 
       {/* Edit Parcel Modal */}
       {editingParcel && editForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900">
-                  Edit Parcel - {editingParcel.waybillNumber}
-                </h3>
-                <button
-                  onClick={closeEditModal}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-            </div>
-
+        <Modal
+          isOpen={!!editingParcel}
+          onClose={closeEditModal}
+          title={`Edit Parcel - ${editingParcel.waybillNumber}`}
+          icon={<Edit className="w-5 h-5" />}
+          size="xl"
+        >
+          <div className="flex-1 overflow-y-auto">
             <div className="p-6 space-y-6">
               {/* Read-only System Info */}
               <div className="bg-gray-50 p-4 rounded-lg">
@@ -942,34 +934,35 @@ const AdminParcelManagement: React.FC = () => {
               </div>
             </div>
 
-            <div className="p-6 border-t border-gray-200 flex items-center justify-between">
+          </div>
+
+          <div className="p-6 border-t border-gray-200 flex items-center justify-between">
+            <button
+              onClick={resetEditForm}
+              className="btn-secondary flex items-center gap-2"
+            >
+              <RotateCcw className="w-4 h-4" />
+              Reset
+            </button>
+
+            <div className="flex items-center gap-3">
               <button
-                onClick={resetEditForm}
-                className="btn-secondary flex items-center gap-2"
+                onClick={closeEditModal}
+                className="btn-secondary"
               >
-                <RotateCcw className="w-4 h-4" />
-                Reset
+                Cancel
               </button>
-              
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={closeEditModal}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={saveParcelEdits}
-                  disabled={saving}
-                  className="btn-primary flex items-center gap-2"
-                >
-                  <Save className="w-4 h-4" />
-                  {saving ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
+              <button
+                onClick={saveParcelEdits}
+                disabled={saving}
+                className="btn-primary flex items-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Delete Confirmation Modal */}
@@ -983,12 +976,12 @@ const AdminParcelManagement: React.FC = () => {
                   Delete Parcel
                 </h3>
               </div>
-              
+
               <p className="text-gray-600 mb-6">
-                Are you sure you want to delete parcel <strong>{deletingParcel.waybillNumber}</strong>? 
+                Are you sure you want to delete parcel <strong>{deletingParcel.waybillNumber}</strong>?
                 This action cannot be undone.
               </p>
-              
+
               <div className="flex items-center gap-3 justify-end">
                 <button
                   onClick={() => setDeletingParcel(null)}

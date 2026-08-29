@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { wmsApi } from '../services/wmsApi';
-import { 
-  Users, 
-  UserPlus, 
-  Search, 
-  Filter, 
+import {
+  Users,
+  UserPlus,
+  Search,
+  Filter,
   MoreVertical,
   Edit,
   Trash2,
@@ -27,6 +27,7 @@ import {
   Lock,
   Unlock
 } from 'lucide-react';
+import { Modal } from '../components/ui';
 
 interface User {
   id: string;
@@ -99,7 +100,7 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({
     canConfirm: false,
     canDispatch: false
   });
-  
+
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Partial<UserFormData>>({});
 
@@ -194,258 +195,245 @@ const CreateUserModal: React.FC<CreateUserModalProps> = ({
   const availableRoles = ['Admin', 'Manager', 'Employee', 'Clerk', 'Driver', 'Accountant'];
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose}></div>
-        
-        <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
-          <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                {editUser ? <Edit className="w-6 h-6 text-primary-500 mr-2" /> : <UserPlus className="w-6 h-6 text-primary-500 mr-2" />}
-                {editUser ? 'Edit User' : 'Create New User'}
-              </h3>
-              <button
-                onClick={onClose}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={editUser ? 'Edit User' : 'Create New User'}
+      icon={editUser ? <Edit className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
+      size="xl"
+    >
+      <div className="p-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">Username *</label>
+              <input
+                type="text"
+                value={formData.username}
+                onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
+                className={`form-input ${errors.username ? 'border-error-500' : ''}`}
+                placeholder="Enter username"
+                disabled={!!editUser} // Don't allow username changes when editing
+              />
+              {errors.username && (
+                <p className="mt-1 text-sm text-error-600">{errors.username}</p>
+              )}
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="form-label">Username *</label>
-                  <input
-                    type="text"
-                    value={formData.username}
-                    onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
-                    className={`form-input ${errors.username ? 'border-error-500' : ''}`}
-                    placeholder="Enter username"
-                    disabled={!!editUser} // Don't allow username changes when editing
-                  />
-                  {errors.username && (
-                    <p className="mt-1 text-sm text-error-600">{errors.username}</p>
-                  )}
-                </div>
-                
-                <div>
-                  <label className="form-label">Email *</label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                    className={`form-input ${errors.email ? 'border-error-500' : ''}`}
-                    placeholder="Enter email address"
-                  />
-                  {errors.email && (
-                    <p className="mt-1 text-sm text-error-600">{errors.email}</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="form-label">First Name *</label>
-                  <input
-                    type="text"
-                    value={formData.firstName}
-                    onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
-                    className={`form-input ${errors.firstName ? 'border-error-500' : ''}`}
-                    placeholder="Enter first name"
-                  />
-                  {errors.firstName && (
-                    <p className="mt-1 text-sm text-error-600">{errors.firstName}</p>
-                  )}
-                </div>
-                
-                <div>
-                  <label className="form-label">Last Name *</label>
-                  <input
-                    type="text"
-                    value={formData.lastName}
-                    onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
-                    className={`form-input ${errors.lastName ? 'border-error-500' : ''}`}
-                    placeholder="Enter last name"
-                  />
-                  {errors.lastName && (
-                    <p className="mt-1 text-sm text-error-600">{errors.lastName}</p>
-                  )}
-                </div>
-              </div>
-
-              {!editUser && ( // Only show password fields for new users
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="form-label">Password *</label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        value={formData.password}
-                        onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                        className={`form-input pr-10 ${errors.password ? 'border-error-500' : ''}`}
-                        placeholder="Enter password"
-                      />
-                      <button
-                        type="button"
-                        className="absolute inset-y-0 right-0 flex items-center pr-3"
-                        onClick={() => setShowPassword(!showPassword)}
-                      >
-                        {showPassword ? (
-                          <EyeOff className="w-5 h-5 text-gray-400" />
-                        ) : (
-                          <Eye className="w-5 h-5 text-gray-400" />
-                        )}
-                      </button>
-                    </div>
-                    {errors.password && (
-                      <p className="mt-1 text-sm text-error-600">{errors.password}</p>
-                    )}
-                  </div>
-                  
-                  <div>
-                    <label className="form-label">Confirm Password *</label>
-                    <input
-                      type="password"
-                      value={formData.confirmPassword}
-                      onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                      className={`form-input ${errors.confirmPassword ? 'border-error-500' : ''}`}
-                      placeholder="Confirm password"
-                    />
-                    {errors.confirmPassword && (
-                      <p className="mt-1 text-sm text-error-600">{errors.confirmPassword}</p>
-                    )}
-                  </div>
-                </div>
+            <div>
+              <label className="form-label">Email *</label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                className={`form-input ${errors.email ? 'border-error-500' : ''}`}
+                placeholder="Enter email address"
+              />
+              {errors.email && (
+                <p className="mt-1 text-sm text-error-600">{errors.email}</p>
               )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="form-label">Role *</label>
-                  <select
-                    value={formData.role}
-                    onChange={(e) => setFormData(prev => ({ ...prev, role: e.target.value }))}
-                    className={`form-input ${errors.role ? 'border-error-500' : ''}`}
-                  >
-                    <option value="">Select role</option>
-                    {availableRoles.map(role => (
-                      <option key={role} value={role}>{role}</option>
-                    ))}
-                  </select>
-                  {errors.role && (
-                    <p className="mt-1 text-sm text-error-600">{errors.role}</p>
-                  )}
-                </div>
-                
-                <div>
-                  <label className="form-label">Branch</label>
-                  <select
-                    value={formData.branch}
-                    onChange={(e) => setFormData(prev => ({ ...prev, branch: e.target.value }))}
-                    className="form-input"
-                  >
-                    <option value="">No specific branch</option>
-                    {branches.map(branch => (
-                      <option key={branch.id} value={branch.name}>{branch.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="form-label">Phone Number</label>
-                  <input
-                    type="tel"
-                    value={formData.phoneNumber}
-                    onChange={(e) => setFormData(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                    className="form-input"
-                    placeholder="Enter phone number"
-                  />
-                </div>
-                
-                <div className="flex items-center pt-7">
-                  <input
-                    type="checkbox"
-                    id="isActive"
-                    checked={formData.isActive}
-                    onChange={(e) => setFormData(prev => ({ ...prev, isActive: e.target.checked }))}
-                    className="form-checkbox"
-                  />
-                  <label htmlFor="isActive" className="ml-2 text-sm text-gray-700">
-                    Active User
-                  </label>
-                </div>
-              </div>
-
-              {/* Role Permissions */}
-              <div className="border-t border-gray-200 pt-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Role Permissions</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="canConfirm"
-                      checked={formData.canConfirm}
-                      onChange={(e) => setFormData(prev => ({ ...prev, canConfirm: e.target.checked }))}
-                      className="form-checkbox"
-                    />
-                    <label htmlFor="canConfirm" className="ml-2 text-sm text-gray-700">
-                      Can Confirm Parcels
-                    </label>
-                  </div>
-                  
-                  <div className="flex items-center">
-                    <input
-                      type="checkbox"
-                      id="canDispatch"
-                      checked={formData.canDispatch}
-                      onChange={(e) => setFormData(prev => ({ ...prev, canDispatch: e.target.checked }))}
-                      className="form-checkbox"
-                    />
-                    <label htmlFor="canDispatch" className="ml-2 text-sm text-gray-700">
-                      Can Dispatch Parcels
-                    </label>
-                  </div>
-                </div>
-                <p className="mt-2 text-sm text-gray-500">
-                  These permissions control what actions users can perform in the system.
-                </p>
-              </div>
-
-              {/* Submit Buttons */}
-              <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="btn-primary disabled:opacity-50"
-                >
-                  {loading ? (
-                    <div className="flex items-center">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      {editUser ? 'Updating...' : 'Creating...'}
-                    </div>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4 mr-2" />
-                      {editUser ? 'Update User' : 'Create User'}
-                    </>
-                  )}
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
-        </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">First Name *</label>
+              <input
+                type="text"
+                value={formData.firstName}
+                onChange={(e) => setFormData(prev => ({ ...prev, firstName: e.target.value }))}
+                className={`form-input ${errors.firstName ? 'border-error-500' : ''}`}
+                placeholder="Enter first name"
+              />
+              {errors.firstName && (
+                <p className="mt-1 text-sm text-error-600">{errors.firstName}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="form-label">Last Name *</label>
+              <input
+                type="text"
+                value={formData.lastName}
+                onChange={(e) => setFormData(prev => ({ ...prev, lastName: e.target.value }))}
+                className={`form-input ${errors.lastName ? 'border-error-500' : ''}`}
+                placeholder="Enter last name"
+              />
+              {errors.lastName && (
+                <p className="mt-1 text-sm text-error-600">{errors.lastName}</p>
+              )}
+            </div>
+          </div>
+
+          {!editUser && ( // Only show password fields for new users
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="form-label">Password *</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={formData.password}
+                    onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+                    className={`form-input pr-10 ${errors.password ? 'border-error-500' : ''}`}
+                    placeholder="Enter password"
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-0 flex items-center pr-3"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-5 h-5 text-gray-400" />
+                    ) : (
+                      <Eye className="w-5 h-5 text-gray-400" />
+                    )}
+                  </button>
+                </div>
+                {errors.password && (
+                  <p className="mt-1 text-sm text-error-600">{errors.password}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="form-label">Confirm Password *</label>
+                <input
+                  type="password"
+                  value={formData.confirmPassword}
+                  onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                  className={`form-input ${errors.confirmPassword ? 'border-error-500' : ''}`}
+                  placeholder="Confirm password"
+                />
+                {errors.confirmPassword && (
+                  <p className="mt-1 text-sm text-error-600">{errors.confirmPassword}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">Role *</label>
+              <select
+                value={formData.role}
+                onChange={(e) => setFormData(prev => ({ ...prev, role: e.target.value }))}
+                className={`form-input ${errors.role ? 'border-error-500' : ''}`}
+              >
+                <option value="">Select role</option>
+                {availableRoles.map(role => (
+                  <option key={role} value={role}>{role}</option>
+                ))}
+              </select>
+              {errors.role && (
+                <p className="mt-1 text-sm text-error-600">{errors.role}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="form-label">Branch</label>
+              <select
+                value={formData.branch}
+                onChange={(e) => setFormData(prev => ({ ...prev, branch: e.target.value }))}
+                className="form-input"
+              >
+                <option value="">No specific branch</option>
+                {branches.map(branch => (
+                  <option key={branch.id} value={branch.name}>{branch.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="form-label">Phone Number</label>
+              <input
+                type="tel"
+                value={formData.phoneNumber}
+                onChange={(e) => setFormData(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                className="form-input"
+                placeholder="Enter phone number"
+              />
+            </div>
+
+            <div className="flex items-center pt-7">
+              <input
+                type="checkbox"
+                id="isActive"
+                checked={formData.isActive}
+                onChange={(e) => setFormData(prev => ({ ...prev, isActive: e.target.checked }))}
+                className="form-checkbox"
+              />
+              <label htmlFor="isActive" className="ml-2 text-sm text-gray-700">
+                Active User
+              </label>
+            </div>
+          </div>
+
+          {/* Role Permissions */}
+          <div className="border-t border-gray-200 pt-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Role Permissions</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="canConfirm"
+                  checked={formData.canConfirm}
+                  onChange={(e) => setFormData(prev => ({ ...prev, canConfirm: e.target.checked }))}
+                  className="form-checkbox"
+                />
+                <label htmlFor="canConfirm" className="ml-2 text-sm text-gray-700">
+                  Can Confirm Parcels
+                </label>
+              </div>
+
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="canDispatch"
+                  checked={formData.canDispatch}
+                  onChange={(e) => setFormData(prev => ({ ...prev, canDispatch: e.target.checked }))}
+                  className="form-checkbox"
+                />
+                <label htmlFor="canDispatch" className="ml-2 text-sm text-gray-700">
+                  Can Dispatch Parcels
+                </label>
+              </div>
+            </div>
+            <p className="mt-2 text-sm text-gray-500">
+              These permissions control what actions users can perform in the system.
+            </p>
+          </div>
+
+          {/* Submit Buttons */}
+          <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-primary flex items-center justify-center min-w-[140px] disabled:opacity-50"
+            >
+              {loading ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  {editUser ? 'Updating...' : 'Creating...'}
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  {editUser ? 'Update User' : 'Create User'}
+                </>
+              )}
+            </button>
+          </div>
+        </form>
       </div>
-    </div>
+    </Modal>
   );
 };
 
@@ -460,7 +448,7 @@ const UserManagement: React.FC = () => {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [branches, setBranches] = useState<{ id: number; name: string; address?: string; phone?: string; email?: string }[]>([]);
-  
+
   const [filters, setFilters] = useState<UserFilters>({
     role: '',
     branch: '',
@@ -576,10 +564,10 @@ const UserManagement: React.FC = () => {
     try {
       setLoading(true);
       setError('');
-      
+
       // Fetch real user data from API
       const userData = await wmsApi.getUsers();
-      
+
       // Transform API data to match component interface
       const transformedUsers: User[] = userData.map(user => ({
         id: user.id.toString(),
@@ -596,10 +584,10 @@ const UserManagement: React.FC = () => {
         dateJoined: user.createdAt || new Date().toISOString(),
         lastLogin: undefined
       }));
-      
+
       setUsers(transformedUsers);
       setFilteredUsers(transformedUsers);
-      
+
     } catch (err) {
       setError('Failed to load users');
       // Fallback to mock data if API fails
@@ -633,7 +621,7 @@ const UserManagement: React.FC = () => {
   const handleCreateUser = async (formData: UserFormData) => {
     try {
       setCreating(true);
-      
+
       if (editingUser) {
         // Update existing user
         await wmsApi.updateUser(parseInt(editingUser.id), {
@@ -662,13 +650,13 @@ const UserManagement: React.FC = () => {
         });
         setSuccessMessage('User created successfully');
       }
-      
+
       // Refresh the user list
       await fetchUsers();
-      
+
       setShowCreateModal(false);
       setEditingUser(null);
-      
+
     } catch (err) {
       setError(editingUser ? 'Failed to update user' : 'Failed to create user');
     } finally {
@@ -680,10 +668,10 @@ const UserManagement: React.FC = () => {
     if (!window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
       return;
     }
-    
+
     try {
       await wmsApi.deleteUser(parseInt(userId));
-      
+
       // Remove user from local state
       setUsers(prev => prev.filter(u => u.id !== userId));
       setFilteredUsers(prev => prev.filter(u => u.id !== userId));
@@ -705,14 +693,14 @@ const UserManagement: React.FC = () => {
       }
 
       // Update local state
-      const updatedUsers = users.map(u => 
+      const updatedUsers = users.map(u =>
         u.id === userId ? { ...u, isActive: !u.isActive } : u
       );
       setUsers(updatedUsers);
-      setFilteredUsers(prev => prev.map(u => 
+      setFilteredUsers(prev => prev.map(u =>
         u.id === userId ? { ...u, isActive: !u.isActive } : u
       ));
-      
+
       setSuccessMessage(`User ${user.isActive ? 'deactivated' : 'activated'} successfully`);
     } catch (err) {
       setError('Failed to update user status');
@@ -725,7 +713,7 @@ const UserManagement: React.FC = () => {
 
     // Apply search filter
     if (filters.searchTerm) {
-      filtered = filtered.filter(user => 
+      filtered = filtered.filter(user =>
         user.username.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
         user.email?.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
         user.firstName?.toLowerCase().includes(filters.searchTerm.toLowerCase()) ||
@@ -802,7 +790,7 @@ const UserManagement: React.FC = () => {
             Manage system users, roles, and permissions
           </p>
         </div>
-        
+
         <div className="flex items-center space-x-3">
           <button
             onClick={fetchUsers}
@@ -812,7 +800,7 @@ const UserManagement: React.FC = () => {
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
-          
+
           <button
             onClick={() => {
               setEditingUser(null);
@@ -839,7 +827,7 @@ const UserManagement: React.FC = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="stats-card">
           <div className="flex items-center">
             <div className="p-2 bg-success-100 rounded-lg">
@@ -853,7 +841,7 @@ const UserManagement: React.FC = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="stats-card">
           <div className="flex items-center">
             <div className="p-2 bg-info-100 rounded-lg">
@@ -867,7 +855,7 @@ const UserManagement: React.FC = () => {
             </div>
           </div>
         </div>
-        
+
         <div className="stats-card">
           <div className="flex items-center">
             <div className="p-2 bg-warning-100 rounded-lg">
@@ -1000,7 +988,7 @@ const UserManagement: React.FC = () => {
         <p className="text-sm text-gray-600">
           Showing {filteredUsers.length} of {users.length} users
         </p>
-        
+
         {filteredUsers.length !== users.length && (
           <span className="text-sm text-primary-600 bg-primary-50 px-2 py-1 rounded">
             Filtered from {users.length} total
@@ -1083,11 +1071,10 @@ const UserManagement: React.FC = () => {
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      user.isActive 
-                        ? 'bg-success-100 text-success-800' 
-                        : 'bg-error-100 text-error-800'
-                    }`}>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.isActive
+                      ? 'bg-success-100 text-success-800'
+                      : 'bg-error-100 text-error-800'
+                      }`}>
                       {user.isActive ? 'Active' : 'Inactive'}
                     </span>
                   </td>
@@ -1113,19 +1100,18 @@ const UserManagement: React.FC = () => {
                       >
                         <Edit className="w-4 h-4" />
                       </button>
-                      
+
                       <button
                         onClick={() => handleToggleUserStatus(user.id)}
-                        className={`transition-colors ${
-                          user.isActive 
-                            ? 'text-warning-600 hover:text-warning-800' 
-                            : 'text-success-600 hover:text-success-800'
-                        }`}
+                        className={`transition-colors ${user.isActive
+                          ? 'text-warning-600 hover:text-warning-800'
+                          : 'text-success-600 hover:text-success-800'
+                          }`}
                         title={user.isActive ? 'Deactivate User' : 'Activate User'}
                       >
                         {user.isActive ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
                       </button>
-                      
+
                       {currentUser?.role === 'admin' && user.id !== currentUser.id && (
                         <button
                           onClick={() => handleDeleteUser(user.id)}
@@ -1147,7 +1133,7 @@ const UserManagement: React.FC = () => {
               <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No users found</h3>
               <p className="text-gray-500">
-                {filteredUsers.length !== users.length 
+                {filteredUsers.length !== users.length
                   ? 'No users match your current filters. Try adjusting your search criteria.'
                   : 'No users have been created yet.'
                 }

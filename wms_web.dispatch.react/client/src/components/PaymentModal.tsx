@@ -100,7 +100,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
       };
 
       await onPaymentRecord(paymentData);
-      
+
       // Reset form
       setFormData({
         amount: '',
@@ -109,7 +109,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
         paymentReference: '',
         notes: ''
       });
-      
+
       onClose();
     } catch (error) {
       setErrors({ submit: error instanceof Error ? error.message : 'Failed to record payment' });
@@ -135,8 +135,14 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const outstandingAmount = invoice.totalAmount - invoice.paidAmount;
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Record Payment">
-      <div className="max-w-md mx-auto">
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title="Record Payment"
+      icon={<DollarSign className="w-5 h-5" />}
+      size="md"
+    >
+      <div className="w-full">
         {/* Invoice Summary */}
         <div className="bg-gray-50 p-4 rounded-lg mb-6">
           <h3 className="font-semibold text-gray-900 mb-2">Invoice Details</h3>
@@ -229,10 +235,10 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
           {/* Payment Reference */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              {formData.paymentMethod === 'cheque' ? 'Cheque Number' : 
-               formData.paymentMethod === 'bank_transfer' ? 'Transaction Reference' :
-               formData.paymentMethod === 'mobile_money' ? 'Transaction ID' :
-               'Payment Reference'}
+              {formData.paymentMethod === 'cheque' ? 'Cheque Number' :
+                formData.paymentMethod === 'bank_transfer' ? 'Transaction Reference' :
+                  formData.paymentMethod === 'mobile_money' ? 'Transaction ID' :
+                    'Payment Reference'}
               {(formData.paymentMethod === 'cheque' || formData.paymentMethod === 'bank_transfer') && ' *'}
             </label>
             <Input
@@ -241,9 +247,9 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
               onChange={(e) => handleChange('paymentReference', e.target.value)}
               placeholder={
                 formData.paymentMethod === 'cheque' ? 'Enter cheque number' :
-                formData.paymentMethod === 'bank_transfer' ? 'Enter transaction reference' :
-                formData.paymentMethod === 'mobile_money' ? 'Enter M-Pesa/Airtel code' :
-                'Enter reference (optional)'
+                  formData.paymentMethod === 'bank_transfer' ? 'Enter transaction reference' :
+                    formData.paymentMethod === 'mobile_money' ? 'Enter M-Pesa/Airtel code' :
+                      'Enter reference (optional)'
               }
             />
             {errors.paymentReference && (

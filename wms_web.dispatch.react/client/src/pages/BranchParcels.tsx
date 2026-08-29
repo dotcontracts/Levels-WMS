@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Package, Search, Filter, RefreshCw, Calendar, MapPin, DollarSign, User, Phone, X, Edit, Save, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { Card, Button, Badge, FilterPanel, FilterField } from '../components/ui';
+import { Card, Button, Badge, FilterPanel, FilterField, Modal } from '../components/ui';
 import { VirtualScrollTable } from '../components/VirtualScrollTable';
 import { wmsApi, Parcel } from '../services/wmsApi';
 
@@ -26,7 +26,7 @@ const BranchParcels: React.FC = () => {
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [updateData, setUpdateData] = useState<UpdateParcelData>({ amountPaid: 0, transactionCode: '' });
   const [updating, setUpdating] = useState(false);
-  
+
   const [filters, setFilters] = useState<BranchParcelFilterState>({
     search: '',
     date: new Date().toISOString().split('T')[0], // Default to today
@@ -44,16 +44,16 @@ const BranchParcels: React.FC = () => {
     try {
       setLoading(true);
       setError('');
-      
+
       // Debug: Log user information
       console.log('User object:', user);
       console.log('Is branch manager:', isBranchManager());
       console.log('User branch:', user?.branch);
-      
+
       // Get branch name for filtering
       const branchName = isBranchManager() && user?.branch?.name ? user.branch.name : undefined;
       console.log('Branch name for filtering:', branchName);
-      
+
       // Branch managers must have a branch assigned to access this feature
       if (isBranchManager() && !branchName) {
         console.log('Branch manager without branch info detected');
@@ -61,23 +61,23 @@ const BranchParcels: React.FC = () => {
         setLoading(false);
         return;
       }
-      
+
       // Fetch parcels - for admins get all, for branch managers filter by destination
       const data = await wmsApi.getAllParcelsForReports({
         destination: isBranchManager() && branchName ? branchName : undefined
       });
-      
+
       // Filter by branch destination for branch managers
       let branchFilteredData = data;
       if (isBranchManager() && branchName) {
-        branchFilteredData = data.filter(parcel => 
+        branchFilteredData = data.filter(parcel =>
           parcel.destination && parcel.destination.toLowerCase() === branchName.toLowerCase()
         );
-        
+
         // Debug logging for branch managers
         console.log(`Branch Manager: ${branchName}, Total parcels: ${data.length}, Branch parcels: ${branchFilteredData.length}`);
         console.log('Sample destinations:', data.slice(0, 5).map(p => p.destination));
-        
+
         // If no parcels found for branch, show helpful message
         if (branchFilteredData.length === 0 && data.length > 0) {
           setError(`No parcels found destined for ${branchName}. Check if your branch name matches the destinations in the system.`);
@@ -85,7 +85,7 @@ const BranchParcels: React.FC = () => {
           return;
         }
       }
-      
+
       // Filter by selected date
       let filteredData = branchFilteredData;
       if (filters.date) {
@@ -101,28 +101,28 @@ const BranchParcels: React.FC = () => {
           return false;
         });
       }
-      
+
       // Populate user information for parcels that don't have createdBy populated
       try {
         const users = await wmsApi.getUsers();
-        
+
         const updatedParcels = filteredData.map(parcel => {
           if (!parcel.createdBy && parcel.createdById) {
             const creator = users.find(u => u.id === parcel.createdById);
             if (creator) {
-              return { 
-                ...parcel, 
-                createdBy: { 
-                  username: creator.firstName && creator.lastName 
-                    ? `${creator.firstName} ${creator.lastName}` 
-                    : creator.username 
-                } 
+              return {
+                ...parcel,
+                createdBy: {
+                  username: creator.firstName && creator.lastName
+                    ? `${creator.firstName} ${creator.lastName}`
+                    : creator.username
+                }
               };
             }
           }
           return parcel;
         });
-        
+
         // For branch managers, show all parcels destined for their branch
         // Don't filter by updateability here - show all parcels but control editing in UI
         setParcels(updatedParcels);
@@ -149,7 +149,7 @@ const BranchParcels: React.FC = () => {
   const getStatusLabel = (status: number) => {
     const statusMap = {
       0: 'Pending',
-      1: 'Confirmed', 
+      1: 'Confirmed',
       2: 'In Transit',
       3: 'Delivered',
       4: 'Cancelled'
@@ -165,7 +165,7 @@ const BranchParcels: React.FC = () => {
       3: { label: 'Delivered', variant: 'success' as const },
       4: { label: 'Cancelled', variant: 'error' as const },
     };
-    
+
     const statusInfo = statusMap[status as keyof typeof statusMap] || { label: 'Unknown', variant: 'gray' as const };
     return <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>;
   };
@@ -175,15 +175,15 @@ const BranchParcels: React.FC = () => {
     // 1. Payment method is COD and status is Delivered (3)
     // 2. Payment method is Paid and any status
     const paymentMethod = parcel.paymentMethods.toLowerCase();
-    
+
     if (paymentMethod.includes('cod')) {
       return parcel.status === 3; // Only delivered COD parcels
     }
-    
+
     if (paymentMethod.includes('paid')) {
       return true; // Any status for paid parcels
     }
-    
+
     return false;
   };
 
@@ -192,7 +192,7 @@ const BranchParcels: React.FC = () => {
     if (!canUpdateParcel(parcel)) {
       const paymentMethod = parcel.paymentMethods.toLowerCase();
       let alertMessage = '';
-      
+
       if (paymentMethod.includes('cod')) {
         alertMessage = 'COD parcels can only be updated when they have been delivered. This parcel is currently not delivered.';
       } else if (paymentMethod.includes('paid')) {
@@ -200,11 +200,11 @@ const BranchParcels: React.FC = () => {
       } else {
         alertMessage = 'This parcel cannot be updated. Please check the parcel status and payment method.';
       }
-      
+
       alert(alertMessage);
       return;
     }
-    
+
     setSelectedParcel(parcel);
     setUpdateData({
       amountPaid: parcel.totalAmount, // Default to total amount
@@ -221,17 +221,17 @@ const BranchParcels: React.FC = () => {
 
   const handleSaveUpdate = async () => {
     if (!selectedParcel) return;
-    
+
     try {
       setUpdating(true);
-      
+
       // Use the specific payment update method with user ID
       const success = await wmsApi.updateParcelPayment(selectedParcel.id, {
         amountPaid: updateData.amountPaid,
         transactionCode: updateData.transactionCode,
         updatedById: user?.id ? parseInt(user.id) : undefined
       });
-      
+
       if (success) {
         // Show success confirmation
         alert('Payment information updated successfully!');
@@ -307,18 +307,18 @@ const BranchParcels: React.FC = () => {
 
   const filteredParcels = parcels.filter(parcel => {
     // Search filter
-    const matchesSearch = !filters.search || 
+    const matchesSearch = !filters.search ||
       parcel.waybillNumber.toLowerCase().includes(filters.search.toLowerCase()) ||
       parcel.sender.toLowerCase().includes(filters.search.toLowerCase()) ||
       parcel.receiver.toLowerCase().includes(filters.search.toLowerCase());
-    
+
     // Status filter
     const matchesStatus = !filters.status || parcel.status.toString() === filters.status;
-    
+
     // Payment method filter
-    const matchesPaymentMethod = !filters.paymentMethod || 
+    const matchesPaymentMethod = !filters.paymentMethod ||
       parcel.paymentMethods.toLowerCase().includes(filters.paymentMethod.toLowerCase());
-    
+
     return matchesSearch && matchesStatus && matchesPaymentMethod;
   });
 
@@ -435,7 +435,7 @@ const BranchParcels: React.FC = () => {
       render: (parcel: Parcel) => {
         const canUpdate = canUpdateParcel(parcel);
         const paymentMethod = parcel.paymentMethods.toLowerCase();
-        
+
         let tooltipText = '';
         if (!canUpdate) {
           if (paymentMethod.includes('cod')) {
@@ -448,12 +448,12 @@ const BranchParcels: React.FC = () => {
         } else {
           tooltipText = 'Update Payment';
         }
-        
+
         return (
           <div className="flex items-center space-x-1">
-            <Button 
-              variant={canUpdate ? "primary" : "outline"} 
-              size="sm" 
+            <Button
+              variant={canUpdate ? "primary" : "outline"}
+              size="sm"
               title={tooltipText}
               onClick={() => handleUpdateParcel(parcel)}
               className={!canUpdate ? "opacity-60 cursor-not-allowed" : ""}
@@ -494,8 +494,8 @@ const BranchParcels: React.FC = () => {
         <div>
           <h1 className="text-title-md font-bold text-gray-900 dark:text-white">Collection</h1>
           <p className="text-gray-600 dark:text-gray-400">
-            {isBranchManager() 
-              ? `Update payment information for ${user?.branch?.name || 'your branch'} parcels` 
+            {isBranchManager()
+              ? `Update payment information for ${user?.branch?.name || 'your branch'} parcels`
               : 'Update payment information for branch parcels'
             }
           </p>
@@ -537,20 +537,20 @@ const BranchParcels: React.FC = () => {
         <Card.Header>
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              {isBranchManager() 
+              {isBranchManager()
                 ? `Branch Parcels for ${filters.date} (${filteredParcels.length})`
                 : `Parcels for ${filters.date} (${filteredParcels.length})`
               }
             </h2>
             <div className="text-sm text-gray-500">
-              {isBranchManager() 
-                ? `Branch: ${user?.branch?.name}` 
+              {isBranchManager()
+                ? `Branch: ${user?.branch?.name}`
                 : `Branch: ${user?.branch?.name || 'All Branches'}`
               }
             </div>
           </div>
         </Card.Header>
-        
+
         <VirtualScrollTable
           data={filteredParcels}
           columns={columns}
@@ -558,222 +558,211 @@ const BranchParcels: React.FC = () => {
           containerHeight={600}
           loading={loading}
           emptyMessage={
-            isBranchManager() 
+            isBranchManager()
               ? "No parcels found for the selected date in your branch"
               : "No parcels found for the selected date"
           }
-          onRowClick={() => {}}
+          onRowClick={() => { }}
         />
       </Card>
 
       {/* Update Modal */}
       {showUpdateModal && selectedParcel && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg w-full max-w-4xl max-h-[95vh] overflow-hidden flex flex-col">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                Update Parcel Payment - {selectedParcel.waybillNumber}
-              </h2>
-              <button
-                onClick={handleCloseModal}
-                className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
+        <Modal
+          isOpen={showUpdateModal}
+          onClose={handleCloseModal}
+          title={`Update Parcel Payment - ${selectedParcel.waybillNumber}`}
+          icon={<Edit className="w-5 h-5" />}
+          size="lg"
+        >
+          <div className="p-4 flex-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Read-only Parcel Details */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Parcel Details</h3>
 
-            {/* Modal Content */}
-            <div className="p-4 overflow-y-auto flex-1">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Read-only Parcel Details */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Parcel Details</h3>
-                  
-                  {/* Basic Information */}
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center">
-                      <Package className="w-4 h-4 mr-2" />
-                      Basic Info
-                    </h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500 dark:text-gray-400">Status:</span>
-                        <div>{getStatusBadge(selectedParcel.status)}</div>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500 dark:text-gray-400">Destination:</span>
-                        <span className="text-gray-900 dark:text-white">{selectedParcel.destination}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500 dark:text-gray-400">Quantity:</span>
-                        <span className="text-gray-900 dark:text-white">{selectedParcel.quantity}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500 dark:text-gray-400">Created by:</span>
-                        <span className="text-gray-900 dark:text-white font-medium">
-                          {selectedParcel.createdBy?.username || 'N/A'}
-                        </span>
-                      </div>
-                      {selectedParcel.description && (
-                        <div>
-                          <span className="text-gray-500 dark:text-gray-400">Description:</span>
-                          <p className="text-gray-900 dark:text-white mt-1">{selectedParcel.description}</p>
-                        </div>
-                      )}
+                {/* Basic Information */}
+                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center">
+                    <Package className="w-4 h-4 mr-2" />
+                    Basic Info
+                  </h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Status:</span>
+                      <div>{getStatusBadge(selectedParcel.status)}</div>
                     </div>
-                  </div>
-
-                  {/* Contact Information */}
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center">
-                      <User className="w-4 h-4 mr-2" />
-                      Contact Info
-                    </h4>
-                    <div className="space-y-3 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Destination:</span>
+                      <span className="text-gray-900 dark:text-white">{selectedParcel.destination}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Quantity:</span>
+                      <span className="text-gray-900 dark:text-white">{selectedParcel.quantity}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Created by:</span>
+                      <span className="text-gray-900 dark:text-white font-medium">
+                        {selectedParcel.createdBy?.username || 'N/A'}
+                      </span>
+                    </div>
+                    {selectedParcel.description && (
                       <div>
-                        <div className="text-gray-500 dark:text-gray-400 mb-1">Sender:</div>
-                        <div className="text-gray-900 dark:text-white font-medium">{selectedParcel.sender}</div>
-                        <div className="text-gray-600 dark:text-gray-300 flex items-center">
-                          <Phone className="w-3 h-3 mr-1" />
-                          {selectedParcel.senderTelephone}
-                        </div>
+                        <span className="text-gray-500 dark:text-gray-400">Description:</span>
+                        <p className="text-gray-900 dark:text-white mt-1">{selectedParcel.description}</p>
                       </div>
-                      <div>
-                        <div className="text-gray-500 dark:text-gray-400 mb-1">Receiver:</div>
-                        <div className="text-gray-900 dark:text-white font-medium">{selectedParcel.receiver}</div>
-                        <div className="text-gray-600 dark:text-gray-300 flex items-center">
-                          <Phone className="w-3 h-3 mr-1" />
-                          {selectedParcel.receiverTelephone}
-                        </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Contact Information */}
+                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center">
+                    <User className="w-4 h-4 mr-2" />
+                    Contact Info
+                  </h4>
+                  <div className="space-y-3 text-sm">
+                    <div>
+                      <div className="text-gray-500 dark:text-gray-400 mb-1">Sender:</div>
+                      <div className="text-gray-900 dark:text-white font-medium">{selectedParcel.sender}</div>
+                      <div className="text-gray-600 dark:text-gray-300 flex items-center">
+                        <Phone className="w-3 h-3 mr-1" />
+                        {selectedParcel.senderTelephone}
                       </div>
                     </div>
-                  </div>
-
-                  {/* Original Financial Information */}
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center">
-                      <DollarSign className="w-4 h-4 mr-2" />
-                      Original Amount
-                    </h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500 dark:text-gray-400">Total Amount:</span>
-                        <span className="text-gray-900 dark:text-white font-bold text-lg">
-                          {formatCurrency(selectedParcel.totalAmount)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500 dark:text-gray-400">Payment Method:</span>
-                        <Badge variant="gray">
-                          {selectedParcel.paymentMethods}
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Clerk Information */}
-                  <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-                    <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center">
-                      <User className="w-4 h-4 mr-2" />
-                      Clerk Details
-                    </h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500 dark:text-gray-400">Clerk Name:</span>
-                        <span className="text-gray-900 dark:text-white font-medium">
-                          {selectedParcel.createdBy?.username || 'N/A'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500 dark:text-gray-400">Clerk ID:</span>
-                        <span className="text-gray-900 dark:text-white">
-                          {selectedParcel.createdById || 'N/A'}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500 dark:text-gray-400">Created At:</span>
-                        <span className="text-gray-900 dark:text-white">
-                          {new Date(selectedParcel.createdAt).toLocaleDateString()} {new Date(selectedParcel.createdAt).toLocaleTimeString()}
-                        </span>
+                    <div>
+                      <div className="text-gray-500 dark:text-gray-400 mb-1">Receiver:</div>
+                      <div className="text-gray-900 dark:text-white font-medium">{selectedParcel.receiver}</div>
+                      <div className="text-gray-600 dark:text-gray-300 flex items-center">
+                        <Phone className="w-3 h-3 mr-1" />
+                        {selectedParcel.receiverTelephone}
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Editable Payment Fields */}
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Update Payment</h3>
-                  
-                  <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-                    <div className="flex items-start">
-                      <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mr-2 mt-0.5" />
-                      <div className="text-sm text-yellow-700 dark:text-yellow-300">
-                        <p className="font-medium mb-1">Update Requirements:</p>
-                        <ul className="list-disc list-inside space-y-1">
-                          <li>COD parcels can only be updated when delivered</li>
-                          <li>Paid parcels can be updated at any status</li>
-                          <li>Transaction code is required for audit trail</li>
-                        </ul>
-                      </div>
+                {/* Original Financial Information */}
+                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center">
+                    <DollarSign className="w-4 h-4 mr-2" />
+                    Original Amount
+                  </h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Total Amount:</span>
+                      <span className="text-gray-900 dark:text-white font-bold text-lg">
+                        {formatCurrency(selectedParcel.totalAmount)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Payment Method:</span>
+                      <Badge variant="gray">
+                        {selectedParcel.paymentMethods}
+                      </Badge>
                     </div>
                   </div>
+                </div>
 
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Amount Paid
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={updateData.amountPaid}
-                        onChange={(e) => setUpdateData(prev => ({ ...prev, amountPaid: parseFloat(e.target.value) || 0 }))}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        placeholder="Enter amount paid"
-                      />
+                {/* Clerk Information */}
+                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center">
+                    <User className="w-4 h-4 mr-2" />
+                    Clerk Details
+                  </h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Clerk Name:</span>
+                      <span className="text-gray-900 dark:text-white font-medium">
+                        {selectedParcel.createdBy?.username || 'N/A'}
+                      </span>
                     </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Transaction Code
-                      </label>
-                      <input
-                        type="text"
-                        value={updateData.transactionCode}
-                        onChange={(e) => setUpdateData(prev => ({ ...prev, transactionCode: e.target.value }))}
-                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        placeholder="Enter transaction reference code"
-                      />
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Clerk ID:</span>
+                      <span className="text-gray-900 dark:text-white">
+                        {selectedParcel.createdById || 'N/A'}
+                      </span>
                     </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-gray-400">Created At:</span>
+                      <span className="text-gray-900 dark:text-white">
+                        {new Date(selectedParcel.createdAt).toLocaleDateString()} {new Date(selectedParcel.createdAt).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
 
-                    {/* Summary */}
-                    <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 rounded-lg p-4">
-                      <h5 className="font-medium text-brand-900 dark:text-brand-100 mb-2">Payment Summary</h5>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-brand-700 dark:text-brand-300">Original Amount:</span>
-                          <span className="font-medium text-brand-900 dark:text-brand-100">
-                            {formatCurrency(selectedParcel.totalAmount)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-brand-700 dark:text-brand-300">Amount Paid:</span>
-                          <span className="font-medium text-brand-900 dark:text-brand-100">
-                            {formatCurrency(updateData.amountPaid)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between border-t border-brand-200 dark:border-brand-800 pt-1">
-                          <span className="text-brand-700 dark:text-brand-300">Difference:</span>
-                          <span className={`font-medium ${
-                            updateData.amountPaid - selectedParcel.totalAmount >= 0 
-                              ? 'text-green-600 dark:text-green-400' 
-                              : 'text-red-600 dark:text-red-400'
+              {/* Editable Payment Fields */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Update Payment</h3>
+
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                  <div className="flex items-start">
+                    <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mr-2 mt-0.5" />
+                    <div className="text-sm text-yellow-700 dark:text-yellow-300">
+                      <p className="font-medium mb-1">Update Requirements:</p>
+                      <ul className="list-disc list-inside space-y-1">
+                        <li>COD parcels can only be updated when delivered</li>
+                        <li>Paid parcels can be updated at any status</li>
+                        <li>Transaction code is required for audit trail</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Amount Paid
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={updateData.amountPaid}
+                      onChange={(e) => setUpdateData(prev => ({ ...prev, amountPaid: parseFloat(e.target.value) || 0 }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="Enter amount paid"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Transaction Code
+                    </label>
+                    <input
+                      type="text"
+                      value={updateData.transactionCode}
+                      onChange={(e) => setUpdateData(prev => ({ ...prev, transactionCode: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      placeholder="Enter transaction reference code"
+                    />
+                  </div>
+
+                  {/* Summary */}
+                  <div className="bg-brand-50 dark:bg-brand-900/20 border border-brand-200 dark:border-brand-800 rounded-lg p-4">
+                    <h5 className="font-medium text-brand-900 dark:text-brand-100 mb-2">Payment Summary</h5>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-brand-700 dark:text-brand-300">Original Amount:</span>
+                        <span className="font-medium text-brand-900 dark:text-brand-100">
+                          {formatCurrency(selectedParcel.totalAmount)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-brand-700 dark:text-brand-300">Amount Paid:</span>
+                        <span className="font-medium text-brand-900 dark:text-brand-100">
+                          {formatCurrency(updateData.amountPaid)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between border-t border-brand-200 dark:border-brand-800 pt-1">
+                        <span className="text-brand-700 dark:text-brand-300">Difference:</span>
+                        <span className={`font-medium ${updateData.amountPaid - selectedParcel.totalAmount >= 0
+                          ? 'text-green-600 dark:text-green-400'
+                          : 'text-red-600 dark:text-red-400'
                           }`}>
-                            {formatCurrency(updateData.amountPaid - selectedParcel.totalAmount)}
-                          </span>
-                        </div>
+                          {formatCurrency(updateData.amountPaid - selectedParcel.totalAmount)}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -781,13 +770,13 @@ const BranchParcels: React.FC = () => {
               </div>
             </div>
 
-            {/* Modal Footer */}
-            <div className="flex items-center justify-end p-4 border-t border-gray-200 dark:border-gray-700 space-x-3 bg-white dark:bg-gray-800">
+            {/* Action Buttons */}
+            <div className="mt-6 flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-700">
               <Button variant="outline" onClick={handleCloseModal}>
                 Cancel
               </Button>
-              <Button 
-                variant="primary" 
+              <Button
+                variant="primary"
                 onClick={handleSaveUpdate}
                 disabled={updating || !updateData.transactionCode.trim()}
               >
@@ -805,7 +794,7 @@ const BranchParcels: React.FC = () => {
               </Button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
