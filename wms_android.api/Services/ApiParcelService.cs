@@ -1202,13 +1202,21 @@ namespace wms_android.api.Services
             };
         }
 
+        private static DateTime GetLastBookingDay(DateTime date)
+        {
+            var day = date.Date.AddDays(-1);
+            while (day.DayOfWeek == DayOfWeek.Sunday)
+                day = day.AddDays(-1);
+            return day;
+        }
+
         public async Task<BranchCodLockStatusDto> GetBranchCodLockStatusAsync(string branchName, DateTime date)
         {
-            // T   = two days ago  — the day COD parcels were booked at origin
-            // T+1 = yesterday     — the day parcels were delivered and manager must declare
-            // T+2 = today (date)  — lock triggers if T+1 declaration was not submitted
-            var codDate = date.Date.AddDays(-2);           // T: parcel booking day
-            var declarationDate = date.Date.AddDays(-1);   // T+1: delivery & declaration day
+            if (date.Date.DayOfWeek == DayOfWeek.Monday)
+                return new BranchCodLockStatusDto { IsLocked = false, Reason = "none" };
+
+            var declarationDate = GetLastBookingDay(date);
+            var codDate = GetLastBookingDay(declarationDate);
             var codDateStart = DateTime.SpecifyKind(codDate, DateTimeKind.Utc);
             var codDateEnd = DateTime.SpecifyKind(codDate.AddDays(1), DateTimeKind.Utc);
             var declarationDateLocal = DateTime.SpecifyKind(declarationDate, DateTimeKind.Unspecified);
@@ -1289,7 +1297,7 @@ namespace wms_android.api.Services
 
         public async Task<ClerkLockStatusDto> GetClerkLockStatusAsync(int userId, DateTime date)
         {
-            var yesterday = date.Date.AddDays(-1);
+            var yesterday = GetLastBookingDay(date);
             var yesterdayStart = DateTime.SpecifyKind(yesterday, DateTimeKind.Utc);
             var yesterdayEnd = DateTime.SpecifyKind(yesterday.AddDays(1), DateTimeKind.Utc);
             var yesterdayLocal = DateTime.SpecifyKind(yesterday, DateTimeKind.Unspecified);
