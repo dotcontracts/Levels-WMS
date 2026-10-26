@@ -893,12 +893,14 @@ namespace wms_android.api.Services
 
             if (queryParams.FromDate.HasValue)
             {
-                query = query.Where(p => p.CreatedAt.Date >= queryParams.FromDate.Value.Date);
+                var fromUtc = queryParams.FromDate.Value.Date.ToUniversalTime();
+                query = query.Where(p => p.CreatedAt >= fromUtc);
             }
 
             if (queryParams.ToDate.HasValue)
             {
-                query = query.Where(p => p.CreatedAt.Date <= queryParams.ToDate.Value.Date);
+                var toUtc = queryParams.ToDate.Value.Date.AddDays(1).ToUniversalTime();
+                query = query.Where(p => p.CreatedAt < toUtc);
             }
 
             if (!string.IsNullOrWhiteSpace(queryParams.CreatedByUsername))
@@ -953,12 +955,14 @@ namespace wms_android.api.Services
 
             if (queryParams.FromDate.HasValue)
             {
-                query = query.Where(p => p.CreatedAt.Date >= queryParams.FromDate.Value.Date);
+                var fromUtc = queryParams.FromDate.Value.Date.ToUniversalTime();
+                query = query.Where(p => p.CreatedAt >= fromUtc);
             }
 
             if (queryParams.ToDate.HasValue)
             {
-                query = query.Where(p => p.CreatedAt.Date <= queryParams.ToDate.Value.Date);
+                var toUtc = queryParams.ToDate.Value.Date.AddDays(1).ToUniversalTime();
+                query = query.Where(p => p.CreatedAt < toUtc);
             }
 
             if (!string.IsNullOrWhiteSpace(queryParams.CreatedByUsername))

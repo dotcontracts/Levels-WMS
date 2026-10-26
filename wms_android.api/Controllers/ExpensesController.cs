@@ -5,6 +5,8 @@ using wms_android.shared.Data;
 using wms_android.shared.Models;
 using wms_android.shared.DTOs;
 using System.Security.Claims;
+using wms_android.cache;
+using wms_android.cache.Interfaces;
 
 namespace wms_android.api.Controllers
 {
@@ -14,27 +16,51 @@ namespace wms_android.api.Controllers
     public class ExpensesController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly ICacheService _cache;
 
-        public ExpensesController(AppDbContext context)
+        public ExpensesController(AppDbContext context, ICacheService cache)
         {
             _context = context;
+            _cache = cache;
         }
 
         // GET: api/Expenses
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<DailyExpense>>> GetExpenses()
+        public async Task<ActionResult<IEnumerable<DailyExpense>>> GetExpenses(
+            [FromQuery] int? branchId = null,
+            [FromQuery] string? startDate = null,
+            [FromQuery] string? endDate = null,
+            [FromQuery] string? status = null)
         {
             try
             {
-                var expenses = await _context.DailyExpenses
-                    .Include(e => e.Branch)
-                    .Include(e => e.Clerk)
-                    .Include(e => e.CreatedBy)
-                    .Include(e => e.ApprovedBy)
-                    .OrderByDescending(e => e.CreatedAt)
-                    .ToListAsync();
+                var cacheKey = CacheKeys.Expenses.All() + $":{branchId}:{startDate}:{endDate}:{status}";
+                var result = await _cache.GetOrSetAsync(cacheKey, async () =>
+                {
+                    var query = _context.DailyExpenses
+                        .AsNoTracking()
+                        .Include(e => e.Branch)
+                        .Include(e => e.Clerk)
+                        .Include(e => e.CreatedBy)
+                        .Include(e => e.ApprovedBy)
+                        .AsQueryable();
 
-                return Ok(expenses);
+                    if (branchId.HasValue)
+                        query = query.Where(e => e.BranchId == branchId.Value);
+
+                    if (!string.IsNullOrWhiteSpace(startDate) && DateTime.TryParse(startDate, out var from))
+                        query = query.Where(e => e.Date >= from.Date);
+
+                    if (!string.IsNullOrWhiteSpace(endDate) && DateTime.TryParse(endDate, out var to))
+                        query = query.Where(e => e.Date < to.Date.AddDays(1));
+
+                    if (!string.IsNullOrWhiteSpace(status))
+                        query = query.Where(e => e.Status == status);
+
+                    return await query.OrderByDescending(e => e.CreatedAt).ToListAsync();
+                }, TimeSpan.FromMinutes(2), new[] { CacheTags.Expenses });
+
+                return Ok(result);
             }
             catch (Exception ex)
             {
@@ -129,6 +155,8 @@ namespace wms_android.api.Controllers
 
                 _context.DailyExpenses.Add(expense);
                 await _context.SaveChangesAsync();
+                await _cache.RemoveByTagAsync(CacheTags.Expenses);
+                await _cache.RemoveByTagAsync(CacheTags.Reports);
 
                 // Reload with relationships
                 var createdExpense = await _context.DailyExpenses
@@ -196,6 +224,8 @@ namespace wms_android.api.Controllers
 
                 expense.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
+                await _cache.RemoveByTagAsync(CacheTags.Expenses);
+                await _cache.RemoveByTagAsync(CacheTags.Reports);
 
                 return NoContent();
             }
@@ -284,6 +314,8 @@ namespace wms_android.api.Controllers
 
                 expense.UpdatedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
+                await _cache.RemoveByTagAsync(CacheTags.Expenses);
+                await _cache.RemoveByTagAsync(CacheTags.Reports);
 
                 return Ok(new { message = $"Expense {(approved ? "approved" : "rejected")} successfully" });
             }
@@ -386,6 +418,9 @@ namespace wms_android.api.Controllers
 
                 _context.DailyExpenses.Remove(expense);
                 await _context.SaveChangesAsync();
+
+                await _cache.RemoveByTagAsync(CacheTags.Expenses);
+                await _cache.RemoveByTagAsync(CacheTags.Reports);
 
                 return NoContent();
             }

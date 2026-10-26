@@ -8,5 +8,7 @@ namespace wms_android.cache
         public const string Dispatches = "dispatches";
         public const string StaticData = "static-data";
         public const string UserDashboard = "user-dashboard";
+        public const string Expenses = "expenses";
+        public const string Reports = "reports";
     }
 }

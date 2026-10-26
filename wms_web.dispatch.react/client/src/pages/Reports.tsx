@@ -676,294 +676,20 @@ const Reports: React.FC = () => {
   // Fetch clerk debit data with date range filtering - optimized version
   const fetchClerkDebitData = useCallback(async (dateRange: { from: string; to: string }): Promise<ClerkDebitData[]> => {
     try {
-      // Use isolated instance for clerk debit to prevent cache interference
-      console.log(`[Clerk Debit Debug] Fetching data for date range:`, dateRange);
-      const allParcels = await wmsApi.getAllParcelsProgressively({
-        dateRange: { from: dateRange.from, to: dateRange.to },
-        chunkSize: 1200, // Use updated chunk size to match server optimizations
-        fields: [
-          'id', 'waybillNumber', 'receiver', 'totalAmount', 'status',
-          'createdAt', 'createdById', 'paymentMethods', 'branchDeposits', 'expenses'
-        ],
-      });
-
-      console.log(`[Clerk Debit Debug] Received ${allParcels.length} total parcels`);
-      console.log(`[Clerk Debit Debug] Sample parcel paymentMethods:`, allParcels.slice(0, 3).map(p => ({
-        waybill: p.waybillNumber,
-        paymentMethods: p.paymentMethods,
-        createdAt: p.createdAt
-      })));
-
-      // Filter parcels by date range and prepaid status
-      // Clerk Debit Management tracks prepaid parcels where clerks collected money in advance
-      const paidParcels = allParcels.filter(parcel => {
-        const paymentMethod = (parcel.paymentMethods || '').toLowerCase();
-        // Include only prepaid parcels (paid/advance/prepaid) - exclude COD
-        const isPrepaid = (paymentMethod.includes('paid') ||
-          paymentMethod.includes('advance') ||
-          paymentMethod.includes('prepaid')) &&
-          !paymentMethod.includes('cod');
-
-        if (!isPrepaid) return false;
-
-        if (parcel.createdAt) {
-          try {
-            const parcelDate = new Date(parcel.createdAt).toISOString().split('T')[0];
-            return parcelDate >= dateRange.from && parcelDate <= dateRange.to;
-          } catch (error) {
-            return false;
-          }
-        }
-        return false;
-      });
-
-      console.log(`[Clerk Debit Debug] After prepaid filtering: ${paidParcels.length} paid parcels`);
-      console.log(`[Clerk Debit Debug] Prepaid sample:`, paidParcels.slice(0, 3).map(p => ({
-        waybill: p.waybillNumber,
-        paymentMethods: p.paymentMethods,
-        createdById: p.createdById,
-        createdBy: p.createdBy,
-        totalAmount: p.totalAmount
-      })));
-      // Debug: how many parcels have a missing/zero createdById?
-      const missingClerkIdCount = paidParcels.filter(p => !Number(p.createdById || (p.createdBy as any)?.id)).length;
-      console.log(`[Clerk Debit Debug] Parcels with missing clerkId: ${missingClerkIdCount} / ${paidParcels.length}`);
-
-      // Get existing deposits from database for the date range
-      let existingDeposits: ParcelDepositDto[] = [];
-      try {
-        // Get all deposits - we'll filter by parcel date, not deposit date
-        const allDeposits = await wmsApi.getParcelDeposits();
-
-        // Don't filter deposits by date here - we'll match them to parcels by parcelId
-        // and let the parcel date filtering handle the date range
-        existingDeposits = allDeposits;
-      } catch (apiError) {
-        console.log('ParcelDeposits API not available for debit calculation');
-      }
-
-      // Create a map of existing deposits by parcelId
-      const depositsMap: Record<string, ParcelDepositDto> = {};
-      existingDeposits.forEach(deposit => {
-        depositsMap[deposit.parcelId] = deposit;
-      });
-
-
-      // Get users to populate clerk information
-      const users = await wmsApi.getUsers();
-
-      const findUser = (clerkId: number) =>
-        users.find(u => Number(u.id) === Number(clerkId));
-
-      const getClerkDisplayInfo = (clerkId: number, parcel?: Parcel) => {
-        const clerk = findUser(clerkId);
-        if (clerk) {
-          return {
-            clerkName: clerk.firstName && clerk.lastName
-              ? `${clerk.firstName} ${clerk.lastName}`
-              : clerk.username,
-            clerkUsername: clerk.username,
-          };
-        }
-
-        const createdBy = parcel?.createdBy;
-        if (createdBy) {
-          const name = createdBy.firstName && createdBy.lastName
-            ? `${createdBy.firstName} ${createdBy.lastName}`
-            : createdBy.username;
-          if (name) {
-            return { clerkName: name, clerkUsername: createdBy.username || name };
-          }
-        }
-
-        return { clerkName: `Clerk ${clerkId}`, clerkUsername: `clerk${clerkId}` };
-      };
-
-      // Group transactions by clerk
-      let skippedNullClerkId = 0;
-
-      // Stable hash of a string → deterministic negative int, used to create synthetic clerk IDs
-      // for parcels that have a stored creatorLastNameSnapshot but no numeric createdById.
-      const snapshotToSyntheticId = (name: string): number => {
-        let h = 0;
-        for (let i = 0; i < name.length; i++) {
-          h = (Math.imul(31, h) + name.charCodeAt(i)) | 0;
-        }
-        // Ensure negative so it can never collide with real DB IDs (always positive)
-        return h < 0 ? h : -h - 1;
-      };
-
-      const clerkDebitMap: Record<number, ClerkDebitData> = {};
-
-      paidParcels.forEach(parcel => {
-        // Resolve clerkId from multiple sources.
-        // NOTE: createdById may be undefined (not just null) in the JS object because the backend
-        // uses NullValueHandling.Ignore, which omits null integer fields entirely from JSON.
-        const rawCreatedById = parcel.createdById !== undefined && parcel.createdById !== null
-          ? Number(parcel.createdById)
-          : 0;
-        const rawCreatedByObjId = parcel.createdBy && typeof parcel.createdBy === 'object'
-          ? Number((parcel.createdBy as any).id) || 0
-          : 0;
-        let clerkId = rawCreatedById || rawCreatedByObjId;
-
-        // Last resort: if still no numeric ID, synthesise one from the stored snapshot name.
-        // This handles parcels where createdById was cleared/deleted from the DB but the
-        // clerk name was captured at creation time and returned by the backend.
-        if ((!clerkId || isNaN(clerkId)) && parcel.creatorLastNameSnapshot) {
-          clerkId = snapshotToSyntheticId(parcel.creatorLastNameSnapshot);
-        }
-
-        if (!clerkId || isNaN(clerkId)) {
-          skippedNullClerkId++;
-          return;
-        }
-
-        if (!clerkDebitMap[clerkId]) {
-          // For real IDs, look up the user; for synthetic IDs use the snapshot directly
-          const isSynthetic = clerkId < 0;
-          let clerkName: string;
-          let clerkUsername: string;
-
-          if (isSynthetic && parcel.creatorLastNameSnapshot) {
-            clerkName = parcel.creatorLastNameSnapshot;
-            clerkUsername = parcel.creatorLastNameSnapshot.toLowerCase().replace(/\s+/g, '.');
-          } else {
-            const info = getClerkDisplayInfo(clerkId, parcel);
-            clerkName = info.clerkName;
-            clerkUsername = info.clerkUsername;
-            // Use creatorLastNameSnapshot (from backend JOIN) as display name when user lookup fails
-            if (clerkName === `Clerk ${clerkId}` && parcel.creatorLastNameSnapshot) {
-              clerkName = parcel.creatorLastNameSnapshot;
-            }
-          }
-
-          clerkDebitMap[clerkId] = {
-            clerkId: clerkId,
-            clerkName,
-            clerkUsername,
-            totalPaidAmount: 0,
-            totalDeposited: 0,
-            totalExpenses: 0,
-            currentDebit: 0,
-            parcelCount: 0,
-            dateRange: dateRange,
-            transactions: [],
-            approvedExpenseItems: []
-          };
-        }
-
-        // Check for deposit data from database only
-        let depositedAmount = 0;
-
-        const dbDeposit = depositsMap[parcel.id];
-        if (dbDeposit) {
-          depositedAmount = dbDeposit.depositedAmount;
-        }
-
-        // Calculate net debit for this transaction (expenses handled separately via DailyExpense)
-        const netDebit = parcel.totalAmount - depositedAmount;
-
-        // Add transaction to clerk's data
-        const transaction: ClerkDebitTransaction = {
-          date: new Date(parcel.createdAt).toISOString().split('T')[0],
-          parcelId: parcel.id,
-          waybillNumber: parcel.waybillNumber,
-          paidAmount: parcel.totalAmount,
-          depositedAmount: depositedAmount,
-          expenses: 0,
-          netDebit: netDebit,
-          destination: parcel.destination,
-          sender: parcel.sender,
-          receiver: parcel.receiver
-        };
-
-        clerkDebitMap[clerkId].transactions.push(transaction);
-        clerkDebitMap[clerkId].totalPaidAmount += parcel.totalAmount;
-        clerkDebitMap[clerkId].totalDeposited += depositedAmount;
-        clerkDebitMap[clerkId].parcelCount += 1;
-      });
-
-      // Fetch approved expenses and deposits and apply per-clerk within date range
-      let allApprovedExpenses: DailyExpense[] = [];
-      let allApprovedDeposits: DailyExpense[] = [];
-      try {
-        const allExpenses = await wmsApi.getDailyExpenses();
-        const approvedInRange = allExpenses.filter(e => {
-          if (e.status !== 'approved') return false;
-          const expDate = e.date.split('T')[0];
-          return expDate >= dateRange.from && expDate <= dateRange.to;
-        });
-        allApprovedDeposits = approvedInRange.filter(e => e.category === 'clerk_deposit');
-        allApprovedExpenses = approvedInRange.filter(e => e.category !== 'clerk_deposit');
-      } catch { }
-
-      // Calculate current debit for each clerk, subtracting approved expenses and deposits
-      Object.values(clerkDebitMap).forEach(clerk => {
-        const clerkDepositItems = allApprovedDeposits.filter(e => e.clerkId === clerk.clerkId);
-        const clerkApprovedDeposits = clerkDepositItems.reduce((sum, e) => sum + e.amount, 0);
-        const clerkExpenseItems = allApprovedExpenses.filter(e => e.clerkId === clerk.clerkId);
-        const clerkApprovedExpenses = clerkExpenseItems.reduce((sum, e) => sum + e.amount, 0);
-        clerk.totalDeposited += clerkApprovedDeposits;
-        clerk.totalExpenses = clerkApprovedExpenses;
-        clerk.currentDebit = clerk.totalPaidAmount - clerk.totalDeposited - clerkApprovedExpenses;
-        clerk.approvedExpenseItems = clerkExpenseItems.sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-        );
-        clerk.transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      });
-
-      // Also include clerks who only have expenses/deposits but no parcel transactions in the date range
-      [...allApprovedExpenses, ...allApprovedDeposits].forEach(expense => {
-        if (!expense.clerkId) return;
-        if (clerkDebitMap[expense.clerkId]) return; // already handled
-        const clerkUser = findUser(expense.clerkId);
-        const { clerkName, clerkUsername } = clerkUser
-          ? {
-            clerkName: clerkUser.firstName && clerkUser.lastName
-              ? `${clerkUser.firstName} ${clerkUser.lastName}`
-              : clerkUser.username,
-            clerkUsername: clerkUser.username,
-          }
-          : getClerkDisplayInfo(expense.clerkId);
-        clerkDebitMap[expense.clerkId] = {
-          clerkId: expense.clerkId,
-          clerkName,
-          clerkUsername,
-          totalPaidAmount: 0,
-          totalDeposited: 0,
-          totalExpenses: 0,
-          currentDebit: 0,
-          parcelCount: 0,
-          dateRange: dateRange,
-          transactions: [],
-          approvedExpenseItems: []
-        };
-      });
-
-      // Second pass: populate expense/deposit-only clerks
-      Object.values(clerkDebitMap).forEach(clerk => {
-        if (clerk.approvedExpenseItems.length > 0) return;
-        const clerkDepositItems = allApprovedDeposits.filter(e => e.clerkId === clerk.clerkId);
-        const clerkExpenseItems = allApprovedExpenses.filter(e => e.clerkId === clerk.clerkId);
-        if (clerkExpenseItems.length === 0 && clerkDepositItems.length === 0) return;
-        const depositTotal = clerkDepositItems.reduce((sum, e) => sum + e.amount, 0);
-        const expenseTotal = clerkExpenseItems.reduce((sum, e) => sum + e.amount, 0);
-        clerk.totalDeposited += depositTotal;
-        clerk.totalExpenses = expenseTotal;
-        clerk.currentDebit = clerk.totalPaidAmount - clerk.totalDeposited - expenseTotal;
-        clerk.approvedExpenseItems = clerkExpenseItems.sort(
-          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-        );
-      });
-
-      // Sort clerks by highest debit first
-      const result = Object.values(clerkDebitMap).sort((a, b) => b.currentDebit - a.currentDebit);
-      if (skippedNullClerkId > 0) {
-        console.warn(`[Clerk Debit Debug] SKIPPED ${skippedNullClerkId}/${paidParcels.length} parcels due to missing/null createdById. Check backend NullValueHandling or missing clerk assignment.`);
-      }
-      console.log(`[Clerk Debit Debug] Built ${result.length} clerk(s) from ${paidParcels.length} paid parcels`);
-      return result;
+      const summary = await wmsApi.getClerkDebitSummary(dateRange.from, dateRange.to);
+      return summary.clerks.map(clerk => ({
+        clerkId: clerk.clerkId,
+        clerkName: clerk.clerkName,
+        clerkUsername: clerk.username,
+        totalPaidAmount: clerk.totalPaidAmount,
+        totalDeposited: clerk.totalDeposited,
+        totalExpenses: clerk.totalExpenses,
+        currentDebit: clerk.currentDebit,
+        parcelCount: clerk.parcelCount,
+        dateRange,
+        transactions: [],
+        approvedExpenseItems: [],
+      }));
     } catch (error) {
       console.error('Error fetching clerk debit data:', error);
       return [];
@@ -974,79 +700,20 @@ const Reports: React.FC = () => {
   const fetchDailySalesData = useCallback(async (dateRange: { from: string; to: string }): Promise<UserDailySales[]> => {
     try {
       setLoadingDailySales(true);
-
-      // Get all parcels and users
-      const [allParcels, allUsers] = await Promise.all([
-        wmsApi.getAllParcelsForReports({
-          startDate: dateRange.from,
-          endDate: dateRange.to
-        }),
-        wmsApi.getUsers()
-      ]);
-
-      // Filter parcels by date range
-      const filteredParcels = allParcels.filter(parcel => {
-        if (parcel.createdAt) {
-          try {
-            const parcelDate = new Date(parcel.createdAt).toISOString().split('T')[0];
-            return parcelDate >= dateRange.from && parcelDate <= dateRange.to;
-          } catch (error) {
-            return false;
-          }
-        }
-        return false;
-      });
-
-      // Group parcels by user and date
-      const userSalesMap: Record<number, UserDailySales> = {};
-
-      allUsers.forEach(user => {
-        userSalesMap[user.id] = {
-          userId: user.id,
-          username: user.username,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          role: typeof user.role === 'object' ? user.role?.name || 'Unknown' : user.role || 'Unknown',
-          dailySales: []
-        };
-      });
-
-      // Group parcels by user and date
-      filteredParcels.forEach(parcel => {
-        if (parcel.createdById) {
-          const userId = parcel.createdById;
-          const parcelDate = parcel.createdAt ? new Date(parcel.createdAt).toISOString().split('T')[0] : '';
-          const amount = parcel.totalAmount || parcel.amount || 0;
-
-          if (userSalesMap[userId] && parcelDate) {
-            const existingDay = userSalesMap[userId].dailySales.find(day => day.date === parcelDate);
-
-            if (existingDay) {
-              existingDay.totalSales += amount;
-              existingDay.parcelCount += 1;
-              existingDay.averageValue = existingDay.totalSales / existingDay.parcelCount;
-            } else {
-              userSalesMap[userId].dailySales.push({
-                date: parcelDate,
-                totalSales: amount,
-                parcelCount: 1,
-                averageValue: amount
-              });
-            }
-          }
-        }
-      });
-
-      // Sort daily sales by date and filter out users with no sales
-      const result = Object.values(userSalesMap)
-        .filter(user => user.dailySales.length > 0)
-        .map(user => ({
-          ...user,
-          dailySales: user.dailySales.sort((a, b) => a.date.localeCompare(b.date))
-        }))
-        .sort((a, b) => a.username.localeCompare(b.username));
-
-      return result;
+      const summary = await wmsApi.getReportSummary(dateRange.from, dateRange.to);
+      return summary.users.map(user => ({
+        userId: user.userId,
+        username: user.username,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: '',
+        dailySales: user.dailySales.map(d => ({
+          date: d.date,
+          totalSales: d.totalSales,
+          parcelCount: d.parcelCount,
+          averageValue: d.averageValue,
+        })),
+      }));
     } catch (error) {
       console.error('Error fetching daily sales data:', error);
       return [];

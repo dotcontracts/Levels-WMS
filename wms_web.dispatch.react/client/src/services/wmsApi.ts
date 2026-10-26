@@ -325,6 +325,40 @@ export interface ApproveExpenseDto {
   notes?: string;
 }
 
+export interface ClerkDebitSummaryItem {
+  clerkId: number;
+  clerkName: string;
+  username: string;
+  totalPaidAmount: number;
+  parcelCount: number;
+  totalDeposited: number;
+  totalExpenses: number;
+  currentDebit: number;
+}
+
+export interface ClerkDebitSummaryResponse {
+  clerks: ClerkDebitSummaryItem[];
+}
+
+export interface DailySaleItem {
+  date: string;
+  totalSales: number;
+  parcelCount: number;
+  averageValue: number;
+}
+
+export interface ReportSummaryUser {
+  userId: number;
+  username: string;
+  firstName: string;
+  lastName: string;
+  dailySales: DailySaleItem[];
+}
+
+export interface ReportSummaryResponse {
+  users: ReportSummaryUser[];
+}
+
 export interface ExpensesSummary {
   totalExpenses: number;
   pendingExpenses: number;
@@ -2804,6 +2838,47 @@ class WMSApiService {
         const errorText = await response.text();
         throw new Error(`Failed to delete parcel deposit: ${response.status} - ${errorText}`);
       }
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async getClerkDebitSummary(fromDate: string, toDate: string): Promise<ClerkDebitSummaryResponse> {
+    try {
+      const params = new URLSearchParams({ fromDate, toDate });
+      const response = await fetch(`${API_BASE_URL}/Parcels/reports/clerk-debit-summary?${params}`, {
+        headers: this.getHeaders(),
+        signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch clerk debit summary: ${response.status} - ${errorText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async getReportSummary(fromDate: string, toDate: string, destination?: string, branch?: string): Promise<ReportSummaryResponse> {
+    try {
+      const params = new URLSearchParams({ fromDate, toDate });
+      if (destination) params.append('destination', destination);
+      if (branch) params.append('branch', branch);
+
+      const response = await fetch(`${API_BASE_URL}/Parcels/reports/summary?${params}`, {
+        headers: this.getHeaders(),
+        signal: AbortSignal.timeout(API_CONFIG.TIMEOUT),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch report summary: ${response.status} - ${errorText}`);
+      }
+
+      return await response.json();
     } catch (error) {
       throw error;
     }

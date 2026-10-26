@@ -43,6 +43,21 @@ namespace wms_android.cache
             public static string Roles() => $"{Prefix}:roles";
         }
 
+        public static class Expenses
+        {
+            public const string Prefix = "expenses";
+            public static string All() => $"{Prefix}:all";
+            public static string ExpenseTag() => $"{Prefix}:tag";
+        }
+
+        public static class Reports
+        {
+            public const string Prefix = "reports";
+            public static string ClerkDebitSummary(string fromDate, string toDate) => $"{Prefix}:clerk-debit:{fromDate}:{toDate}";
+            public static string ReportSummary(string fromDate, string toDate, string? destination, string? branch) => $"{Prefix}:summary:{fromDate}:{toDate}:{destination ?? "all"}:{branch ?? "all"}";
+            public static string ReportTag() => $"{Prefix}:tag";
+        }
+
         public static class UserDashboard
         {
             public const string Prefix = "dashboard";

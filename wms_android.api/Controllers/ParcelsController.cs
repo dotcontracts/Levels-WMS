@@ -842,7 +842,12 @@ namespace wms_android.api.Controllers
             {
                 if (userId <= 0)
                     return BadRequest("userId is required.");
-                var result = await _parcelService.GetClerkReportAsync(userId, date ?? DateTime.UtcNow);
+                var resolvedDate = date ?? DateTime.UtcNow;
+                var cacheKey = $"clerk-report:{userId}:{resolvedDate:yyyyMMdd}";
+                var result = await _cache.GetOrSetAsync(cacheKey,
+                    () => _parcelService.GetClerkReportAsync(userId, resolvedDate),
+                    TimeSpan.FromMinutes(2),
+                    new[] { CacheTags.UserDashboard });
                 return Ok(result);
             }
             catch (Exception ex)
@@ -859,13 +864,177 @@ namespace wms_android.api.Controllers
             {
                 if (string.IsNullOrWhiteSpace(branchName))
                     return BadRequest("branchName is required.");
-
-                var result = await _parcelService.GetBranchManagerDashboardAsync(branchName, date);
+                var cacheKey = $"branch-dashboard:{branchName}:{date:yyyyMMdd}";
+                var result = await _cache.GetOrSetAsync(cacheKey,
+                    () => _parcelService.GetBranchManagerDashboardAsync(branchName, date),
+                    TimeSpan.FromMinutes(2),
+                    new[] { CacheTags.UserDashboard });
                 return Ok(result);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error getting branch manager dashboard for {branchName}: {ex.Message}");
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpGet("reports/clerk-debit-summary")]
+        public async Task<IActionResult> GetClerkDebitSummary(
+            [FromQuery] DateTime fromDate,
+            [FromQuery] DateTime toDate)
+        {
+            try
+            {
+                var fromUtc = fromDate.Date.ToUniversalTime();
+                var toUtc = toDate.Date.AddDays(1).ToUniversalTime();
+                var cacheKey = CacheKeys.Reports.ClerkDebitSummary(fromDate.ToString("yyyyMMdd"), toDate.ToString("yyyyMMdd"));
+
+                var result = await _cache.GetOrSetAsync(cacheKey, async () =>
+                {
+                    var rows = await _context.Parcels
+                        .AsNoTracking()
+                        .Where(p => p.CreatedAt >= fromUtc && p.CreatedAt < toUtc)
+                        .Where(p => p.PaymentMethods != null &&
+                               (p.PaymentMethods.ToLower().Contains("paid") ||
+                                p.PaymentMethods.ToLower().Contains("advance") ||
+                                p.PaymentMethods.ToLower().Contains("prepaid")) &&
+                               !p.PaymentMethods.ToLower().Contains("cod"))
+                        .GroupBy(p => new { p.CreatedById, p.CreatorLastNameSnapshot })
+                        .Select(g => new
+                        {
+                            ClerkId = g.Key.CreatedById,
+                            ClerkSnapshot = g.Key.CreatorLastNameSnapshot,
+                            TotalPaidAmount = g.Sum(p => p.TotalAmount),
+                            ParcelCount = g.Count()
+                        })
+                        .ToListAsync();
+
+                    var clerkIds = rows.Where(r => r.ClerkId.HasValue).Select(r => r.ClerkId!.Value).Distinct().ToList();
+                    var users = await _context.Users.AsNoTracking()
+                        .Where(u => clerkIds.Contains(u.Id))
+                        .Select(u => new { u.Id, u.Username, u.FirstName, u.LastName })
+                        .ToListAsync();
+                    var userMap = users.ToDictionary(u => u.Id);
+
+                    var deposits = await _context.DailyExpenses.AsNoTracking()
+                        .Where(e => e.Category == "clerk_deposit" && e.Status == "approved" &&
+                                    e.Date >= fromDate.Date && e.Date < toDate.Date.AddDays(1))
+                        .GroupBy(e => e.ClerkId)
+                        .Select(g => new { ClerkId = g.Key, TotalDeposited = g.Sum(e => e.Amount) })
+                        .ToListAsync();
+                    var depositMap = deposits.ToDictionary(d => d.ClerkId, d => d.TotalDeposited);
+
+                    var expenses = await _context.DailyExpenses.AsNoTracking()
+                        .Where(e => e.Category != "clerk_deposit" && e.Status == "approved" &&
+                                    e.Date >= fromDate.Date && e.Date < toDate.Date.AddDays(1))
+                        .GroupBy(e => e.ClerkId)
+                        .Select(g => new { ClerkId = g.Key, TotalExpenses = g.Sum(e => e.Amount) })
+                        .ToListAsync();
+                    var expenseMap = expenses.ToDictionary(e => e.ClerkId, e => e.TotalExpenses);
+
+                    var summary = rows.Select(r =>
+                    {
+                        var name = r.ClerkId.HasValue && userMap.TryGetValue(r.ClerkId.Value, out var u)
+                            ? $"{u.FirstName} {u.LastName}".Trim()
+                            : r.ClerkSnapshot ?? "Unknown";
+                        var deposited = r.ClerkId.HasValue && depositMap.TryGetValue(r.ClerkId, out var dep) ? dep : 0;
+                        var expensed = r.ClerkId.HasValue && expenseMap.TryGetValue(r.ClerkId, out var exp) ? exp : 0;
+                        return new
+                        {
+                            r.ClerkId,
+                            ClerkName = name,
+                            Username = r.ClerkId.HasValue && userMap.TryGetValue(r.ClerkId.Value, out var u2) ? u2.Username : null,
+                            r.TotalPaidAmount,
+                            r.ParcelCount,
+                            TotalDeposited = deposited,
+                            TotalExpenses = expensed,
+                            CurrentDebit = r.TotalPaidAmount - deposited - expensed
+                        };
+                    }).ToList();
+
+                    return new { Clerks = summary };
+                }, TimeSpan.FromMinutes(3), new[] { CacheTags.Reports, CacheTags.Parcels });
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        [HttpGet("reports/summary")]
+        public async Task<IActionResult> GetReportSummary(
+            [FromQuery] DateTime fromDate,
+            [FromQuery] DateTime toDate,
+            [FromQuery] string? destination = null,
+            [FromQuery] string? branch = null)
+        {
+            try
+            {
+                var fromUtc = fromDate.Date.ToUniversalTime();
+                var toUtc = toDate.Date.AddDays(1).ToUniversalTime();
+                var cacheKey = CacheKeys.Reports.ReportSummary(
+                    fromDate.ToString("yyyyMMdd"), toDate.ToString("yyyyMMdd"), destination, branch);
+
+                var result = await _cache.GetOrSetAsync(cacheKey, async () =>
+                {
+                    var query = _context.Parcels.AsNoTracking()
+                        .Where(p => p.CreatedAt >= fromUtc && p.CreatedAt < toUtc);
+
+                    if (!string.IsNullOrWhiteSpace(destination))
+                        query = query.Where(p => p.Destination == destination);
+
+                    var dailySales = await query
+                        .GroupBy(p => new { p.CreatedById, p.CreatorLastNameSnapshot, Date = p.CreatedAt.Date })
+                        .Select(g => new
+                        {
+                            g.Key.CreatedById,
+                            g.Key.CreatorLastNameSnapshot,
+                            Date = g.Key.Date,
+                            TotalSales = g.Sum(p => p.TotalAmount),
+                            ParcelCount = g.Count()
+                        })
+                        .ToListAsync();
+
+                    var clerkIds = dailySales.Where(r => r.CreatedById.HasValue).Select(r => r.CreatedById!.Value).Distinct().ToList();
+                    var users = await _context.Users.AsNoTracking()
+                        .Where(u => clerkIds.Contains(u.Id))
+                        .Select(u => new { u.Id, u.Username, u.FirstName, u.LastName, RoleId = u.RoleId })
+                        .ToListAsync();
+                    var userMap = users.ToDictionary(u => u.Id);
+
+                    var grouped = dailySales
+                        .GroupBy(r => r.CreatedById)
+                        .Select(g =>
+                        {
+                            var userId = g.Key;
+                            var name = userId.HasValue && userMap.TryGetValue(userId.Value, out var u)
+                                ? new { Username = u.Username, FirstName = u.FirstName, LastName = u.LastName }
+                                : new { Username = g.First().CreatorLastNameSnapshot ?? "Unknown", FirstName = (string?)null, LastName = (string?)null };
+                            return new
+                            {
+                                UserId = userId,
+                                name.Username,
+                                name.FirstName,
+                                name.LastName,
+                                DailySales = g.Select(d => new
+                                {
+                                    Date = d.Date.ToString("yyyy-MM-dd"),
+                                    d.TotalSales,
+                                    d.ParcelCount,
+                                    AverageValue = d.ParcelCount > 0 ? d.TotalSales / d.ParcelCount : 0
+                                }).OrderBy(d => d.Date).ToList()
+                            };
+                        }).ToList();
+
+                    return new { Users = grouped };
+                }, TimeSpan.FromMinutes(3), new[] { CacheTags.Reports, CacheTags.Parcels });
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
                 return StatusCode(500, new { error = ex.Message });
             }
         }
