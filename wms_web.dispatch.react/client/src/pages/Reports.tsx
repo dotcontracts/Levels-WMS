@@ -641,9 +641,9 @@ const Reports: React.FC = () => {
         });
       } catch { }
 
-      const clerkDepositRecords = allClerkExpenses.filter(e => e.category === ('clerk_deposit' as any));
+      const clerkDepositRecords = allClerkExpenses.filter(e => e.category === 'clerk_deposit');
       const approvedClerkExpenses = allClerkExpenses.filter(e =>
-        e.category !== ('clerk_deposit' as any) && e.status === 'approved'
+        e.category !== 'clerk_deposit' && e.status === 'approved'
       );
 
       // Attach clerk_deposit records to each clerk
@@ -884,21 +884,27 @@ const Reports: React.FC = () => {
         clerkDebitMap[clerkId].parcelCount += 1;
       });
 
-      // Fetch approved expenses and apply per-clerk within date range
+      // Fetch approved expenses and deposits and apply per-clerk within date range
       let allApprovedExpenses: DailyExpense[] = [];
+      let allApprovedDeposits: DailyExpense[] = [];
       try {
         const allExpenses = await wmsApi.getDailyExpenses();
-        allApprovedExpenses = allExpenses.filter(e => {
+        const approvedInRange = allExpenses.filter(e => {
           if (e.status !== 'approved') return false;
           const expDate = e.date.split('T')[0];
           return expDate >= dateRange.from && expDate <= dateRange.to;
         });
+        allApprovedDeposits = approvedInRange.filter(e => e.category === 'clerk_deposit');
+        allApprovedExpenses = approvedInRange.filter(e => e.category !== 'clerk_deposit');
       } catch { }
 
-      // Calculate current debit for each clerk, subtracting approved clerk expenses
+      // Calculate current debit for each clerk, subtracting approved expenses and deposits
       Object.values(clerkDebitMap).forEach(clerk => {
+        const clerkDepositItems = allApprovedDeposits.filter(e => e.clerkId === clerk.clerkId);
+        const clerkApprovedDeposits = clerkDepositItems.reduce((sum, e) => sum + e.amount, 0);
         const clerkExpenseItems = allApprovedExpenses.filter(e => e.clerkId === clerk.clerkId);
         const clerkApprovedExpenses = clerkExpenseItems.reduce((sum, e) => sum + e.amount, 0);
+        clerk.totalDeposited += clerkApprovedDeposits;
         clerk.totalExpenses = clerkApprovedExpenses;
         clerk.currentDebit = clerk.totalPaidAmount - clerk.totalDeposited - clerkApprovedExpenses;
         clerk.approvedExpenseItems = clerkExpenseItems.sort(
@@ -907,8 +913,8 @@ const Reports: React.FC = () => {
         clerk.transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       });
 
-      // Also include clerks who only have expenses but no parcel transactions in the date range
-      allApprovedExpenses.forEach(expense => {
+      // Also include clerks who only have expenses/deposits but no parcel transactions in the date range
+      [...allApprovedExpenses, ...allApprovedDeposits].forEach(expense => {
         if (!expense.clerkId) return;
         if (clerkDebitMap[expense.clerkId]) return; // already handled
         const clerkUser = findUser(expense.clerkId);
@@ -935,14 +941,17 @@ const Reports: React.FC = () => {
         };
       });
 
-      // Second pass: populate expense-only clerks
+      // Second pass: populate expense/deposit-only clerks
       Object.values(clerkDebitMap).forEach(clerk => {
         if (clerk.approvedExpenseItems.length > 0) return;
+        const clerkDepositItems = allApprovedDeposits.filter(e => e.clerkId === clerk.clerkId);
         const clerkExpenseItems = allApprovedExpenses.filter(e => e.clerkId === clerk.clerkId);
-        if (clerkExpenseItems.length === 0) return;
-        const total = clerkExpenseItems.reduce((sum, e) => sum + e.amount, 0);
-        clerk.totalExpenses = total;
-        clerk.currentDebit = -total;
+        if (clerkExpenseItems.length === 0 && clerkDepositItems.length === 0) return;
+        const depositTotal = clerkDepositItems.reduce((sum, e) => sum + e.amount, 0);
+        const expenseTotal = clerkExpenseItems.reduce((sum, e) => sum + e.amount, 0);
+        clerk.totalDeposited += depositTotal;
+        clerk.totalExpenses = expenseTotal;
+        clerk.currentDebit = clerk.totalPaidAmount - clerk.totalDeposited - expenseTotal;
         clerk.approvedExpenseItems = clerkExpenseItems.sort(
           (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
         );

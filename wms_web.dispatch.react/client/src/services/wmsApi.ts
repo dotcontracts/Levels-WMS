@@ -285,7 +285,7 @@ export interface UpdateCODCollectionDto {
 export interface DailyExpense {
   id: number;
   date: string;
-  category: 'fuel' | 'casual_labor' | 'hired_cars' | 'maintenance' | 'office_supplies' | 'utilities' | 'transport' | 'other';
+  category: 'fuel' | 'casual_labor' | 'hired_cars' | 'maintenance' | 'office_supplies' | 'utilities' | 'transport' | 'other' | 'clerk_deposit';
   description: string;
   amount: number;
   branchId?: number;
@@ -306,7 +306,7 @@ export interface DailyExpense {
 
 export interface CreateDailyExpenseDto {
   date: string;
-  category: 'fuel' | 'casual_labor' | 'hired_cars' | 'maintenance' | 'office_supplies' | 'utilities' | 'transport' | 'other';
+  category: 'fuel' | 'casual_labor' | 'hired_cars' | 'maintenance' | 'office_supplies' | 'utilities' | 'transport' | 'other' | 'clerk_deposit';
   description: string;
   amount: number;
   branchId?: number;
