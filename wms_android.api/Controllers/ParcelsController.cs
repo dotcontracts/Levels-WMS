@@ -922,7 +922,7 @@ namespace wms_android.api.Controllers
                         .GroupBy(e => e.ClerkId)
                         .Select(g => new { ClerkId = g.Key, TotalDeposited = g.Sum(e => e.Amount) })
                         .ToListAsync();
-                    var depositMap = deposits.ToDictionary(d => d.ClerkId, d => d.TotalDeposited);
+                    var depositMap = deposits.Where(d => d.ClerkId.HasValue).ToDictionary(d => d.ClerkId, d => d.TotalDeposited);
 
                     var expenses = await _context.DailyExpenses.AsNoTracking()
                         .Where(e => e.Category != "clerk_deposit" && e.Status == "approved" &&
@@ -930,7 +930,7 @@ namespace wms_android.api.Controllers
                         .GroupBy(e => e.ClerkId)
                         .Select(g => new { ClerkId = g.Key, TotalExpenses = g.Sum(e => e.Amount) })
                         .ToListAsync();
-                    var expenseMap = expenses.ToDictionary(e => e.ClerkId, e => e.TotalExpenses);
+                    var expenseMap = expenses.Where(e => e.ClerkId.HasValue).ToDictionary(e => e.ClerkId, e => e.TotalExpenses);
 
                     var summary = rows.Select(r =>
                     {
@@ -986,12 +986,21 @@ namespace wms_android.api.Controllers
                         query = query.Where(p => p.Destination == destination);
 
                     var dailySales = await query
-                        .GroupBy(p => new { p.CreatedById, p.CreatorLastNameSnapshot, Date = p.CreatedAt.Date })
+                        .GroupBy(p => new
+                        {
+                            p.CreatedById,
+                            p.CreatorLastNameSnapshot,
+                            Year = p.CreatedAt.Year,
+                            Month = p.CreatedAt.Month,
+                            Day = p.CreatedAt.Day
+                        })
                         .Select(g => new
                         {
                             g.Key.CreatedById,
                             g.Key.CreatorLastNameSnapshot,
-                            Date = g.Key.Date,
+                            Year = g.Key.Year,
+                            Month = g.Key.Month,
+                            Day = g.Key.Day,
                             TotalSales = g.Sum(p => p.TotalAmount),
                             ParcelCount = g.Count()
                         })
@@ -1020,7 +1029,7 @@ namespace wms_android.api.Controllers
                                 name.LastName,
                                 DailySales = g.Select(d => new
                                 {
-                                    Date = d.Date.ToString("yyyy-MM-dd"),
+                                    Date = $"{d.Year:D4}-{d.Month:D2}-{d.Day:D2}",
                                     d.TotalSales,
                                     d.ParcelCount,
                                     AverageValue = d.ParcelCount > 0 ? d.TotalSales / d.ParcelCount : 0
