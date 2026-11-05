@@ -28,6 +28,7 @@ import { VirtualScrollTable } from '../components/VirtualScrollTable';
 import { wmsApi, DailyExpense, CreateDailyExpenseDto, ApproveExpenseDto } from '../services/wmsApi';
 import { useAuth } from '../context/AuthContext';
 import { fmtDate } from '../utils/dateUtils';
+import { exportExpensesToPDF, exportExpensesToXLSX, generateExpenseFilterSummary } from '../utils/exportUtils';
 
 interface ExpenseFilters {
   search: string;
@@ -82,6 +83,7 @@ const ExpensesManagement: React.FC = () => {
     clerkId: undefined
   });
   const [expenseType, setExpenseType] = useState<'clerk' | 'operational'>('operational');
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const [branches, setBranches] = useState<{id: number, name: string}[]>([]);
   const [users, setUsers] = useState<{id: number, username: string, firstName?: string, lastName?: string, branchId?: number}[]>([]);
 
@@ -554,6 +556,52 @@ const ExpensesManagement: React.FC = () => {
             <RefreshCw className="w-4 h-4" />
             <span>Refresh</span>
           </Button>
+          <div className="relative">
+            <Button
+              variant="outline"
+              onClick={() => setShowExportMenu(prev => !prev)}
+              className="flex items-center space-x-2"
+            >
+              <Download className="w-4 h-4" />
+              <span>Export</span>
+            </Button>
+            {showExportMenu && (
+              <div className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-md shadow-lg z-10">
+                <button
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
+                  onClick={() => {
+                    const filterSummary = generateExpenseFilterSummary(filters);
+                    exportExpensesToPDF(filteredExpenses, {
+                      title: 'Expense Management Report',
+                      filename: `expenses-export-${new Date().toISOString().split('T')[0]}.pdf`,
+                      includeFilters: true,
+                      filterSummary
+                    });
+                    setShowExportMenu(false);
+                  }}
+                >
+                  <FileText className="w-4 h-4 text-red-500" />
+                  <span>Export as PDF</span>
+                </button>
+                <button
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
+                  onClick={() => {
+                    const filterSummary = generateExpenseFilterSummary(filters);
+                    exportExpensesToXLSX(filteredExpenses, {
+                      title: 'Expense Management Report',
+                      filename: `expenses-export-${new Date().toISOString().split('T')[0]}.xlsx`,
+                      includeFilters: true,
+                      filterSummary
+                    });
+                    setShowExportMenu(false);
+                  }}
+                >
+                  <Download className="w-4 h-4 text-green-600" />
+                  <span>Export as XLSX</span>
+                </button>
+              </div>
+            )}
+          </div>
           <Button onClick={() => setShowCreateModal(true)} className="flex items-center space-x-2">
             <Plus className="w-4 h-4" />
             <span>Add Expense</span>
@@ -708,10 +756,7 @@ const ExpensesManagement: React.FC = () => {
             <h2 className="text-lg font-medium text-gray-900">
               Expense Records ({filteredExpenses.length})
             </h2>
-            <Button variant="outline" className="flex items-center space-x-2">
-              <Download className="w-4 h-4" />
-              <span>Export</span>
-            </Button>
+            <span className="text-sm text-gray-500">{filteredExpenses.length} record{filteredExpenses.length !== 1 ? 's' : ''}</span>
           </div>
         </div>
         <div className="overflow-x-auto">
